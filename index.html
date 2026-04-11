@@ -1,0 +1,2159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1a">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Human Exchange Protocol</title>
+<style>
+:root {
+  --bg: #1a1a1a;
+  --bg-raised: #262626;
+  --bg-modal: #1e1e1e;
+  --bg-input: #2c2c2c;
+  --text: #f0ebe4;
+  --text-dim: #b5ada3;
+  --text-faint: #847e76;
+  --accent: #e0b48a;
+  --accent-dim: #b08660;
+  --green: #7dcc7b;
+  --red: #d96a6a;
+  --blue: #6b8fc7;
+  --border: #333;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Courier New', monospace;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; width: 100%; overflow: hidden; }
+body {
+  height: 100vh; /* fallback */
+  height: calc(var(--vh, 1vh) * 100);
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+@supports (height: 100dvh) {
+  body { height: 100dvh; }
+}
+button { font-family: var(--font); border: none; cursor: pointer; font-size: 16px; -webkit-appearance: none; outline: none; }
+input, textarea, select { font-family: var(--font); font-size: 17px; outline: none; border: none; -webkit-appearance: none; }
+
+/* === SCREENS === */
+.screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: none; flex-direction: column; overflow: hidden; overflow-x: hidden; }
+.screen.active { display: flex; }
+
+/* === SETUP === */
+#setup { align-items: center; justify-content: flex-start; padding: 24px; padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#setup h1 { font-size: 26px; font-weight: 600; color: var(--accent); margin-bottom: 2px; flex-shrink: 0; }
+#setup .subtitle { font-size: 15px; color: var(--text-dim); margin-bottom: 20px; font-style: italic; flex-shrink: 0; }
+#setup .step { display: none; width: 100%; max-width: 380px; }
+#setup .step.active { display: block; }
+#setup .step p { color: var(--text-dim); font-size: 15px; margin-bottom: 14px; line-height: 1.55; }
+#setup .step .field { text-align: left; }
+#setup .step .guidance { text-align: left; color: var(--text-dim); font-size: 15px; line-height: 1.55; margin-bottom: 14px; }
+#setup .step .guidance strong { color: var(--text); font-weight: 500; }
+.welcome-icon { font-size: 40px; margin-bottom: 12px; display: block; }
+.welcome-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 16px; }
+.welcome-dots .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+.welcome-dots .dot.active { background: var(--accent); }
+.range-input-group { text-align: left; padding: 0; margin-bottom: 10px; }
+.range-input-group label { display: block; font-size: 15px; color: var(--text); margin-bottom: 10px; line-height: 1.5; }
+.range-input-group input[type="text"] { width: 100%; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 16px; font-family: var(--font); margin-bottom: 8px; }
+.range-input-group input[type="number"] { width: 140px; padding: 14px 16px; background: var(--bg-input); border: 2px solid var(--accent-dim); border-radius: var(--radius-sm); color: var(--accent); font-size: 28px; font-weight: 500; font-family: var(--font); text-align: center; }
+.range-input-group input[type="number"]:focus { border-color: var(--accent); outline: none; }
+.range-input-group .range-val-row { display: flex; align-items: center; gap: 12px; }
+.range-input-group .range-val-label { font-size: 14px; color: var(--text-faint); }
+.range-result { background: rgba(224,180,138,0.08); border: 1px solid var(--accent-dim); border-radius: var(--radius); padding: 16px; margin: 16px 0; text-align: center; }
+.range-result .ratio-display { font-size: 22px; font-weight: 500; color: var(--accent); margin-bottom: 4px; }
+.range-result .ratio-label { font-size: 14px; color: var(--text-dim); line-height: 1.5; }
+/* Range sub-steps */
+.range-substep { display: none; }
+.range-substep.active { display: block; }
+.range-progress { display: flex; justify-content: center; gap: 5px; margin-bottom: 16px; }
+.range-progress .rp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+.range-progress .rp-dot.done { background: var(--green); }
+.range-progress .rp-dot.current { background: var(--accent); }
+.range-nav { display: flex; gap: 10px; margin-top: 14px; }
+.range-nav .btn { flex: 1; }
+.range-ref { font-size: 14px; color: var(--accent); background: rgba(224,180,138,0.08); padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; line-height: 1.5; text-align: left; }
+.val-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.val-tag { padding: 5px 12px; border-radius: 20px; font-size: 13px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.15s; user-select: none; -webkit-user-select: none; }
+.val-tag.selected { background: rgba(224,180,138,0.15); border-color: var(--accent); color: var(--accent); }
+.val-tags-label { font-size: 13px; color: var(--text-faint); margin-top: 10px; line-height: 1.4; text-align: left; }
+/* Range result viz */
+.range-viz { position: relative; height: 28px; background: var(--bg-input); border-radius: 14px; margin: 16px 0 8px; overflow: visible; border: 1px solid var(--border); }
+.range-viz-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, var(--green), var(--accent)); border-radius: 14px; transition: width 0.4s; }
+.range-viz-marker { position: absolute; top: -6px; width: 3px; height: 40px; border-radius: 2px; transition: left 0.4s; }
+.range-viz-label { position: absolute; top: 38px; transform: translateX(-50%); font-size: 11px; white-space: nowrap; color: var(--text-faint); }
+.range-viz-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; font-size: 13px; color: var(--text-dim); }
+.range-viz-legend span { display: flex; align-items: center; gap: 5px; }
+.range-viz-legend .dot-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.val-pattern-box { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin: 14px 0; text-align: left; }
+.val-pattern-box p { font-size: 14px; color: var(--text-dim); line-height: 1.55; margin: 0 0 8px; }
+.val-pattern-box p:last-child { margin-bottom: 0; }
+.setup-branch-btn { width: 100%; padding: 16px; border-radius: var(--radius); font-size: 16px; font-weight: 500; margin-bottom: 10px; text-align: center; transition: all 0.15s; }
+.setup-branch-primary { background: var(--accent); color: var(--bg); }
+.setup-branch-secondary { background: var(--bg-raised); color: var(--text); border: 1px solid var(--border); }
+.setup-branch-hint { font-size: 14px; color: var(--text-faint); margin-top: 16px; line-height: 1.5; }
+
+/* === PIN PAD === */
+.pin-display { display: flex; justify-content: center; gap: 16px; margin-bottom: 28px; }
+.pin-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--text-dim); transition: all 0.15s; }
+.pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+.pin-dot.error { border-color: var(--red); background: var(--red); }
+.pin-label { text-align: center; font-size: 18px; color: var(--text); font-weight: 500; margin-bottom: 20px; }
+.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 320px; width: 100%; margin: 0 auto; padding: 0 10px; }
+.numpad button { height: 68px; background: var(--bg-raised); color: var(--text); border-radius: var(--radius); font-size: 26px; font-weight: 500; transition: background 0.1s; border: 1px solid var(--border); }
+.numpad button:active { background: var(--accent-dim); }
+.numpad button.empty { visibility: hidden; border: none; background: none; }
+.numpad button.del { font-size: 16px; color: var(--text-dim); }
+
+/* === PIN ATTEMPT INDICATOR === */
+.pin-attempts { margin-top: 20px; text-align: center; }
+.pin-attempts-bar { display: flex; justify-content: center; gap: 8px; margin-bottom: 8px; }
+.pa-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-faint); opacity: 0.25; transition: opacity 0.3s, background 0.3s; }
+.pa-dot.on { opacity: 1; background: var(--accent); }
+.pin-attempts-hint { font-size: 13px; color: var(--text-dim); min-height: 18px; transition: opacity 0.3s; }
+.pin-cooldown { margin-top: 16px; text-align: center; }
+.pin-cooldown-text { font-size: 14px; color: var(--text-dim); margin-bottom: 8px; }
+.pin-cooldown-bar { width: 200px; height: 4px; background: var(--bg-raised); border-radius: 2px; margin: 0 auto; overflow: hidden; }
+.pin-cooldown-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 1s linear; }
+
+/* === LOCK === */
+#lock { align-items: center; padding: 32px; padding-top: calc(32px + var(--safe-top)); padding-bottom: calc(32px + var(--safe-bottom)); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#lock::before, #lock::after { content: ''; flex: 1; }
+#lock h2 { font-size: 20px; color: var(--text); margin-bottom: 4px; }
+#lock .fp { font-family: var(--font-mono); font-size: 13px; color: var(--text-faint); margin-bottom: 28px; }
+
+/* === HOME === */
+#home { padding: 0; flex-direction: column; overflow: hidden; }
+.home-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 8px; padding-top: calc(16px + var(--safe-top)); flex-shrink: 0; }
+.home-identity { flex: 1; min-width: 0; }
+.home-identity .greeting { font-size: 17px; color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-identity .fp { font-family: var(--font-mono); font-size: 13px; color: var(--text-faint); }
+.home-top-icons { display: flex; gap: 8px; flex-shrink: 0; }
+.top-icon-btn { width: 44px; height: 44px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; color: var(--text-dim); display: flex; align-items: center; justify-content: center; }
+.top-icon-btn:active { border-color: var(--accent); color: var(--accent); }
+.home-stats { display: flex; justify-content: center; gap: 32px; padding: 12px 20px 16px; flex-shrink: 0; }
+.home-stat { text-align: center; }
+.home-stat .val { font-size: 22px; font-weight: 500; color: var(--text); }
+.home-stat .lbl { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.home-primary { flex-shrink: 0; }
+.coop-container { width: 100%; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.coop-container-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.coop-start-btn { padding: 14px 16px; background: rgba(224,180,138,0.06); border: 1px solid var(--accent-dim); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: background 0.15s; }
+.coop-start-btn:active { background: rgba(224,180,138,0.12); }
+.coop-start-top { display: flex; justify-content: space-between; align-items: center; }
+.coop-start-label { font-size: 15px; font-weight: 600; color: var(--accent); }
+.coop-start-sub { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+.coop-chevron { font-size: 14px; color: var(--text-faint); transition: transform 0.2s; }
+.coop-chevron.open { transform: rotate(90deg); }
+.coop-sub-opts { overflow: hidden; max-height: 0; transition: max-height 0.25s ease; }
+.coop-sub-opts.open { max-height: 200px; }
+.coop-sub-inner { padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.coop-role-btn { padding: 12px 14px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s; }
+.coop-role-btn.providing { background: rgba(125,204,123,0.08); border: 1px solid rgba(125,204,123,0.15); }
+.coop-role-btn.receiving { background: rgba(123,170,204,0.08); border: 1px solid rgba(123,170,204,0.15); }
+.coop-role-icon { font-size: 16px; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.coop-role-icon.providing { background: rgba(125,204,123,0.12); color: var(--green); }
+.coop-role-icon.receiving { background: rgba(123,170,204,0.12); color: var(--blue); }
+.coop-role-label { font-size: 14px; font-weight: 500; }
+.coop-role-label.providing { color: var(--green); }
+.coop-role-label.receiving { color: var(--blue); }
+.coop-role-desc { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.coop-join-btn { padding: 14px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: background 0.15s; }
+.coop-join-btn:active { background: var(--bg-raised); }
+.coop-join-label { font-size: 14px; font-weight: 500; color: var(--text-dim); }
+.coop-join-sub { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+.home-secondary { display: flex; gap: 10px; padding: 10px 20px 0; flex-shrink: 0; }
+.home-sec-btn { flex: 1; padding: 14px 10px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-dim); font-size: 14px; font-weight: 500; text-align: center; transition: border-color 0.15s; }
+.home-sec-btn:active { border-color: var(--accent); color: var(--text); }
+.hsb-icon { margin-right: 6px; }
+.coop-empty { text-align: center; padding: 40px 20px; }
+.coop-empty p { color: var(--text-dim); font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
+.coop-section-hdr { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; padding: 16px 0 8px; }
+.coop-act { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: border-color 0.15s; }
+.coop-act:active { border-color: var(--accent); }
+.coop-act-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: rgba(224,180,138,0.12); color: var(--accent); }
+.coop-act-info { flex: 1; min-width: 0; }
+.coop-act-desc { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coop-act-meta { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+.coop-act-val { font-size: 16px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+.coop-act-arrow { color: var(--text-faint); font-size: 18px; flex-shrink: 0; margin-left: 4px; }
+.coop-new-btn { width: 100%; padding: 16px; background: none; border: 1.5px dashed var(--border); border-radius: var(--radius); color: var(--text-dim); font-size: 16px; font-weight: 500; margin-top: 12px; transition: all 0.15s; }
+.coop-new-btn:active { border-color: var(--accent); color: var(--accent); }
+.transport-options { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+.transport-opt { padding: 16px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: border-color 0.15s; }
+.transport-opt:active { border-color: var(--accent); }
+.transport-opt.disabled { opacity: 0.4; pointer-events: none; }
+.transport-opt .to-title { font-size: 16px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+.transport-opt .to-desc { font-size: 13px; color: var(--text-dim); line-height: 1.4; }
+.transport-opt .to-badge { display: inline-block; font-size: 13px; color: var(--text-faint); background: var(--bg-input); padding: 2px 8px; border-radius: 10px; margin-top: 6px; }
+.transport-switch { text-align: center; margin-top: 12px; }
+.transport-switch button { font-size: 13px; color: var(--accent); background: none; text-decoration: underline; text-underline-offset: 3px; }
+.hs-status-line { text-align: center; padding: 12px 16px; font-size: 14px; color: var(--text-dim); background: var(--bg-raised); border-radius: var(--radius-sm); margin-bottom: 16px; }
+.hs-status-line.active { color: var(--accent); border: 1px solid rgba(224,180,138,0.2); }
+.hs-status-line.done { color: var(--green); border: 1px solid rgba(125,204,123,0.2); }
+
+/* === PAIRING CODE === */
+.pair-code-display { text-align: center; padding: 24px 0 20px; }
+.pair-code-label { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+.pair-code-chars { font-family: var(--font-mono); font-size: 42px; font-weight: 600; letter-spacing: 12px; color: var(--accent); padding: 16px 24px; background: var(--bg-raised); border: 2px solid var(--accent-dim); border-radius: var(--radius); display: inline-block; }
+.pair-code-hint { font-size: 13px; color: var(--text-faint); margin-top: 12px; line-height: 1.5; }
+.pair-input-section { margin-top: 24px; }
+.pair-input-section label { display: block; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.pair-input-section input { width: 100%; padding: 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-mono); font-size: 28px; text-align: center; letter-spacing: 8px; text-transform: uppercase; }
+.pair-input-section input:focus { border-color: var(--accent-dim); }
+.pair-input-section input::placeholder { letter-spacing: 2px; font-size: 16px; }
+.pair-status { text-align: center; padding: 16px; margin-top: 16px; background: var(--bg-raised); border-radius: var(--radius); border: 1px solid var(--border); }
+.pair-status .ps-icon { font-size: 36px; margin-bottom: 8px; }
+.pair-status .ps-text { font-size: 14px; color: var(--text-dim); line-height: 1.5; }
+.pair-status.resolving { border-color: var(--accent-dim); }
+.pair-status.resolving .ps-text { color: var(--accent); }
+.pair-status.resolved { border-color: rgba(125,204,123,0.3); }
+.pair-status.resolved .ps-text { color: var(--green); }
+.pair-status.mismatch { border-color: rgba(217,106,106,0.3); }
+.pair-status.mismatch .ps-text { color: var(--red); }
+.session-partner { padding: 16px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
+.session-partner .sp-label { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.session-partner .sp-fp { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+.session-thread { padding: 16px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
+.session-thread .st-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+.session-thread .st-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+.session-thread .st-label { color: var(--text-dim); }
+.session-thread .st-val { color: var(--text); font-weight: 500; }
+.session-proposal-review { padding: 20px; background: var(--bg-raised); border: 1px solid var(--accent-dim); border-radius: var(--radius); margin-bottom: 16px; }
+.session-proposal-review .spr-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.session-proposal-review .spr-row { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; border-bottom: 1px solid var(--bg-input); }
+.session-proposal-review .spr-row:last-child { border-bottom: none; }
+.session-proposal-review .spr-label { color: var(--text-dim); }
+.session-proposal-review .spr-val { color: var(--text); font-weight: 500; text-align: right; max-width: 60%; }
+.session-desc-field { margin-top: 16px; }
+.session-desc-field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+.session-desc-field textarea { width: 100%; padding: 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 14px; resize: vertical; min-height: 60px; }
+.session-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+/* === SESSION THREAD VIEWER TABS === */
+.sess-tabs { display: flex; border-bottom: 1px solid var(--border); margin: 0 -16px; background: var(--bg-raised); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sess-tabs::-webkit-scrollbar { display: none; }
+.sess-tab { flex: 0 0 auto; padding: 10px 12px; text-align: center; font-size: 13px; font-weight: 500; color: var(--text-faint); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+.sess-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.sess-tab-content { padding: 12px 0; }
+.sess-rate-hero { text-align: center; padding: 16px; border-radius: var(--radius); margin-bottom: 14px; }
+.sess-rate-hero.parity { background: rgba(125,204,123,0.1); border: 1px solid rgba(125,204,123,0.3); }
+.sess-rate-hero.cross { background: rgba(107,143,199,0.1); border: 1px solid rgba(107,143,199,0.3); }
+.sess-rate-val { font-size: 32px; font-weight: 300; }
+.sess-rate-sub { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.sess-cat-rate { padding: 10px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; }
+.sess-cat-rate-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 3px 0; }
+.sess-cat-rate-row .cl { color: var(--text-dim); }
+.sess-cat-rate-row .cv { font-weight: 500; }
+.sess-cat-rate-row.highlight { color: var(--accent); }
+
+.coop-receive-btn { width: 100%; padding: 14px; background: none; border: 1.5px solid var(--accent-dim); border-radius: var(--radius); color: var(--accent); font-size: 15px; font-weight: 500; margin-bottom: 12px; transition: all 0.15s; }
+.coop-receive-btn:active { border-color: var(--accent); background: rgba(224,180,138,0.1); }
+.home-invite { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px 20px 8px; min-height: 0; }
+.invite-text { font-size: 14px; color: var(--text-dim); text-align: center; margin-bottom: 10px; }
+.invite-buttons { display: flex; gap: 10px; }
+.invite-btn { flex: 1; padding: 12px 8px; background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--accent); font-size: 14px; font-weight: 500; text-align: center; transition: border-color 0.15s; }
+.invite-btn:active { border-color: var(--accent); background: rgba(224,180,138,0.08); }
+.version-badge { font-size: 13px; color: var(--text-faint); font-family: var(--font-mono); text-align: center; padding: 8px 8px; padding-bottom: calc(8px + var(--safe-bottom)); letter-spacing: 0.5px; flex-shrink: 0; }
+
+/* === WALLET MODAL === */
+.wallet-body { text-align: center; }
+.wallet-display { padding: 20px 0 24px; }
+.wallet-label { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.wallet-amount { font-size: 56px; font-weight: 300; letter-spacing: -1px; }
+.wallet-amount.surplus { color: var(--green); }
+.wallet-amount.deficit { color: var(--red); }
+.wallet-amount.zero { color: var(--text-dim); }
+.wallet-position { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+.wallet-detail { background: var(--bg-raised); border-radius: var(--radius); padding: 12px 16px; border: 1px solid var(--border); }
+
+/* === RECORD CARD === */
+.record-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+.record-card.provided-card { border-left: 3px solid var(--green); }
+.record-card.received-card { border-left: 3px solid var(--blue); }
+.record-card .dir { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.record-card .dir.provided { background: rgba(125,204,123,0.15); color: var(--green); }
+.record-card .dir.received { background: rgba(107,143,199,0.15); color: var(--blue); }
+.record-card .info { flex: 1; min-width: 0; }
+.record-card .info .desc { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-card .info .meta { font-size: 13px; color: var(--text-dim); }
+.record-card .val { font-size: 18px; font-weight: 600; flex-shrink: 0; }
+.record-card .val.provided { color: var(--green); }
+.record-card .val.received { color: var(--blue); }
+.record-card .info .cp-desc { font-size: 13px; color: var(--text-faint); font-style: italic; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-detail { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.record-detail.expanded { display: block; }
+.rd-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; gap: 12px; }
+.rd-row .rd-label { color: var(--text-faint); flex-shrink: 0; }
+.rd-row .rd-val { color: var(--text); text-align: right; word-break: break-all; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-faint); font-size: 16px; line-height: 1.6; }
+
+/* === MODAL === */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0); z-index: 100; display: none; align-items: flex-end; justify-content: center; transition: background 0.3s; overflow: hidden; }
+.modal-overlay.active { background: rgba(0,0,0,0.5); }
+.modal { background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: calc(var(--vh, 1vh) * 100); display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
+.modal-overlay.active .modal { transform: translateY(0); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; padding-top: calc(16px + var(--safe-top)); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.modal-header h2 { font-size: 20px; font-weight: 600; }
+.modal-close { width: 44px; height: 44px; background: var(--bg-input); border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.modal-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; padding-bottom: calc(20px + var(--safe-bottom)); }
+.modal-footer { padding: 14px 20px; padding-bottom: calc(14px + var(--safe-bottom)); border-top: 1px solid var(--border); flex-shrink: 0; }
+
+/* === TABS === */
+.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { flex: 1; padding: 14px 8px; text-align: center; font-size: 15px; font-weight: 500; color: var(--text-dim); background: none; border-bottom: 2px solid transparent; transition: all 0.15s; }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* === FORM === */
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.field input, .field textarea, .field select { width: 100%; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 16px; }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent-dim); }
+.field select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239a9489' fill='none' stroke-width='2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+.field textarea { resize: none; }
+.duration-row { display: flex; gap: 10px; }
+.duration-row .field { flex: 1; }
+
+/* === DIRECTION TOGGLE === */
+.direction-toggle { display: flex; background: var(--bg-input); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; border: 1px solid var(--border); }
+.direction-toggle button { flex: 1; padding: 14px; background: none; color: var(--text-dim); font-size: 16px; font-weight: 500; transition: all 0.15s; }
+.direction-toggle button.active { color: #1a1a1a; }
+.direction-toggle button.active.providing { background: var(--green); }
+.direction-toggle button.active.receiving { background: var(--accent); }
+
+/* === BUTTONS === */
+.btn { width: 100%; padding: 16px; border-radius: var(--radius); font-weight: 600; font-size: 17px; transition: opacity 0.1s; }
+.btn:active { opacity: 0.8; }
+.btn-primary { background: var(--accent); color: #1a1a1a; }
+.btn-secondary { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
+.btn-danger { background: var(--red); color: white; }
+.btn + .btn { margin-top: 8px; }
+.btn:disabled { opacity: 0.4; pointer-events: none; }
+
+/* === QR === */
+.qr-container { display: flex; flex-direction: column; align-items: center; padding: 20px; }
+.qr-container canvas { border-radius: var(--radius); background: white; padding: 12px; }
+
+/* === SCANNER === */
+/* === CHAIN FILTER === */
+.chain-filter { padding: 10px 0; display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-shrink: 0; }
+.chain-filter::-webkit-scrollbar { display: none; }
+.filter-chip { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); white-space: nowrap; flex-shrink: 0; }
+.filter-chip.active { background: var(--accent-dim); color: var(--text); border-color: var(--accent-dim); }
+
+/* === REVIEW PANEL === */
+.review-panel { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.review-row { display: flex; justify-content: space-between; padding: 6px 0; }
+.review-row .rlbl { color: var(--text-dim); font-size: 13px; }
+.review-row .rval { font-size: 13px; font-weight: 500; text-align: right; max-width: 60%; }
+
+/* === PAYLOAD === */
+.payload-area { width: 100%; min-height: 100px; padding: 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-mono); font-size: 13px; resize: none; margin-bottom: 12px; }
+
+/* === SETTINGS === */
+.setting-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.setting-row .label { font-size: 16px; }
+.setting-row .desc { font-size: 14px; color: var(--text-dim); margin-top: 2px; }
+.setting-action { padding: 14px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.setting-action .label { font-size: 16px; color: var(--text); }
+.setting-action .desc { font-size: 14px; color: var(--text-dim); margin-top: 2px; }
+.setting-action:active .label { color: var(--accent); }
+.switch { width: 48px; height: 28px; background: var(--bg-input); border-radius: 14px; position: relative; border: 1px solid var(--border); flex-shrink: 0; }
+.switch.on { background: var(--green); border-color: var(--green); }
+.switch::after { content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%; background: white; top: 2px; left: 2px; transition: transform 0.2s; }
+.switch.on::after { transform: translateX(20px); }
+
+/* === PHOTO === */
+.photo-area { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
+.photo-preview { width: 120px; height: 120px; border-radius: 50%; background: var(--bg-input); border: 2px dashed var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 12px; color: var(--text-faint); font-size: 32px; }
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.photo-preview.has-photo { border-style: solid; border-color: var(--accent-dim); }
+.photo-buttons { display: flex; gap: 8px; }
+.photo-btn { padding: 8px 16px; background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; }
+.photo-btn:active { border-color: var(--accent); }
+
+/* === PRIVACY SECTION === */
+.privacy-info { font-size: 13px; color: var(--text-dim); line-height: 1.5; padding: 12px 0; }
+
+/* === LEARN TILES === */
+/* === LEARN === */
+.learn-menu { padding: 8px 0; }
+.learn-topic { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+.learn-topic:active { background: var(--bg-raised); }
+.learn-topic .lt-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+.learn-topic .lt-info { flex: 1; }
+.learn-topic .lt-title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.learn-topic .lt-desc { font-size: 14px; color: var(--text-dim); line-height: 1.4; word-wrap: break-word; }
+.learn-topic .lt-arrow { font-size: 18px; color: var(--text-faint); flex-shrink: 0; }
+.learn-slides { display: none; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.learn-slides.active { display: flex; }
+.learn-carousel { overflow-x: auto; scroll-snap-type: x mandatory; display: flex; gap: 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex: 1; min-height: 0; }
+.learn-carousel::-webkit-scrollbar { display: none; }
+.learn-tile { min-width: 100%; max-width: 100%; scroll-snap-align: start; padding: 28px 24px; flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; box-sizing: border-box; }
+.learn-tile-icon { font-size: 48px; text-align: center; margin-bottom: 20px; line-height: 1; }
+.learn-tile h3 { font-size: 22px; color: var(--accent); margin-bottom: 16px; font-weight: 600; }
+.learn-tile p { font-size: 16px; color: var(--text-dim); line-height: 1.7; margin-bottom: 14px; word-wrap: break-word; overflow-wrap: break-word; }
+.learn-tile .highlight { color: var(--text); font-weight: 500; }
+.learn-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; flex-shrink: 0; border-top: 1px solid var(--border); }
+.learn-dots { display: flex; justify-content: center; gap: 8px; flex: 1; }
+.learn-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+.learn-dot.active { background: var(--accent); }
+.learn-nav-btn { padding: 10px 18px; font-size: 15px; font-weight: 600; color: var(--accent); background: none; min-width: 70px; }
+.learn-nav-btn:disabled { color: var(--text-faint); }
+.learn-section-hdr { font-size: 13px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 1.5px; padding: 20px 20px 8px; }
+.learn-section-hdr:first-child { padding-top: 12px; }
+.learn-section-divider { height: 1px; background: var(--border); margin: 8px 20px 0; }
+
+/* === CALIBRATION EXERCISE === */
+.cal-input-group { margin-bottom: 20px; }
+.cal-label { font-size: 14px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.5; }
+.cal-input { width: 100%; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 16px; font-family: var(--font); outline: none; -webkit-appearance: none; }
+.cal-input:focus { border-color: var(--accent-dim); }
+.cal-input-num { width: 100px; text-align: center; font-size: 22px; font-weight: 500; padding: 10px; }
+.cal-input-row { display: flex; align-items: center; gap: 12px; }
+.cal-input-row .cal-label { margin-bottom: 0; flex: 1; }
+.cal-reflect { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 16px 0; }
+.cal-reflect-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.cal-reflect-row:last-child { border-bottom: none; }
+.cal-reflect-desc { font-size: 15px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-reflect-val { font-size: 18px; font-weight: 600; color: var(--accent); flex-shrink: 0; margin-left: 12px; }
+.cal-reflect-ratio { font-size: 13px; color: var(--text-dim); margin-left: 8px; flex-shrink: 0; }
+.cal-note { font-size: 13px; color: var(--text-faint); font-style: italic; line-height: 1.5; margin-top: 12px; }
+.cal-empty { font-size: 14px; color: var(--text-faint); text-align: center; padding: 20px; font-style: italic; }
+
+/* === HANDSHAKE FLOW === */
+.hs-step { display: none; }
+.hs-step.active { display: block; }
+
+/* 8-step flow progress bar */
+.ex-progress { display: flex; gap: 3px; margin-bottom: 20px; }
+.ex-progress-seg { flex: 1; height: 4px; border-radius: 2px; background: var(--bg-input); transition: background 0.2s; }
+.ex-progress-seg.done { background: var(--green); }
+.ex-progress-seg.active { background: var(--accent); }
+
+/* SAS verification badge */
+.sas-badge { display: flex; align-items: center; gap: 8px; justify-content: center; padding: 10px 20px; background: rgba(125,204,123,0.08); border: 1px solid rgba(125,204,123,0.2); border-radius: var(--radius); margin: 12px auto; width: fit-content; }
+.sas-badge .sas-lock { font-size: 14px; color: var(--green); }
+.sas-badge .sas-code { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--green); letter-spacing: 4px; }
+
+/* Texture summary card */
+.texture-summary { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.texture-status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.texture-status .ts-dot { width: 10px; height: 10px; border-radius: 50%; }
+.texture-status .ts-label { font-size: 14px; font-weight: 500; }
+.texture-detail { font-size: 13px; color: var(--text-faint); line-height: 1.6; }
+
+/* Connect step partner display */
+.connect-partner { display: flex; align-items: center; gap: 12px; padding: 14px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
+.connect-partner .cp-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--bg-input); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--text-dim); }
+.connect-partner .cp-name { font-size: 16px; font-weight: 600; color: var(--text); }
+
+/* Expandable assessment rows */
+.ex-expand-row { cursor: pointer; }
+.ex-expand-header { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.ex-expand-chev { font-size: 12px; color: var(--text-faint); transition: transform 0.2s; }
+.ex-expand-row.open .ex-expand-chev { transform: rotate(90deg); }
+.ex-expand-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; padding: 0; }
+.ex-expand-row.open .ex-expand-body { max-height: 800px; padding: 12px 0; }
+.hs-status { text-align: center; padding: 20px 0; }
+.hs-status .hs-icon { font-size: 56px; margin-bottom: 12px; line-height: 1; }
+.hs-status h3 { font-size: 20px; color: var(--text); margin-bottom: 8px; font-weight: 600; }
+.hs-status p { font-size: 15px; color: var(--text-dim); line-height: 1.5; }
+.hs-qr { text-align: center; padding: 16px 0; }
+.hs-qr canvas { border-radius: 8px; max-width: 280px; background: #fff; padding: 12px; }
+.hs-qr-expand { display: inline-block; margin-top: 12px; padding: 10px 20px; font-size: 15px; font-weight: 600; color: var(--accent); background: none; cursor: pointer; }
+.hs-divider { text-align: center; font-size: 13px; color: var(--text-faint); margin: 16px 0; text-transform: uppercase; letter-spacing: 1px; }
+.hs-success { text-align: center; padding: 32px 20px; }
+.hs-success .hs-check { width: 72px; height: 72px; border-radius: 50%; background: rgba(125,204,123,0.15); color: var(--green); font-size: 36px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+.hs-success h3 { font-size: 22px; color: var(--green); margin-bottom: 8px; }
+.hs-success p { font-size: 15px; color: var(--text-dim); margin-bottom: 20px; }
+
+.chain-share-btn { padding: 8px 16px; background: var(--accent-dim); color: #1a1a1a; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; white-space: nowrap; }
+
+/* === SHARE LINK === */
+.share-url { width: 100%; padding: 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent); font-family: var(--font-mono); font-size: 13px; text-align: center; margin-bottom: 12px; word-break: break-all; }
+
+/* === UPDATE BANNER === */
+.update-banner { position: fixed; top: 0; left: 0; right: 0; background: var(--accent); color: #1a1a1a; padding: 12px 20px; z-index: 300; display: none; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; }
+.update-banner.show { display: flex; }
+.update-banner .ub-btn { padding: 6px 16px; background: #1a1a1a; color: var(--accent); border-radius: var(--radius-sm); font-weight: 600; font-size: 13px; }
+
+/* === INSTALL BANNER === */
+.install-banner { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-raised); border-top: 1px solid var(--border); padding: 14px 20px; padding-bottom: calc(14px + var(--safe-bottom)); z-index: 50; display: none; align-items: center; gap: 12px; }
+.install-banner.show { display: flex; }
+.install-banner .ib-icon { width: 40px; height: 40px; background: var(--accent-dim); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: #1a1a1a; flex-shrink: 0; }
+.install-banner .ib-text { flex: 1; }
+.install-banner .ib-text .ib-title { font-size: 14px; font-weight: 600; }
+.install-banner .ib-text .ib-sub { font-size: 13px; color: var(--text-dim); }
+.install-banner .ib-btn { padding: 8px 16px; background: var(--accent); color: #1a1a1a; border-radius: var(--radius-sm); font-weight: 600; font-size: 13px; flex-shrink: 0; }
+.install-banner .ib-dismiss { padding: 8px; color: var(--text-faint); font-size: 18px; flex-shrink: 0; background: none; }
+
+/* === SKILLS === */
+.skills-section { margin-bottom: 16px; }
+.skills-section label { display: block; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.skills-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.skill-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 20px; font-size: 14px; color: var(--text); }
+.skill-chip .skill-remove { font-size: 16px; color: var(--text-faint); cursor: pointer; line-height: 1; }
+.skill-chip .skill-remove:active { color: var(--red); }
+.skill-add-row { display: flex; gap: 8px; }
+.skill-add-row input { flex: 1; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 15px; }
+.skill-add-btn { padding: 10px 16px; background: var(--accent-dim); color: #1a1a1a; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; white-space: nowrap; }
+
+/* === SKILL PICKER IN EXCHANGE === */
+.skill-picker { margin-bottom: 16px; }
+.skill-picker label { display: block; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.skill-picker-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.skill-pick { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); cursor: pointer; transition: all 0.15s; }
+.skill-pick.selected { background: var(--accent-dim); color: #1a1a1a; border-color: var(--accent-dim); }
+.skill-pick:active { border-color: var(--accent); }
+
+/* === CAMERA BUTTON === */
+.camera-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; background: var(--accent); color: #1a1a1a; border-radius: var(--radius); font-size: 16px; font-weight: 600; margin-bottom: 12px; position: relative; overflow: hidden; }
+.camera-btn input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+/* === NEGOTIATION CONTEXT === */
+.nego-ratio { text-align: center; padding: 16px; border-radius: var(--radius); margin-bottom: 16px; }
+.nego-ratio.parity { background: rgba(125,204,123,0.1); border: 1px solid var(--green); }
+.nego-ratio.cross { background: rgba(107,143,199,0.1); border: 1px solid var(--blue); }
+.nego-ratio-val { font-size: 32px; font-weight: 300; }
+.nego-ratio-detail { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.nego-conversion { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; }
+.nego-conversion .nc-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+.nego-conversion .nc-label { color: var(--text-dim); }
+.nego-conversion .nc-val { font-weight: 500; }
+.nego-view-chain { text-align: center; margin-bottom: 16px; }
+.nego-view-chain button { font-size: 14px; color: var(--accent); background: none; text-decoration: underline; text-underline-offset: 3px; }
+
+/* === PATH TOGGLE === */
+.path-toggle { display: flex; background: var(--bg-input); border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; border: 1px solid var(--border); }
+.path-btn { flex: 1; padding: 12px 8px; background: none; color: var(--text-dim); font-size: 14px; font-weight: 500; transition: all 0.15s; text-align: center; }
+.path-btn.active { background: var(--accent-dim); color: #1a1a1a; }
+.path-view { display: none; }
+.path-view.active { display: block; }
+
+/* === PENDING INDICATOR === */
+.pending-bar { padding: 10px 20px; flex-shrink: 0; }
+.pending-bar-btn { width: 100%; padding: 12px 16px; background: rgba(224,180,138,0.1); border: 1px solid var(--accent-dim); border-radius: var(--radius); display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; text-align: left; }
+.pending-bar-btn:active { background: rgba(224,180,138,0.18); }
+.pending-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.pending-count { font-weight: 600; color: var(--accent); }
+.pending-text { flex: 1; color: var(--text-dim); font-size: 13px; }
+
+/* === PENDING LIST ITEMS === */
+.pending-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; position: relative; }
+.pending-card .pc-status { font-size: 13px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.pending-card .pc-desc { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+.pending-card .pc-meta { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+.pending-card .pc-expires { font-size: 13px; color: var(--text-faint); }
+.pending-card .pc-actions { display: flex; gap: 8px; margin-top: 10px; }
+.pending-card .pc-action { flex: 1; padding: 10px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; text-align: center; }
+.pc-action-resume { background: var(--accent-dim); color: #1a1a1a; }
+.pc-action-delete { background: none; border: 1px solid var(--border); color: var(--red); }
+
+/* === RECENT ACTS HINT === */
+.recent-hint { padding: 10px 14px; background: rgba(224,180,138,0.08); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-dim); text-align: center; flex-shrink: 0; }
+
+/* === PRE-FILL INDICATOR === */
+.prefill-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 16px; background: rgba(224,180,138,0.1); border: 1px solid var(--accent-dim); border-radius: var(--radius-sm); }
+.prefill-bar .pf-text { flex: 1; font-size: 13px; color: var(--text-dim); }
+.prefill-bar .pf-label { color: var(--accent); font-weight: 500; }
+.prefill-bar .pf-clear { width: 28px; height: 28px; border-radius: 50%; background: none; color: var(--text-faint); font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.prefill-bar .pf-clear:active { color: var(--text); }
+
+/* === REUSE CARDS === */
+.reuse-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
+.reuse-card:active { border-color: var(--accent); }
+.reuse-card .rc-desc { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+.reuse-card .rc-meta { font-size: 13px; color: var(--text-dim); }
+.reuse-card .rc-val { font-size: 14px; font-weight: 500; color: var(--accent); margin-top: 4px; }
+
+/* === CAMERA-FIRST TOGGLE === */
+.mode-toggle { text-align: center; margin: 12px 0; }
+.mode-toggle-link { font-size: 14px; color: var(--accent); background: none; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.paste-section { display: none; }
+.paste-section.visible { display: block; }
+
+/* === TOAST === */
+.toast { position: fixed; bottom: calc(80px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px); opacity: 0; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 24px; font-size: 14px; z-index: 200; transition: transform 0.3s ease, opacity 0.3s ease; pointer-events: none; white-space: nowrap; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+@media (min-width: 481px) {
+  .modal { border-radius: 0; }
+  .modal-overlay { align-items: center; }
+}
+/* === THREE-TAB NEGOTIATION FLOW === */
+.cf-step-bar { display: flex; border-bottom: 1px solid var(--border); margin: -16px -16px 16px; background: var(--bg-raised); }
+.cf-step-tab { flex: 1; padding: 12px 6px; text-align: center; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-family: var(--font); transition: all 0.15s; }
+.cf-step-tab .cst-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--bg-input); font-size: 13px; font-weight: 600; color: var(--text-faint); margin-right: 4px; vertical-align: middle; }
+.cf-step-tab .cst-label { font-size: 13px; font-weight: 500; color: var(--text-faint); vertical-align: middle; }
+.cf-step-tab.active { border-bottom-color: var(--accent); }
+.cf-step-tab.active .cst-num { background: var(--accent); color: var(--bg); }
+.cf-step-tab.active .cst-label { color: var(--accent); }
+.cf-step-tab.seen .cst-num { background: rgba(125,204,123,0.15); color: var(--green); }
+.cf-step-tab.seen .cst-label { color: var(--text-dim); }
+.cf-step-tab.locked { opacity: 0.35; cursor: default; }
+
+.cf-page { display: none; }
+.cf-page.active { display: block; }
+
+/* Rate cards */
+.cf-rate-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.cf-rate-card { padding: 14px 10px; border-radius: var(--radius-sm); text-align: center; }
+.cf-rate-card.overall { background: rgba(107,143,199,0.08); border: 1px solid rgba(107,143,199,0.2); }
+.cf-rate-card.specific { background: rgba(224,180,138,0.08); border: 2px solid rgba(224,180,138,0.3); }
+.cf-rate-card .crc-label { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.cf-rate-card .crc-val { font-size: 17px; font-weight: 400; margin-bottom: 2px; }
+.cf-rate-card .crc-sub { font-size: 13px; color: var(--text-faint); }
+.cf-rate-diverge { font-size: 13px; color: var(--accent); padding: 8px 10px; background: rgba(224,180,138,0.06); border-radius: var(--radius-sm); margin-bottom: 12px; text-align: center; line-height: 1.5; }
+
+/* Context boxes */
+.cf-ctx { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
+.cf-ctx h4 { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.cf-ctx-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+.cf-ctx-row .cl { color: var(--text-dim); } .cf-ctx-row .cv { font-weight: 500; }
+
+/* Receiver comparison dropdown */
+.cf-recv-comp { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px; }
+.cf-recv-comp h4 { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.cf-recv-comp .rcd { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+.cf-recv-comp select { width: 100%; padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); }
+
+/* Price slider */
+.cf-slider { text-align: center; margin-bottom: 14px; }
+.cf-slider .cs-label { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+.cf-slider .cs-val { font-size: 38px; font-weight: 300; color: var(--accent); margin-bottom: 2px; }
+.cf-slider .cs-sub { font-size: 13px; color: var(--text-faint); margin-bottom: 8px; }
+.cf-slider input[type=range] { width: 100%; accent-color: var(--accent); -webkit-appearance: none; height: 4px; border-radius: 2px; background: var(--border); outline: none; }
+.cf-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+.cf-slider-labels { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-faint); margin-top: 3px; }
+
+/* Side-by-side comps */
+.cf-comps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+@media (max-width: 380px) { .cf-comps { grid-template-columns: 1fr; } }
+.cf-comps-title { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.cf-comp-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: var(--bg-raised); border-radius: 4px; margin-bottom: 2px; font-size: 13px; }
+.cf-comp-item .cd { flex: 1; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 6px; }
+.cf-comp-item .cv { font-weight: 500; min-width: 30px; text-align: right; flex-shrink: 0; }
+.cf-comp-item.hi .cv { color: var(--accent); }
+.cf-comp-item.lo .cv { color: var(--green); }
+
+/* Record cards */
+.cf-record-cards { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; margin-bottom: 14px; }
+.cf-rec { padding: 16px 12px; text-align: center; background: var(--bg-raised); }
+.cf-rec.prov { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.cf-rec.arrow { display: flex; align-items: center; padding: 0 8px; font-size: 18px; color: var(--text-faint); }
+.cf-rec.recv { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.cf-rec .cfr-label { font-size: 13px; color: var(--text-faint); margin-bottom: 4px; }
+.cf-rec .cfr-val { font-size: 28px; font-weight: 300; margin-bottom: 2px; }
+.cf-rec .cfr-unit { font-size: 13px; color: var(--text-faint); }
+
+.cf-cost { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px; }
+.cf-cost h4 { font-size: 13px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.cf-cost-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+.cf-cost-row .cl { color: var(--text-dim); } .cf-cost-row .cv { font-weight: 500; }
+.cf-deficit { font-size: 13px; color: var(--accent); margin-top: 6px; line-height: 1.4; }
+
+.cf-advance { display: block; width: 100%; padding: 13px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; font-family: var(--font); margin-top: 14px; }
+
+.cf-note { font-size: 13px; color: var(--text-faint); line-height: 1.5; padding: 10px; background: var(--bg-raised); border-radius: var(--radius-sm); margin-top: 10px; }
+
+/* Revised indicator */
+.cf-revised { text-align: center; font-size: 13px; color: var(--accent); padding: 6px; background: rgba(224,180,138,0.06); border-radius: var(--radius-sm); margin-bottom: 10px; }
+
+</style>
+</head>
+<body>
+
+<div id="update-banner" class="update-banner">
+  <span id="update-banner-text">A new version is available.</span>
+  <a id="update-banner-link" href="https://humanexchangeprotocol.org" class="ub-btn">Update</a>
+</div>
+
+<!-- ========== SETUP ========== -->
+<div id="setup" class="screen">
+  <h1>Human Exchange Protocol</h1>
+  <div class="subtitle">A record of what people do for each other</div>
+
+  <!-- WELCOME SCREEN 1: What This Is -->
+  <div id="setup-welcome1" class="step active">
+    <span class="welcome-icon">&#9741;</span>
+    <div style="text-align:center; margin-bottom:16px;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous thread? Import here</button></div>
+    <div class="welcome-dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="guidance" style="text-align:center; font-size:17px; color:var(--accent); font-weight:500;">
+      Welcome to the Human Exchange Protocol
+    </div>
+    <div class="guidance">
+      For most of human history, people cooperated without money. They helped each other, built things together, cared for each other, and kept track the only way they could: by remembering.
+    </div>
+    <div class="guidance">
+      As communities grew, memory was not enough. A system was needed to track who did what for whom. Money became that system. It solved real problems, but it also created new ones. After thousands of years, most human effort is invisible to the economy. The things you do for the people around you — the care, the knowledge, the labor — go unrecognized and unvalued. When they are recognized, they are often thought of as an expense rather than a contribution.
+    </div>
+    <div class="guidance">
+      This app picks up where memory left off, using modern tools. When two people cooperate and both confirm what happened, that act is permanently recorded on each of their own personal threads. Nothing is printed. Nothing is issued. Two people agreed that something real happened, and now it lives on both of their threads.
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('welcome2')">Continue</button>
+  </div>
+
+  <!-- WELCOME SCREEN 2: Why It's Trustworthy -->
+  <div id="setup-welcome2" class="step">
+    <span class="welcome-icon">&#128279;</span>
+    <div class="welcome-dots"><span class="dot"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="guidance">
+      The way modern civilization works, we consent to trust systems outside of ourselves. Banks, governments, private companies, fiat money, cryptocurrencies. We trust institutions to manage our value, our identity, our transactions. This is exogenous trust. It comes from outside of you.
+    </div>
+    <div class="guidance">
+      <strong>This is the opposite.</strong> Here, trust is endogenous. It comes from within. It is built from your own cooperation, one act at a time. Every act on your thread was confirmed by another real person. No one can fabricate cooperation alone. As your thread grows, it becomes evidence, not of wealth, but of who you are in relation to others.
+    </div>
+    <div class="guidance">
+      That evidence is what makes your record meaningful to people you have not met yet. The more honestly you participate, the more your thread speaks for you.
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('welcome3')">Continue</button>
+    <div style="margin-top:10px; text-align:center;"><button class="btn" style="background:none; color:var(--text-faint); font-size:13px;" onclick="App.setupStep('welcome1')">&larr; Back</button></div>
+  </div>
+
+  <!-- WELCOME SCREEN 3: Economics & Cooperation -->
+  <div id="setup-welcome3" class="step">
+    <span class="welcome-icon">&#128161;</span>
+    <div class="welcome-dots"><span class="dot"></span><span class="dot"></span><span class="dot active"></span><span class="dot"></span></div>
+    <div class="guidance">
+      <strong>You already understand this.</strong> When a child throws a ball, they do not know the theory of physics, but they understand physics. The same is true for economics. You may not know the academic language, but you understand economics deeply. You know what feels fair. You know when something costs too much. You know when someone is being generous.
+    </div>
+    <div class="guidance">
+      Economics has been the driving force of human development since the very beginning, long before any record was ever kept, long before money, long before institutions. It is an underlying principle of human survival and cooperation. And that cooperation is what gave humans exponential growth potential. Two people working together do not just produce twice as much. They produce something qualitatively different that neither could create alone. That compounding effect is what built civilizations.
+    </div>
+    <div class="guidance">
+      You will be tempted to think about this in terms of money. That is natural. Everyone goes through it. But this is not money. This is not debt. This is a record of your cooperative life. The things money could not care less about, the effort you give to the people around you, matter here.
+    </div>
+    <div class="guidance">
+      Early exchanges are how you learn. There is no harm in getting it wrong. The system is designed so that every exchange after a mistake makes the mistake less significant. Approach it thoughtfully. Give yourself time. The rest will come.
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('welcome4')">Continue</button>
+    <div style="margin-top:10px; text-align:center;"><button class="btn" style="background:none; color:var(--text-faint); font-size:13px;" onclick="App.setupStep('welcome2')">&larr; Back</button></div>
+  </div>
+
+  <!-- WELCOME SCREEN 4: Ready -->
+  <div id="setup-welcome4" class="step">
+    <span class="welcome-icon">&#10024;</span>
+    <div class="welcome-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot active"></span></div>
+    <div class="guidance" style="text-align:center; font-size:16px; color:var(--text); line-height:1.7;">
+      Feel free to go back and read through these ideas again. Everything here, along with other learning tools, will be available inside the app whenever you want them.
+    </div>
+    <div class="guidance" style="text-align:center; color:var(--text-dim);">
+      When you are ready, continue to set up your identity.
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('pin')">Get Started</button>
+    <div style="margin-top:10px; text-align:center;"><button class="btn" style="background:none; color:var(--text-faint); font-size:13px;" onclick="App.setupStep('welcome3')">&larr; Back</button></div>
+  </div>
+
+  <!-- INSTALL FIRST (iOS) -->
+  <div id="setup-install-first" class="step">
+    <p style="color:var(--accent); font-weight:500; margin-bottom:16px;">Install to your home screen first</p>
+    <p>On iPhone, your data is stored separately for apps on your home screen. If you set up here in the browser, your thread won't be accessible from the home screen version.</p>
+    <p><span style="color:var(--text); font-weight:500;">Tap the share button</span> at the bottom of your screen, then tap <span style="color:var(--text); font-weight:500;">"Add to Home Screen."</span> Once installed, open it from there and set up.</p>
+    <button class="btn btn-secondary" onclick="App.skipInstallFirst()" style="margin-top:20px;">Continue in browser anyway</button>
+    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous thread? Import here</button></div>
+  </div>
+
+  <!-- PIN -->
+  <div id="setup-pin" class="step">
+    <div class="guidance">
+      First, let us secure your thread. Choose a PIN that you will remember. This is the only key to your identity. There is no recovery process, no reset email, no customer service. If you lose your PIN, your thread cannot be accessed by anyone, including you. This is by design. Your thread belongs to you completely.
+    </div>
+    <div class="pin-label">Create your PIN</div>
+    <div class="pin-display" id="setup-pin-display"></div>
+    <div class="numpad" id="setup-numpad"></div>
+  </div>
+
+  <!-- CONFIRM PIN -->
+  <div id="setup-confirm" class="step">
+    <div class="pin-label" style="font-size:22px; font-weight:600; color:var(--accent); margin-bottom:8px;">Confirm your PIN</div>
+    <p style="color:var(--text-dim); font-size:14px; margin-bottom:20px;">Enter it once more to make sure.</p>
+    <div class="pin-display" id="setup-confirm-display"></div>
+    <div class="numpad" id="setup-confirm-numpad"></div>
+  </div>
+
+  <!-- PHOTO -->
+  <div id="setup-photo" class="step">
+    <div class="guidance">
+      <strong>Take a picture of yourself.</strong> It does not need to be perfect. This is not social media. It is just you.
+    </div>
+    <div class="guidance">
+      This photo gets encrypted into the foundation of your thread. It is your identity anchor. When you exchange with someone, they can compare your current photo to this original to verify you are the same person who started this thread. It protects you.
+    </div>
+    <div class="photo-area">
+      <div class="photo-preview" id="setup-photo-preview">&#9678;</div>
+      <div class="photo-buttons">
+        <button class="photo-btn" onclick="App.capturePhoto()">Camera</button>
+        <button class="photo-btn" onclick="App.uploadPhoto()">Upload</button>
+      </div>
+      <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="App.handlePhotoFile(event)">
+      <input type="file" id="photo-capture-input" accept="image/*" capture="user" style="display:none" onchange="App.handlePhotoFile(event)">
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('name')">Continue</button>
+    <button class="btn" onclick="App.setupStep('name')" style="margin-top:12px; background:none; color:var(--text-faint); font-size:13px;">I cannot take or upload a photo right now</button>
+    <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.5; text-align:center;">Skipping this means your thread has no identity anchor. You can add one later, but it will be harder for people to verify your thread is yours.</div>
+  </div>
+
+  <!-- NAME -->
+  <div id="setup-name" class="step">
+    <div class="guidance">
+      What should people know you by? You can use your real name, a nickname, an alias, whatever feels right. There is no authority here, no verification, no rules about this. Most people use what the people in their life already call them, but you decide.
+    </div>
+    <div class="guidance" style="font-size:14px; color:var(--text-dim);">
+      You can change this anytime. Life changes. People change. Names change. That is all part of being part of a community, and it is all welcome here.
+    </div>
+    <div class="field">
+      <input type="text" id="setup-name-input" placeholder="A name, a handle, whatever feels right">
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('declarations')">Continue</button>
+  </div>
+
+  <!-- DECLARATIONS (about + skills) -->
+  <div id="setup-declarations" class="step">
+    <div class="guidance">
+      <strong style="font-size:17px;">Make your first declaration</strong>
+    </div>
+    <div class="guidance" style="font-size:14px;">
+      Declarations are things you record about yourself that help people understand who you are. This is a deeply personal process. You can always come back and add more over time.
+    </div>
+    <div class="guidance">
+      In our current system, people understand you through degrees and certifications. This is different. This is about who you are and what you do. Some of that may be formal training, but it could also be life experience, things you learned by doing, skills no institution ever validated. Caregiver. Gardener. Problem solver. Mechanic. Mentor. Whatever is true about you.
+    </div>
+    <div class="guidance" style="font-size:14px; color:var(--text-faint);">
+      Do not feel limited here. This is a declaration of who you are, not who other people decided you are.
+    </div>
+    <div class="field">
+      <label>What do you do?</label>
+      <textarea id="setup-about" rows="3" placeholder="In your own words. What you make, what you offer, what you know."></textarea>
+    </div>
+    <div class="skills-section">
+      <label>Skills &amp; qualifications</label>
+      <div class="skills-list" id="setup-skills-list"></div>
+      <div class="skill-add-row">
+        <input type="text" id="setup-skill-input" placeholder="e.g. Craftsperson, CPR certified, great cook" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('setup')}">
+        <button class="skill-add-btn" onclick="App.addSkill('setup')">Add</button>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="App.setupStep('range')">Continue</button>
+    <button class="btn btn-secondary" onclick="App.setupStep('range')" style="margin-top:8px;">Skip for now</button>
+  </div>
+
+  <!-- RANGE DECLARATION -->
+  <div id="setup-range" class="step">
+    <div class="range-progress" id="range-progress">
+      <span class="rp-dot current"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span>
+    </div>
+
+    <!-- Sub-step 1: Intro -->
+    <div class="range-substep active" data-rs="0">
+      <div class="guidance">
+        You are about to think about how you value the things you do. This is not a test. There are no wrong answers.
+      </div>
+      <div class="guidance">
+        We are going to ask you a few questions about value. Just pick numbers that feel right to you. Do not overthink it. Your instincts about what things are worth come from a lifetime of experience.
+      </div>
+      <div class="guidance">
+        After you finish, we will show you something that ties it all together.
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-primary" onclick="App.rangeNav(1)">Begin</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 2: Cancer anchor -->
+    <div class="range-substep" data-rs="1">
+      <div class="guidance">
+        <strong>Imagine this.</strong>
+      </div>
+      <div class="guidance" style="font-size:17px; line-height:1.6;">
+        On a scale of 1 to 1,000,000 — what value would you give to someone who cured cancer? Or someone who discovered a clean, carbon-free energy source that transformed our world?
+      </div>
+      <div class="range-input-group">
+        <label>What value would you give them?</label>
+        <div class="range-val-row">
+          <input type="number" id="range-cancer-val" min="1" max="1000000" style="font-size:28px; width:160px;">
+        </div>
+        <div class="val-tags-label">What makes it valuable? Tap any that apply.</div>
+        <div class="val-tags" id="vt-anchor">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
+        </div>
+      </div>
+      <div class="guidance" style="font-size:14px; color:var(--text-faint);">
+        Now, with that in mind, let us think about the things you do.
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(0)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(2)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 3: Simple act -->
+    <div class="range-substep" data-rs="2">
+      <div class="guidance">
+        <strong>A small favor.</strong> Something easy that you would do for someone — it takes a few minutes, no special skill. Carrying a bag. Holding a door. Helping someone find something they dropped.
+      </div>
+      <div class="range-input-group">
+        <label style="margin-bottom:4px;">On the scale of 1 to 1,000,000, what value would you give a small favor like that?</label>
+        <div class="range-val-row">
+          <input type="number" id="range-simple-val" min="1" max="1000000" style="font-size:28px; width:140px;">
+        </div>
+        <div class="val-tags-label">How did you arrive at that number? Tap any that apply.</div>
+        <div class="val-tags" id="vt-simple">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
+        </div>
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(1)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(3)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 4: Day of work -->
+    <div class="range-substep" data-rs="3">
+      <div class="guidance">
+        <strong>A full day of work.</strong> Whatever you do most days — for a job, for your family, for your community. A full day of your energy and effort.
+      </div>
+      <div id="range-ref-daily" class="range-ref" style="display:none;"></div>
+      <div class="range-input-group">
+        <label style="margin-bottom:4px;">What value would you give a full day of that?</label>
+        <div class="range-val-row">
+          <input type="number" id="range-daily-val" min="1" max="1000000" style="font-size:28px; width:140px;">
+        </div>
+        <div class="val-tags-label">How did you arrive at that number?</div>
+        <div class="val-tags" id="vt-daily">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
+        </div>
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(2)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(4)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 5: Personal ceiling -->
+    <div class="range-substep" data-rs="4">
+      <div class="guidance">
+        <strong>Your best work.</strong> Now think about the most impressive thing you could do — combining all of your skills, knowledge, and experience into something that might take weeks or months. The best you are capable of.
+      </div>
+      <div id="range-ref-complex" class="range-ref" style="display:none;"></div>
+      <div class="range-input-group">
+        <label style="margin-bottom:4px;">What value would you give your best work?</label>
+        <div class="range-val-row">
+          <input type="number" id="range-complex-val" min="1" max="1000000" style="font-size:28px; width:140px;">
+        </div>
+        <div class="val-tags-label">How did you arrive at that number?</div>
+        <div class="val-tags" id="vt-complex">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
+        </div>
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(3)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(5)">See Where You Stand</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 6: Universal Scale Reveal -->
+    <div class="range-substep" data-rs="5">
+      <div class="guidance" style="text-align:center;">
+        <strong style="font-size:18px;">Your Values on the Shared Scale</strong>
+      </div>
+
+      <div class="guidance">
+        Everyone who uses this system shares the same scale: <strong>0 to 1,000,000</strong>. It is a ruler, like meters or degrees. It does not tell you what your energy and effort is worth. It gives everyone a shared frame so that when two people meet, they can compare values directly. No conversion. No math. Just two numbers on the same ruler.
+      </div>
+
+      <div id="range-result-viz"></div>
+
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(4)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(6)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 7: Market & Pricing -->
+    <div class="range-substep" data-rs="6">
+      <div class="guidance">
+        <strong>How pricing works here.</strong>
+      </div>
+      <div class="guidance">
+        When you exchange with someone, their values will most likely align with yours if they followed the same logic. But you may notice someone asks for a higher recognition of energy for something that does not seem to require much. That is the pricing mechanism at work.
+      </div>
+      <div class="guidance">
+        If a price does not feel right, you do not have to exchange. Someone else may offer the same energy at a different value. You can also negotiate — just as you would at any market. This is no different than deciding not to buy something at a store because the price does not feel right.
+      </div>
+      <div class="guidance">
+        If you make a few exchanges and later realize you agreed to values that were too high or too low, that is fine. You are not punished for it. Every exchange after a mistake makes the mistake less significant on your thread. Early exchanges are how you learn.
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(5)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(7)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 8: Coincidence of Wants Part 1 -->
+    <div class="range-substep" data-rs="7">
+      <div class="guidance">
+        <strong>How exchange works without money.</strong>
+      </div>
+      <div class="guidance">
+        Imagine two people. Maria bakes bread. James fixes bikes. Maria's bike is broken and James is hungry. This works perfectly — Maria gives James bread, James fixes Maria's bike. They both record it. Both threads grow.
+      </div>
+      <div class="guidance">
+        But what if Maria's bike is fine and James is still hungry? In the old world, Maria might bake him bread anyway. She remembers the help. James knows he should reciprocate. The whole community keeps a rough mental ledger of who gives and who takes.
+      </div>
+      <div class="guidance">
+        That system worked beautifully for thousands of years. What broke it was not selfishness. It was scale. As communities grew beyond a few dozen people, no one could hold everyone's cooperative history in their head anymore.
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(6)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(8)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 9: Coincidence of Wants Part 2 -->
+    <div class="range-substep" data-rs="8">
+      <div class="guidance">
+        <strong>This system solves the memory problem.</strong>
+      </div>
+      <div class="guidance">
+        When Maria bakes bread for James, they both record it. Maria provided energy worth 50 units. James received it. Maria's thread goes up. James's thread reflects what he received. The exchange is real. The energy moved. The record is permanent.
+      </div>
+      <div class="guidance">
+        Now when Maria needs her roof patched, she goes to Elena. Elena can see Maria's thread — a person who cooperates, who provides real value to her community. Elena names her price. Maria agrees. They record a new exchange. New units are created on both threads.
+      </div>
+      <div class="guidance">
+        Maria did not need to have something Elena wanted right now. Her thread — her history of genuine cooperation — is what made the exchange possible. That is how the coincidence of wants is solved. Not with a token that passes between hands, but with a record that shows who you are.
+      </div>
+      <div class="range-nav">
+        <button class="btn btn-secondary" onclick="App.rangeNav(7)">Back</button>
+        <button class="btn btn-primary" onclick="App.rangeNav(9)">Next</button>
+      </div>
+    </div>
+
+    <!-- Sub-step 10: Declare -->
+    <div class="range-substep" data-rs="9">
+      <div class="guidance" style="background:var(--bg-raised); padding:14px; border-radius:var(--radius); border:1px solid var(--border);">
+        <strong>This is just a starting point.</strong> The exercise above helps you think about how you value things. As you exchange with others, your actual history becomes the real picture. You can always revisit this.
+      </div>
+
+      <div class="range-nav" style="flex-direction:column; gap:8px;">
+        <button class="btn btn-primary" onclick="App.submitRange()" style="width:100%;">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GENERATING -->
+  <div id="setup-generating" class="step">
+    <p>Generating your identity...</p>
+    <p style="color: var(--accent); margin-top: 12px;">Creating your keys and securing with your PIN.</p>
+  </div>
+
+  <!-- DONE -->
+  <div id="setup-done" class="step">
+    <span class="welcome-icon">&#10024;</span>
+    <div class="guidance" style="text-align:center;">
+      <strong>You have just created the beginning of your thread.</strong>
+    </div>
+    <div class="guidance">
+      Right now it has one entry: you, declaring who you are. Everything that follows, every cooperative act, every exchange, every moment of real effort recognized, builds on this foundation.
+    </div>
+    <div class="guidance">
+      As your life evolves, new skills, new experiences, new things you want to declare about yourself, you can add them anytime. Your photo can be updated. Your declarations can grow. Your thread grows with you.
+    </div>
+    <p style="font-family: var(--font-mono); font-size: 13px; color: var(--accent); margin-bottom: 16px;" id="setup-fp"></p>
+
+    <button class="setup-branch-btn setup-branch-primary" onclick="App.completeSetup(); App.openCooperate();">Do an exchange with someone</button>
+    <button class="setup-branch-btn setup-branch-secondary" onclick="App.completeSetup(); App.openLearn();">Learn how exchanges work</button>
+    <button class="setup-branch-btn setup-branch-secondary" onclick="App.completeSetup();">Explore the app</button>
+    <div class="setup-branch-hint">If you are not exchanging with someone right now, we recommend starting with the learning tools. They will walk you through the concepts that make exchanges meaningful. The learning section is always available from the home screen.</div>
+  </div>
+</div>
+
+<!-- ========== LOCK ========== -->
+<div id="lock" class="screen">
+  <h2>Human Exchange Protocol</h2>
+  <div class="fp" id="lock-fp"></div>
+  <div class="pin-label">Enter your PIN</div>
+  <div class="pin-display" id="lock-pin-display"></div>
+  <div class="numpad" id="lock-numpad"></div>
+  <div class="pin-attempts" id="pin-attempts" style="display:none;">
+    <div class="pin-attempts-bar" id="pin-attempts-bar">
+      <span class="pa-dot on"></span>
+      <span class="pa-dot on"></span>
+      <span class="pa-dot on"></span>
+      <span class="pa-dot on"></span>
+      <span class="pa-dot on"></span>
+    </div>
+    <div class="pin-attempts-hint" id="pin-hint"></div>
+  </div>
+  <div class="pin-cooldown" id="pin-cooldown" style="display:none;">
+    <div class="pin-cooldown-text">Take a breath. Try again in <span id="pin-cooldown-secs">10</span>s</div>
+    <div class="pin-cooldown-bar"><div class="pin-cooldown-fill" id="pin-cooldown-fill"></div></div>
+  </div>
+</div>
+
+<!-- ========== HOME ========== -->
+<div id="home" class="screen" style="display:none;">
+  <div class="home-top-bar">
+    <div class="home-identity">
+      <div class="greeting" id="home-greeting">Your Thread</div>
+    </div>
+    <div class="home-top-icons">
+      <button class="top-icon-btn" onclick="App.openWallet()" aria-label="Wallet">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" fill="currentColor"/><path d="M2 10h20"/><path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+      <button class="top-icon-btn" onclick="App.openSettings()" aria-label="Settings">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="home-primary" style="padding:0 20px; margin-top:16px;">
+    <div class="coop-container">
+      <div class="coop-container-title">Cooperate</div>
+      <div class="coop-start-btn" onclick="App.toggleCoopStart()">
+        <div class="coop-start-top">
+          <div>
+            <div class="coop-start-label">Start an exchange</div>
+            <div class="coop-start-sub">You're initiating this</div>
+          </div>
+          <span class="coop-chevron" id="coop-chevron">&#9656;</span>
+        </div>
+        <div class="coop-sub-opts" id="coop-sub-opts">
+          <div class="coop-sub-inner">
+            <div class="coop-role-btn providing" onclick="event.stopPropagation(); App.exStartProviding()">
+              <div class="coop-role-icon providing">&#8593;</div>
+              <div>
+                <div class="coop-role-label providing">I'm providing</div>
+                <div class="coop-role-desc">You'll describe the act and set the price</div>
+              </div>
+            </div>
+            <div class="coop-role-btn receiving" onclick="event.stopPropagation(); App.exStartReceiving()">
+              <div class="coop-role-icon receiving">&#8595;</div>
+              <div>
+                <div class="coop-role-label receiving">I'm receiving</div>
+                <div class="coop-role-desc">They'll describe the act and set the price</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="coop-join-btn" onclick="App.exJoinExchange()">
+        <div class="coop-join-label">Join an exchange</div>
+        <div class="coop-join-sub">The other person will read you their code</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:0 20px; margin-top:12px;">
+    <button class="coop-receive-btn" onclick="App.openConfirm()">Received a proposal?</button>
+  </div>
+
+  <div class="home-invite">
+    <div class="invite-text">Know someone who could use this?</div>
+    <div class="invite-buttons">
+      <button class="invite-btn" onclick="App.inviteViaText()">Text a friend</button>
+      <button class="invite-btn" onclick="App.inviteViaQR()">Share QR code</button>
+    </div>
+  </div>
+
+  <div class="home-learn" style="padding:0 20px; margin-bottom:8px;">
+    <button onclick="App.openLearn()" style="width:100%; padding:14px 16px; background:none; border:1.5px solid var(--border); border-radius:var(--radius); color:var(--text-dim); font-size:15px; font-weight:500; display:flex; align-items:center; justify-content:center; gap:8px; transition:border-color 0.15s;">
+      <span style="font-size:18px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span> Learn about HEP
+    </button>
+  </div>
+
+  <div class="version-badge">HEP v2.34.0</div>
+</div>
+
+<!-- ========== WALLET MODAL ========== -->
+<div class="modal-overlay" id="wallet-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>My Thread</h2>
+      <button class="modal-close" onclick="App.closeModal('wallet')">&#10005;</button>
+    </div>
+    <div class="modal-body wallet-body">
+      <div class="wallet-display">
+        <div class="wallet-label">Current Position</div>
+        <div class="wallet-amount" id="wallet-amount">0</div>
+        <div class="wallet-position" id="wallet-position">balanced</div>
+      </div>
+      <div style="text-align:center; margin-bottom:16px;">
+        <button id="wallet-learn-btn" style="background:none; border:none; color:var(--accent); font-size:14px; cursor:pointer; text-decoration:underline; padding:0;" onclick="App.showTextureDetail('wallet-position-explain')">Learn what this number means</button>
+      </div>
+      <div class="wallet-detail">
+        <div class="review-row"><span class="rlbl">Total provided</span><span class="rval" id="wallet-provided">0</span></div>
+        <div class="review-row"><span class="rlbl">Total received</span><span class="rval" id="wallet-received">0</span></div>
+        <div class="review-row"><span class="rlbl">Acts</span><span class="rval" id="wallet-acts">0</span></div>
+        <div class="review-row"><span class="rlbl">Participation ratio</span><span class="rval" id="wallet-ratio-text"></span></div>
+        <div id="wallet-ratio-bar" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- Chain Health + Pricing History + Full Thread -->
+      <div style="margin-top:20px;">
+        <div style="display:flex; align-items:center; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyTextureFromWallet();">
+          <span style="font-size:14px; font-weight:500; color:var(--text);">Chain health</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">How others see your chain</span>
+          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+        </div>
+        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyPricingFromWallet();">
+          <span style="font-size:14px; font-weight:500; color:var(--text);">Pricing history</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and rates</span>
+          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+        </div>
+        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openChainViewerFromWallet();">
+          <span style="font-size:14px; font-weight:500; color:var(--text);">Full thread</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">All transaction data</span>
+          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+        </div>
+        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showMyPhotos();">
+          <span style="font-size:14px; font-weight:500; color:var(--text);">My photos</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Show to verify in person</span>
+          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+        </div>
+      </div>
+
+      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared thread data.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PENDING MODAL ========== -->
+<div class="modal-overlay" id="pending-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Pending</h2>
+      <button class="modal-close" onclick="App.closeModal('pending')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="pending-body"></div>
+  </div>
+</div>
+
+<!-- ========== RECENT ACTS MODAL ========== -->
+<div class="modal-overlay" id="recent-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Recent Acts</h2>
+      <button class="modal-close" onclick="App.closeModal('recent')">&#10005;</button>
+    </div>
+    <div class="recent-hint">Tap any act to pre-fill a new exchange</div>
+    <div style="padding:12px 20px 0; flex-shrink:0;">
+      <input type="text" id="recent-search" placeholder="Search descriptions, categories..." style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:16px;" oninput="App.filterRecentActs()">
+    </div>
+    <div class="modal-body" id="recent-body"></div>
+  </div>
+</div>
+
+<!-- ========== COOPERATE MODAL ========== -->
+<div class="modal-overlay" id="cooperate-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Cooperate</h2>
+      <button class="modal-close" onclick="App.closeModal('cooperate')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="cooperate-body">
+      <!-- Populated dynamically with reusable acts or empty state -->
+    </div>
+  </div>
+</div>
+
+<!-- ========== EXCHANGE MODAL ========== -->
+<div class="modal-overlay" id="exchange-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="exchange-header">New Act</h2>
+      <button class="modal-close" id="exchange-close" onclick="App.closeExchange()">&#10005;</button>
+    </div>
+    <div class="modal-body" id="exchange-body">
+
+      <!-- ===== NEW 8-STEP FLOW ===== -->
+
+      <!-- STEP 1: Connect -->
+      <div class="hs-step" id="ex-step-connect">
+        <div class="ex-progress" id="ex-progress">
+          <div class="ex-progress-seg active"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+        </div>
+        <div id="ex-connect-content">
+          <!-- Populated dynamically: choice, start mode, or join mode -->
+        </div>
+      </div>
+
+      <!-- STEP 2: Verify (SAS) -->
+      <div class="hs-step" id="ex-step-verify">
+        <div class="ex-progress">
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg active"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+        </div>
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 2 of 5</div>
+          <div style="font-size:17px; font-weight:600; color:var(--text);">Verify connection</div>
+        </div>
+        <div class="connect-partner" id="ex-verify-partner">
+          <div class="cp-avatar" id="ex-verify-avatar">?</div>
+          <div class="cp-name" id="ex-verify-name">Connected</div>
+        </div>
+        <div style="text-align:center; font-size:13px; color:var(--text-faint); margin-bottom:4px;">Verify this matches what they see</div>
+        <div class="sas-badge">
+          <span class="sas-lock">&#128274;</span>
+          <span class="sas-code" id="ex-sas-code">----</span>
+        </div>
+        <button class="btn btn-primary" style="margin-top:20px;" onclick="App.exConfirmSAS()">It matches</button>
+        <button class="btn btn-secondary" style="margin-top:8px;" onclick="App.exRejectSAS()">It doesn't match</button>
+      </div>
+
+      <!-- STEP 3: Texture review -->
+      <div class="hs-step" id="ex-step-texture">
+        <div class="ex-progress">
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg active"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+        </div>
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 3 of 5</div>
+          <div style="font-size:17px; font-weight:600; color:var(--text);">Review their chain</div>
+        </div>
+        <div id="ex-texture-content">
+          <!-- Populated by JS: texture summary + optional tab viewer -->
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="App.exContinueFromTexture()">Continue</button>
+        <button class="btn btn-secondary" style="margin-top:8px; width:100%; color:var(--text-faint); background:none; border:none; font-size:14px;" onclick="App.closeExchange()">Cancel exchange</button>
+      </div>
+
+      <!-- STEP 4: Role selection -->
+      <div class="hs-step" id="ex-step-role">
+        <div class="ex-progress">
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg active"></div>
+          <div class="ex-progress-seg"></div>
+          <div class="ex-progress-seg"></div>
+        </div>
+        <div style="text-align:center; margin-bottom:20px;">
+          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 4 of 6</div>
+          <div style="font-size:17px; font-weight:600; color:var(--text);">What are you doing?</div>
+        </div>
+        <button class="btn btn-primary" style="width:100%; margin-bottom:10px; padding:18px;" onclick="App.exSelectRole('provider')">I'm providing</button>
+        <button class="btn btn-secondary" style="width:100%; padding:18px;" onclick="App.exSelectRole('receiver')">I'm receiving</button>
+        <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:20px; line-height:1.5;">The provider describes the act and sets the price. The receiver reviews and confirms.</p>
+      </div>
+
+      <!-- STEP: Waiting for provider to set up exchange (receiver path) -->
+      <div class="hs-step" id="ex-step-receiver-wait">
+        <div class="ex-progress">
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg done"></div>
+          <div class="ex-progress-seg active"></div>
+          <div class="ex-progress-seg"></div>
+        </div>
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 4 of 5</div>
+          <div style="font-size:17px; font-weight:600; color:var(--text);" id="ex-receiver-wait-title">Waiting for their proposal</div>
+        </div>
+        <!-- Sticky proposal notification -->
+        <div id="proposal-ready-banner" style="display:none; padding:10px 14px; background:var(--bg-card,#fff); border:1px solid rgba(125,204,123,0.4); border-radius:var(--radius); margin-bottom:12px; cursor:pointer;" onclick="App.exViewProposal()">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:10px; height:10px; border-radius:50%; background:var(--green); flex-shrink:0; animation:pulse 1.5s infinite;"></div>
+            <div style="flex:1; font-size:14px; font-weight:500; color:var(--green);">Proposal received</div>
+            <div style="font-size:13px; color:var(--text-dim);">Tap to review &#8250;</div>
+          </div>
+        </div>
+        <div id="ex-receiver-wait-content">
+          <!-- Chain browser while waiting -->
+        </div>
+        <div class="pair-status resolving" style="margin-top:16px;">
+          <div class="ps-icon">&#9203;</div>
+          <div class="ps-text" id="ex-receiver-wait-text">The other person is setting up the exchange. Their proposal will appear here.</div>
+        </div>
+      </div>
+
+      <!-- ===== END NEW 8-STEP FLOW ===== -->
+
+      <!-- STEP: Fill form (old flow — preserved for now) -->
+      <div class="hs-step" id="ex-step-form">
+        <div class="prefill-bar" id="ex-prefill-bar" style="display:none;">
+          <div class="pf-text"><span class="pf-label">Pre-filled:</span> <span id="ex-prefill-desc"></span></div>
+          <button class="pf-clear" onclick="App.clearPrefill()" aria-label="Clear">&#10005;</button>
+        </div>
+        <button class="btn btn-secondary" onclick="App.shareChain('exchange')" style="margin-bottom:20px;">Share My Thread</button>
+
+        <div class="direction-toggle" id="dir-toggle">
+          <button class="active providing" onclick="App.setDirection('provided')" id="dir-providing">I'm providing</button>
+          <button onclick="App.setDirection('received')" id="dir-receiving">I'm receiving</button>
+        </div>
+
+        <div class="field">
+          <label>Description</label>
+          <input type="text" id="ex-desc" placeholder="What happened or what's being offered">
+        </div>
+        <div class="field">
+          <label>Declared Value</label>
+          <input type="number" id="ex-value" placeholder="Value" min="0" step="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <input type="text" id="ex-category" placeholder="Broad strokes — e.g. plumbing, tutoring, design">
+        </div>
+        <div class="field">
+          <label>Duration (optional)</label>
+          <div class="duration-row">
+            <div class="field" style="margin-bottom:0">
+              <input type="number" id="ex-hours" placeholder="Hrs" min="0" inputmode="numeric">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <input type="number" id="ex-minutes" placeholder="Min" min="0" max="59" inputmode="numeric">
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>City (optional)</label>
+          <input type="text" id="ex-city" placeholder="City">
+        </div>
+        <div class="field">
+          <label>State (optional)</label>
+          <input type="text" id="ex-state" placeholder="State / Region">
+        </div>
+        <div class="skill-picker" id="ex-skill-picker" style="display:none;">
+          <label>Declared skills</label>
+          <div class="skill-picker-chips" id="ex-skill-chips"></div>
+        </div>
+        <button class="btn btn-secondary" id="ex-skill-toggle" onclick="App.toggleSkillPicker()" style="margin-bottom:12px; display:none;">Attach skills</button>
+        <button class="btn btn-primary" onclick="App.generateProposal()">Ready</button>
+      </div>
+
+      <!-- STEP 2: Transport selection -->
+      <div class="hs-step" id="ex-step-transport">
+        <div style="text-align:center; margin-bottom:8px;">
+          <h3 style="font-size:20px; font-weight:600; margin-bottom:8px;">How are you connected?</h3>
+          <p style="font-size:14px; color:var(--text-dim);">Choose how to share this with the other person.</p>
+        </div>
+        <div class="transport-options">
+          <div class="transport-opt" onclick="App.selectTransport('inperson')">
+            <div class="to-title">&#128244; We can scan</div>
+            <div class="to-desc">You're together or can show each other your screens. Fastest path.</div>
+          </div>
+          <div class="transport-opt" onclick="App.selectTransport('message')">
+            <div class="to-title">&#128172; We're not together</div>
+            <div class="to-desc">Send via text, email, WhatsApp, or any messaging app.</div>
+          </div>
+          <div class="transport-opt" onclick="App.selectTransport('pair')">
+            <div class="to-title">&#128265; We'll pair with codes</div>
+            <div class="to-desc">Read each other a short code. Works on a phone call, in person, or days apart. No scanning, no internet needed right now.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: Show proposal (QR or share) -->
+
+      <!-- STEP: Pairing code exchange -->
+      <div class="hs-step" id="ex-step-pair">
+        <div class="hs-status-line active">Pair with codes — no scanning needed</div>
+        <div class="pair-code-display">
+          <div class="pair-code-label">Your code</div>
+          <div class="pair-code-chars" id="pair-my-code">------</div>
+          <div class="pair-code-hint">Read this to the other person. They'll read theirs to you.</div>
+        </div>
+        <div class="pair-input-section">
+          <label>Their code</label>
+          <input type="text" id="pair-their-code" maxlength="4" placeholder="Enter their code" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="App.pairCodeInput(this)">
+        </div>
+        <button class="btn btn-primary" style="margin-top:20px;" onclick="App.submitPairCode()">Pair</button>
+        <div class="pair-status" id="pair-status" style="display:none;">
+          <div class="ps-icon" id="pair-status-icon">&#9203;</div>
+          <div class="ps-text" id="pair-status-text"></div>
+        </div>
+        <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:16px; line-height:1.5;">Both people fill out their own side. When either phone reaches a server, the halves are matched. If values agree and directions complement, the exchange resolves automatically.</p>
+      </div>
+
+      <!-- STEP: Session exchange (proposer sends, confirmer reviews) -->
+      <div class="hs-step" id="ex-step-session">
+        <div class="hs-status-line active" id="session-status-line">Connecting session...</div>
+
+        <div id="session-code-input">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px;">
+            <div>
+              <div style="font-size: 13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px;">Your code</div>
+              <div style="font-family:var(--font-mono); font-size:28px; font-weight:600; color:var(--accent); letter-spacing:8px;" id="session-my-code">------</div>
+            </div>
+            <div style="font-size: 13px; color:var(--text-faint); max-width:120px; text-align:right; line-height:1.4;">Read this to the other person</div>
+          </div>
+
+          <div class="pair-input-section" style="margin-top:0;">
+            <label>Their code</label>
+            <input type="text" id="session-their-code" maxlength="4" placeholder="Enter their code" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="App.sessionCodeInput(this)">
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="margin-top:20px;" id="session-connect-btn" onclick="this.textContent='Connecting...'; this.disabled=true; App.sessionConnect().catch(function(e){ document.getElementById('session-status-line').textContent='Error: '+e.message; })">Connect</button>
+
+        <!-- Dynamic content: connection status, thread, proposal review -->
+        <div id="session-content" style="display:none;"></div>
+      </div>
+
+      <div class="hs-step" id="ex-step-proposal">
+        <div class="hs-status-line active" id="ex-proposal-status">Waiting for them to scan...</div>
+        <!-- In-person path -->
+        <div class="path-view" id="pv-inperson" style="display:none;">
+          <div class="hs-qr"><canvas id="proposal-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('proposal')">&#x26F6; Make bigger for scanning</button></div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="App.initiatorConfirmScan()">They've scanned it</button>
+          <div class="transport-switch"><button onclick="App.switchTransport()">Switch to message instead</button></div>
+          <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:12px; line-height:1.5;">Having trouble scanning? Tap "Switch to message" above to send as a link instead.</p>
+        </div>
+        <!-- Message path -->
+        <div class="path-view" id="pv-message" style="display:none;">
+          <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; text-align:center; line-height:1.5;">Send the proposal via text, WhatsApp, email, or any messaging app.</p>
+          <button class="btn btn-primary" onclick="App.shareProposal()">Share proposal</button>
+          <div class="mode-toggle" style="margin-top:12px;">
+            <button class="mode-toggle-link" onclick="App.togglePasteMode('proposal-raw')">Copy raw data instead</button>
+          </div>
+          <div class="paste-section" id="proposal-raw-paste-section">
+            <textarea class="payload-area" id="proposal-payload" readonly></textarea>
+            <button class="btn btn-secondary" onclick="App.copyProposal()">Copy</button>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="App.initiatorConfirmSent()">I've sent it</button>
+          <div class="transport-switch"><button onclick="App.switchTransport()">Switch to QR scanning instead</button></div>
+        </div>
+      </div>
+
+      <!-- STEP 4: Waiting for confirmation -->
+      <div class="hs-step" id="ex-step-waiting">
+        <div class="hs-status-line active" id="ex-waiting-status">They're reviewing your proposal...</div>
+        <div class="hs-status" style="padding-top:40px;">
+          <div class="hs-icon">&#9203;</div>
+          <h3 id="ex-waiting-title">Waiting for their response</h3>
+          <p id="ex-waiting-desc" style="margin-bottom:20px;">When they confirm, the exchange will continue.</p>
+        </div>
+        <!-- In-person: they'll show a QR back -->
+        <div id="ex-waiting-scan" style="display:none;">
+          <button class="btn btn-primary" onclick="App.initiatorReadyScan()">They've confirmed — tap to scan their code</button>
+        </div>
+        <!-- Message: paste their reply -->
+        <div id="ex-waiting-paste" style="display:none;">
+          <textarea class="payload-area" id="ex-paste-input-msg" placeholder="Paste their confirmation here"></textarea>
+          <button class="btn btn-primary" onclick="App.parseExConfirmationMsg()">Read Confirmation</button>
+        </div>
+      </div>
+
+      <!-- STEP 5: Settlement — send confirmation back to B -->
+      <div class="hs-step" id="ex-step-settle">
+        <div class="hs-status-line active" id="ex-settle-status">Recording... sharing with the other person</div>
+        <div class="hs-status">
+          <div class="hs-icon">&#9989;</div>
+          <h3>Your record is saved</h3>
+          <p>Now share the settlement so their record updates too.</p>
+        </div>
+        <!-- In-person settlement -->
+        <div class="path-view" id="settle-inperson" style="display:none;">
+          <div class="hs-qr"><canvas id="settlement-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('settlement')">&#x26F6; Make bigger for scanning</button></div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="App.finishExchange()">They've scanned it</button>
+          <button class="btn btn-secondary" style="margin-top:8px;" onclick="App.settleViaMessage()">Send by message instead</button>
+        </div>
+        <!-- Message settlement -->
+        <div class="path-view" id="settle-message" style="display:none;">
+          <button class="btn btn-primary" onclick="App.shareSettlement()">Send settlement</button>
+          <div class="mode-toggle" style="margin-top:12px;">
+            <button class="mode-toggle-link" onclick="App.togglePasteMode('settle-raw')">Copy raw data instead</button>
+          </div>
+          <div class="paste-section" id="settle-raw-paste-section">
+            <textarea class="payload-area" id="settlement-payload" readonly></textarea>
+            <button class="btn btn-secondary" onclick="App.copySettlement()">Copy</button>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="App.finishExchange()">I've sent it</button>
+        </div>
+      </div>
+
+      <!-- STEP 6: Success -->
+      <div class="hs-step" id="ex-step-done">
+        <div class="hs-status-line done">Done. Both recorded.</div>
+        <div class="hs-success">
+          <div class="hs-check">&#10003;</div>
+          <h3>Exchange Complete</h3>
+          <p id="ex-done-summary"></p>
+          <button class="btn btn-primary" onclick="App.closeExchange()">Done</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ========== CONFIRM MODAL ========== -->
+<div class="modal-overlay" id="confirm-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="confirm-header">Incoming Proposal</h2>
+      <button class="modal-close" onclick="App.closeConfirm()">&#10005;</button>
+    </div>
+    <div class="modal-body" id="confirm-body">
+
+      <!-- STEP 1: Scan or paste -->
+      <div class="hs-step active" id="cf-step-scan">
+        <div class="hs-status">
+          <div class="hs-icon">&#128244;</div>
+          <h3>How did they send it?</h3>
+          <p>Scan their QR code or paste what they sent you.</p>
+        </div>
+        <button class="camera-btn" onclick="App.openCamera()">&#128247; Open Camera<input type="file" accept="image/*" capture="environment" id="camera-cf" style="display:none"></button>
+        <div class="mode-toggle">
+          <button class="mode-toggle-link" onclick="App.togglePasteMode('cf')">They sent it by message?</button>
+        </div>
+        <div class="paste-section" id="cf-paste-section">
+          <textarea class="payload-area" id="cf-paste-input" placeholder="Paste the proposal here"></textarea>
+          <button class="btn btn-primary" onclick="App.parseCfProposal()">Read Proposal</button>
+        </div>
+      </div>
+
+      <!-- STEP 2: Three-tab negotiation review -->
+      <div class="hs-step" id="cf-step-review">
+        <div class="cf-step-bar" id="cf-step-bar"></div>
+        <div id="cf-page-rate" class="cf-page"></div>
+        <div id="cf-page-price" class="cf-page"></div>
+        <div id="cf-page-record" class="cf-page"></div>
+      </div>
+
+      <!-- STEP 3: Show return QR/text -->
+      <div class="hs-step" id="cf-step-return">
+        <div class="hs-status-line active" id="cf-return-status">Your record is saved. Sharing with the other person...</div>
+        <div class="hs-status">
+          <div class="hs-icon">&#9989;</div>
+          <h3>Confirmed</h3>
+          <p>Now share your confirmation so their record updates too.</p>
+          <div id="cf-return-relay-status" style="display:none; margin-top:12px; padding:10px 14px; background:var(--bg-raised); border-radius:var(--radius-sm); border:1px solid var(--border); font-size:13px; color:var(--green);">&#9679; Auto-settling via server&hellip;</div>
+        </div>
+        <div class="path-view active" id="cf-rv-inperson">
+          <div class="hs-qr"><canvas id="return-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('return')">&#x26F6; Make bigger for scanning</button></div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="App.cfConfirmTheyScanned()">They've scanned it</button>
+          <div class="transport-switch"><button onclick="App.setCfReturnPath('message')">Send by message instead</button></div>
+        </div>
+        <div class="path-view" id="cf-rv-message" style="display:none;">
+          <button class="btn btn-primary" onclick="App.shareReturn()" style="margin-bottom:12px;">Share confirmation</button>
+          <div class="mode-toggle">
+            <button class="mode-toggle-link" onclick="App.togglePasteMode('cf-raw')">Copy raw data instead</button>
+          </div>
+          <div class="paste-section" id="cf-raw-paste-section">
+            <textarea class="payload-area" id="return-payload" readonly></textarea>
+            <button class="btn btn-secondary" onclick="App.copyReturn()">Copy</button>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="App.cfConfirmTheyScanned()">I've sent it</button>
+          <div class="transport-switch"><button onclick="App.setCfReturnPath('inperson')">Show QR instead</button></div>
+        </div>
+      </div>
+
+      <!-- STEP 4: Waiting for settlement (three-scan fallback) -->
+      <div class="hs-step" id="cf-step-waiting">
+        <div class="hs-status-line active">Waiting for their settlement...</div>
+        <div class="hs-status">
+          <div class="hs-icon">&#9203;</div>
+          <h3>Waiting for their response</h3>
+          <p>They're completing the exchange on their side. Once done, your record will be fully settled.</p>
+          <div id="cf-relay-status" style="display:none; margin-top:12px; padding:10px 14px; background:var(--bg-raised); border-radius:var(--radius-sm); border:1px solid var(--border); font-size:13px; color:var(--green);">&#9679; Listening for auto-settlement&hellip;</div>
+        </div>
+        <div class="mode-toggle">
+          <button class="mode-toggle-link" onclick="App.togglePasteMode('cf-settle')">Paste settlement from message</button>
+        </div>
+        <div class="paste-section" id="cf-settle-paste-section">
+          <textarea class="payload-area" id="cf-settle-input" placeholder="Paste the settlement here"></textarea>
+          <button class="btn btn-primary" onclick="App.parseSettlement()">Complete</button>
+        </div>
+        <button class="btn btn-secondary" style="margin-top:16px;" onclick="App.closeConfirm()">Close — I'll settle later</button>
+      </div>
+
+      <!-- STEP 5: Settled -->
+      <div class="hs-step" id="cf-step-settled">
+        <div class="hs-status-line done">Done. Both recorded.</div>
+        <div class="hs-success">
+          <div class="hs-check">&#10003;</div>
+          <h3>Act Recorded</h3>
+          <p>Both threads are written. The cooperative act is memorialized.</p>
+          <button class="btn btn-primary" onclick="App.closeConfirm()">Done</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ========== CHAIN VIEWER MODAL ========== -->
+<div class="modal-overlay" id="chain-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>My Thread</h2>
+      <button class="modal-close" onclick="App.closeModal('chain')">&#10005;</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="App.chainTab('records')" id="ctab-records">Records</button>
+    </div>
+    <div class="chain-filter" id="chain-filter"></div>
+    <div class="modal-body" id="chain-body"></div>
+  </div>
+</div>
+
+<!-- ========== CHAIN SHARE MODAL ========== -->
+<div class="modal-overlay" id="chainshare-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Share Thread</h2>
+      <button class="modal-close" onclick="App.closeModal('chainshare')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="chainshare-body">
+      <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your thread for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
+      <div class="review-panel" id="chainshare-summary"></div>
+      <div class="hs-qr"><canvas id="chainshare-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('chainshare')">&#x26F6; Make bigger for scanning</button></div>
+      <textarea class="payload-area" id="chainshare-payload" readonly></textarea>
+      <button class="btn btn-secondary" onclick="App.copyChainShare()">Copy</button>
+      <button class="btn btn-secondary" onclick="App.shareChainShareText()">Share via Text</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== INCOMING CHAIN VIEW MODAL ========== -->
+<div class="modal-overlay" id="chainview-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Their Thread</h2>
+      <button class="modal-close" onclick="App.closeModal('chainview')">&#10005;</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="App.incomingChainTab('texture')" id="cv-texture">Texture</button>
+      <button class="tab" onclick="App.incomingChainTab('wordcloud')" id="cv-wordcloud">Words</button>
+      <button class="tab" onclick="App.incomingChainTab('ratio')" id="cv-ratio">Ratio</button>
+      <button class="tab" onclick="App.incomingChainTab('time')" id="cv-time">Time</button>
+      <button class="tab" onclick="App.incomingChainTab('stability')" id="cv-stability">Stability</button>
+    </div>
+    <div class="modal-body" id="chainview-body"></div>
+  </div>
+</div>
+
+<!-- ========== SHARE MODAL ========== -->
+<div class="modal-overlay" id="share-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Share App</h2>
+      <button class="modal-close" onclick="App.closeModal('share')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Share the Human Exchange Protocol with someone. They'll be able to install it on their phone and get started.</p>
+      <div class="share-url" id="share-url"></div>
+      <div class="qr-container"><canvas id="share-qr"></canvas></div>
+      <button class="btn btn-primary" onclick="App.copyShareLink()">Copy Link</button>
+      <button class="btn btn-secondary" onclick="App.shareViaSystem()">Share</button>
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+        <p style="font-size:13px; color:var(--text-dim); margin-bottom:12px; line-height:1.5;">Want to introduce them with a guided first exchange? Send the link below instead — it includes your identity so they can practice with you.</p>
+        <div class="share-url" id="share-url-ref"></div>
+        <button class="btn btn-secondary" onclick="App.copyShareLinkRef()">Copy Introduction Link</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== LEARN MODAL ========== -->
+<div class="modal-overlay" id="learn-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="learn-title">Learn</h2>
+      <button class="modal-close" id="learn-close-btn" onclick="App.learnBack()">&#10005;</button>
+    </div>
+
+    <!-- Topic Menu -->
+    <div class="modal-body learn-menu" id="learn-menu">
+      <div class="learn-section-hdr">Start Here</div>
+      <div class="learn-topic" onclick="App.learnOpen('act')">
+        <div class="lt-icon" style="background:rgba(224,180,138,0.12);">&#9741;</div>
+        <div class="lt-info">
+          <div class="lt-title">The Cooperative Act</div>
+          <div class="lt-desc">What actually happens when two people help each other — and why it matters</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('value')">
+        <div class="lt-icon" style="background:rgba(125,204,123,0.12);">&#9878;</div>
+        <div class="lt-info">
+          <div class="lt-title">Value Is Yours</div>
+          <div class="lt-desc">You decide what your work is worth — nobody else</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('beyond')">
+        <div class="lt-icon" style="background:rgba(217,106,106,0.12);">&#8644;</div>
+        <div class="lt-info">
+          <div class="lt-title">Beyond the Moment</div>
+          <div class="lt-desc">How your record lets you cooperate with anyone — not just the person you helped</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('calibrate')">
+        <div class="lt-icon" style="background:rgba(107,143,199,0.12);">&#9881;</div>
+        <div class="lt-info">
+          <div class="lt-title">Find Your Unit</div>
+          <div class="lt-desc">A thought exercise to calibrate your own sense of value before your first exchange</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+
+      <div class="learn-section-divider"></div>
+      <div class="learn-section-hdr">Go Deeper</div>
+      <div class="learn-topic" onclick="App.learnOpen('foundations')">
+        <div class="lt-icon" style="background:rgba(224,180,138,0.12);">&#9776;</div>
+        <div class="lt-info">
+          <div class="lt-title">Foundations</div>
+          <div class="lt-desc">How exchanges work, what your thread is, and what you can build</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('pricing')">
+        <div class="lt-icon" style="background:rgba(125,204,123,0.12);">&#128269;</div>
+        <div class="lt-info">
+          <div class="lt-title">Price Discovery</div>
+          <div class="lt-desc">How pricing emerges from your history and negotiation</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('exchange')">
+        <div class="lt-icon" style="background:rgba(217,106,106,0.12);">&#8644;</div>
+        <div class="lt-info">
+          <div class="lt-title">Exchange &amp; Parity</div>
+          <div class="lt-desc">Exchange ratios, purchasing power, and cross-thread trust</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('community')">
+        <div class="lt-icon" style="background:rgba(130,160,220,0.12);">&#9784;</div>
+        <div class="lt-info">
+          <div class="lt-title">Building Community</div>
+          <div class="lt-desc">Seeding networks, growing trust, and collective strength</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('sovereignty')">
+        <div class="lt-icon" style="background:rgba(180,140,220,0.12);">&#9889;</div>
+        <div class="lt-info">
+          <div class="lt-title">Your Phone, Your Server</div>
+          <div class="lt-desc">Offline-first design, data sovereignty, and no dependencies</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+      <div class="learn-topic" onclick="App.learnOpen('privacy')">
+        <div class="lt-icon" style="background:rgba(224,180,138,0.12);">&#9737;</div>
+        <div class="lt-info">
+          <div class="lt-title">Privacy &amp; Safety</div>
+          <div class="lt-desc">Controlling what others see, protecting yourself, deleting everything</div>
+        </div>
+        <div class="lt-arrow">&#8250;</div>
+      </div>
+    </div>
+
+    <!-- Slide Sets (hidden until opened) -->
+    <div class="learn-slides" id="learn-slides">
+      <div class="learn-carousel" id="learn-carousel"></div>
+      <div class="learn-nav">
+        <button class="learn-nav-btn" id="learn-prev" onclick="App.learnPrev()">&#8249; Back</button>
+        <div class="learn-dots" id="learn-dots"></div>
+        <button class="learn-nav-btn" id="learn-next" onclick="App.learnNext()">Next &#8250;</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== SETTINGS MODAL ========== -->
+<div class="modal-overlay" id="settings-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="modal-close" onclick="App.closeModal('settings')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="setting-action" onclick="App.openDeclarationsEdit()">
+        <div class="label">Your Declarations</div>
+        <div class="desc">Photo, name, and what you do</div>
+      </div>
+      <div class="setting-action" onclick="App.closeModal('settings'); App.openLearn()">
+        <div class="label">Learn about HEP</div>
+        <div class="desc">How the protocol works and what it can do</div>
+      </div>
+      <div class="setting-action" onclick="App.closeModal('settings'); App.openShare()">
+        <div class="label">Share App</div>
+        <div class="desc">Invite someone to install HEP on their phone</div>
+      </div>
+
+      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Privacy</h3>
+      <div class="setting-row">
+        <div>
+          <div class="label">Hide Counterparty Names</div>
+          <div class="desc">Others viewing your thread won't see names</div>
+        </div>
+        <button class="switch on" id="switch-hide-names" onclick="App.togglePrivacy('hideNames')"></button>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="label">Hide Locations</div>
+          <div class="desc">Strip street, city, state from shared views</div>
+        </div>
+        <button class="switch on" id="switch-hide-location" onclick="App.togglePrivacy('hideLocations')"></button>
+      </div>
+      <p class="privacy-info">These settings control what others see when you share your thread for negotiation. Your own thread view always shows full detail. Counterparty names are never shared by default.</p>
+
+      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Network</h3>
+      <div style="padding: 0 0 12px;">
+        <div class="label" style="margin-bottom: 6px;">Witness Server</div>
+        <div class="desc" style="margin-bottom: 10px;">Your exchanges receive signed timestamps from an independent witness server. Connection is automatic.</div>
+        <div id="witness-status" style="font-size:13px; color:var(--text-dim); margin-top:8px;">Checking...</div>
+        <button class="btn btn-secondary" style="margin-top:8px; padding:10px 14px; font-size:14px;" onclick="App.testWitnessConnection()">Test Connection</button>
+      </div>
+
+      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Data</h3>
+      <div class="setting-action" onclick="App.exportBackup()">
+        <div class="label">Export Backup</div>
+        <div class="desc">Save encrypted backup of your thread and keys</div>
+      </div>
+      <div class="setting-action" onclick="App.importBackup()">
+        <div class="label">Import Backup</div>
+        <div class="desc">Restore from a backup file</div>
+      </div>
+
+      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Device</h3>
+      <div class="setting-action" onclick="App.changePIN()">
+        <div class="label">Change PIN</div>
+        <div class="desc">Update your encryption PIN</div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="label">Location Auto-fill</div>
+          <div class="desc">Auto-populate city and state from GPS</div>
+        </div>
+        <button class="switch" id="switch-location" onclick="App.toggleLocation()"></button>
+      </div>
+      <div class="setting-action" onclick="App.installFromSettings()">
+        <div class="label">Add to Home Screen</div>
+        <div class="desc">Install the app for quick access</div>
+      </div>
+
+      <h3 style="font-size: 13px; color:var(--red); text-transform:uppercase; letter-spacing:1px; padding:20px 0 8px;">Danger Zone</h3>
+      <div class="setting-action" onclick="App.deleteChain()">
+        <div class="label" style="color:var(--red);">Delete My Thread</div>
+        <div class="desc">You will be offered a backup before anything is erased. Deletion removes your thread, keys, and all data from this device permanently.</div>
+      </div>
+
+      <div style="padding: 20px 0; text-align: center;">
+        <div style="font-size: 13px; color: var(--text-dim);">Human Exchange Protocol</div>
+        <div style="font-size: 13px; color: var(--text-faint);">v2.12.0 &middot; The value trust creates</div>
+        <div style="font-size: 13px; color: var(--text-faint); margin-top: 8px; font-family: var(--font-mono);" id="settings-fp"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== DECLARATIONS EDIT MODAL ========== -->
+<div class="modal-overlay" id="declarations-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Your Declarations</h2>
+      <button class="modal-close" onclick="App.closeModal('declarations')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="photo-area">
+        <div class="photo-preview" id="edit-photo-preview">&#9678;</div>
+        <div class="photo-buttons">
+          <button class="photo-btn" onclick="App.editCapturePhoto()">Camera</button>
+          <button class="photo-btn" onclick="App.editUploadPhoto()">Upload</button>
+        </div>
+        <input type="file" id="edit-photo-file" accept="image/*" style="display:none" onchange="App.handleEditPhotoFile(event)">
+        <input type="file" id="edit-photo-capture" accept="image/*" capture="user" style="display:none" onchange="App.handleEditPhotoFile(event)">
+        <div id="edit-photo-date" style="font-size: 13px; color:var(--text-faint); margin-top:6px;"></div>
+      </div>
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="edit-name" placeholder="What should people call you?">
+      </div>
+      <div class="field">
+        <label>About</label>
+        <textarea id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea>
+      </div>
+      <div class="skills-section">
+        <label>Skills &amp; qualifications</label>
+        <div class="skills-list" id="edit-skills-list"></div>
+        <div class="skill-add-row">
+          <input type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
+          <button class="skill-add-btn" onclick="App.addSkill('edit')">Add</button>
+        </div>
+      </div>
+
+      <div id="edit-range-display" style="border-top:1px solid var(--border); margin-top:20px; padding-top:20px; display:none;">
+        <label style="font-size:15px; font-weight:600; color:var(--text); display:block; margin-bottom:10px;">Your Value Range</label>
+        <div id="edit-range-summary" style="padding:14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius);"></div>
+        <p style="font-size:13px; color:var(--text-faint); margin-top:8px; line-height:1.5;">Your scale exercise helps you think about how you value things. As you exchange with others, your actual history becomes the real picture.</p>
+        <button style="width:100%; margin-top:10px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); font-size:14px; cursor:pointer;" onclick="App.closeModal('declarations'); App.openDeclareRange();">Redo the scale exercise</button>
+      </div>
+
+      <p style="font-size: 13px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Your photo helps verify you are a real person. It stays on your device.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="App.saveDeclarationsEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SCALE EXERCISE MODAL ========== -->
+<div class="modal-overlay" id="range-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Scale Exercise</h2>
+      <button class="modal-close" onclick="App.closeModal('range')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="guidance" style="text-align:left; color:var(--text-dim); font-size:15px; line-height:1.6; margin-bottom:16px;">
+        Think about how you value different kinds of effort. This helps you understand where you sit on the shared scale.
+      </div>
+      <div class="range-input-group">
+        <label><strong>A small favor.</strong> Something easy — carrying a bag, holding a door, helping someone find something. A few minutes, no special skill.</label>
+        <div class="range-val-row">
+          <span class="range-val-label">Value:</span>
+          <input type="number" id="dr-simple-val" min="1" oninput="App.declareRangeUpdate()">
+        </div>
+        <div class="val-tags" id="dr-vt-simple">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+        </div>
+      </div>
+      <div class="range-input-group">
+        <label><strong>A full day of work.</strong> Whatever you do most days — for a job, for your family, for your community. A full day of your energy and effort.</label>
+        <div class="range-val-row">
+          <span class="range-val-label">Value:</span>
+          <input type="number" id="dr-daily-val" min="1" oninput="App.declareRangeUpdate()">
+        </div>
+        <div class="val-tags" id="dr-vt-daily">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+        </div>
+      </div>
+      <div class="range-input-group">
+        <label><strong>Your best work.</strong> The most impressive thing you could do — combining all of your skills, knowledge, and experience. Something that might take weeks or months.</label>
+        <div class="range-val-row">
+          <span class="range-val-label">Value:</span>
+          <input type="number" id="dr-complex-val" min="1" oninput="App.declareRangeUpdate()">
+        </div>
+        <div class="val-tags" id="dr-vt-complex">
+          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
+          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
+        </div>
+      </div>
+      <div class="range-result" id="dr-result" style="display:none;">
+        <div class="ratio-display" id="dr-ratio"></div>
+        <div class="ratio-label" id="dr-summary"></div>
+      </div>
+      <div class="guidance" style="text-align:left; color:var(--text-dim); font-size:14px; line-height:1.6; margin-top:12px;">
+        This exercise helps you calibrate how you think about value. You can redo it anytime.
+      </div>
+      <button class="btn btn-primary" style="width:100%; margin-top:16px;" onclick="App.submitDeclareRange()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden inputs -->
+<input type="file" id="import-file" accept=".json,.hcp" style="display:none" onchange="App.handleImportFile(event)">
+<!-- Texture detail overlay (sits above exchange modal) -->
+<div class="modal-overlay" id="texture-detail-overlay" style="z-index:200;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="texture-detail-title"></h2>
+      <button class="modal-close" onclick="App.closeTextureDetail()">&times;</button>
+    </div>
+    <div class="modal-body" id="texture-detail-body"></div>
+  </div>
+</div>
+
+<!-- Fullscreen QR overlay -->
+<div id="qr-fullscreen" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:500; background:#fff; justify-content:center; align-items:center; flex-direction:column;" onclick="App.closeFullQR()">
+  <canvas id="qr-full-canvas" style="max-width:90vw; max-height:90vw;"></canvas>
+  <div style="margin-top:20px; color:#333; font-size:16px; font-weight:500;">Tap anywhere to close</div>
+</div>
+
+<!-- Install banner -->
+<div class="install-banner" id="install-banner">
+  <div class="ib-icon">HC</div>
+  <div class="ib-text">
+    <div class="ib-title">Add to Home Screen</div>
+    <div class="ib-sub" id="install-sub">Install for quick access</div>
+  </div>
+  <button class="ib-btn" id="install-btn" onclick="App.installApp()">Install</button>
+  <button class="ib-dismiss" onclick="App.dismissInstall()">&times;</button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+<script src="vendor/qrcode.js"></script>
+<script src="hep-core.js"></script>
+<script src="hep-app.js"></script>
+</body>
+</html>
