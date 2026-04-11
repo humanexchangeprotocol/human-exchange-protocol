@@ -1,0 +1,17 @@
+﻿name: Build HEP
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build merged HTML
+        run: bash build.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hep-html
+          path: dist/hep.html
