@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.22.0
+// APPLICATION LAYER v2.34.1
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -1049,6 +1049,8 @@ const PAIR_CODE_LENGTH = 4;
   function refreshHome() {
     const name = state.declarations.name;
     document.getElementById('home-greeting').textContent = name ? name + '\u2019s Thread' : 'Your Thread';
+    var vb = document.getElementById('app-version-badge');
+    if (vb) vb.textContent = 'HEP v' + APP_VERSION;
     // Hide "Received a proposal?" when online
     var recvBtn = document.querySelector('.coop-receive-btn');
     if (recvBtn) recvBtn.parentElement.style.display = navigator.onLine ? 'none' : 'block';
@@ -4570,7 +4572,9 @@ const PAIR_CODE_LENGTH = 4;
   // --- Settings ---
   function openSettings() {
     showModal('settings');
-    document.getElementById('settings-fp').textContent = state.fingerprint;
+     document.getElementById('settings-fp').textContent = state.fingerprint;
+    var sv = document.getElementById('settings-version');
+    if (sv) sv.textContent = 'v' + APP_VERSION + ' \u00b7 The value trust creates';
     document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
     document.getElementById('switch-hide-names').classList.toggle('on', state.settings.hideNames);
     document.getElementById('switch-hide-location').classList.toggle('on', state.settings.hideLocations);
@@ -5267,12 +5271,17 @@ const PAIR_CODE_LENGTH = 4;
     return !hasTouchScreen && !isStandalone;
   }
 
-  function init() {
+function init() {
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('./sw.js').catch(function(e) {
+        console.log('[SW] Registration failed:', e.message);
+      });
+    }
     initSensors();
     checkReferral();
     setupInstallPrompt();
-    checkForUpdates();
     if (load() && state.fingerprint) {
+      checkForUpdates();
       showLockScreen();
     } else {
       showScreen('setup');
@@ -5296,7 +5305,7 @@ const PAIR_CODE_LENGTH = 4;
       }
     }
   }
-
+  
   // After setup completes, check for guided intro
   const _origComplete = completeSetup;
   function completeSetupWrapped() {
