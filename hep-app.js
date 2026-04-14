@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.34.2
+// APPLICATION LAYER v2.36.0
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -1683,6 +1683,136 @@ const PAIR_CODE_LENGTH = 4;
   let sessionProposal = null;
   let sessionActiveTab = 'texture';
   let sessionSharedKey = null; // ECDH-derived AES key for encrypted relay
+  let _snapshotPollTimer = null;
+
+  // === OPTION B: Encrypted thread snapshot helpers ===
+
+  // Build thread snapshot for sharing (used by both session and ex-flow)
+  function buildSnapshotForSharing(extras) {
+    var threadSnap = null;
+    try {
+      if (state.chain.length > 0) {
+        threadSnap = HCP.chainSnapshot(state.chain);
+      } else {
+        threadSnap = { n: 0, d: 0, g: 0, r: 0, cats: {}, words: {}, time: {}, stab: {}, t0: null, t1: null };
+      }
+    } catch(snapErr) {
+      console.error('[session] Thread snapshot build failed:', snapErr);
+      try {
+        var fbDensity = 0;
+        try { fbDensity = +HCP.chainDensity(state.chain).toFixed(1); } catch(de) {}
+        var fbEx = state.chain.filter(HCP.isAct);
+        threadSnap = {
+          n: fbEx.length,
+          g: fbEx.filter(function(r){ return r.energyState === 'provided'; }).length,
+          r: fbEx.filter(function(r){ return r.energyState === 'received'; }).length,
+          d: fbDensity,
+          cats: {}, words: {}, time: {}, stab: {},
+          t0: state.chain[0] ? state.chain[0].timestamp : null,
+          t1: state.chain[state.chain.length-1] ? state.chain[state.chain.length-1].timestamp : null
+        };
+      } catch(e2) {}
+    }
+    if (threadSnap && state.declarations) {
+      threadSnap.range = {
+        simpleVal: state.declarations.rangeSimpleVal || 0,
+        complexVal: state.declarations.rangeComplexVal || 0,
+        dailyVal: state.declarations.rangeDailyVal || 0,
+        valTags: {
+          simple: state.declarations.valTagsSimple || [],
+          complex: state.declarations.valTagsComplex || [],
+          daily: state.declarations.valTagsDaily || []
+        }
+      };
+      threadSnap._name = state.declarations.name || '';
+      var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
+      if (genesisRec) threadSnap._genesisPhoto = genesisRec.photoData;
+    }
+    if (extras && threadSnap) {
+      Object.keys(extras).forEach(function(k) { threadSnap[k] = extras[k]; });
+    }
+    return threadSnap;
+  }
+
+  // Encrypt and send snapshot via POST /session/:code/thread
+  async function sendEncryptedSnapshot(extras) {
+    if (!sessionSharedKey || !sessionCode) return;
+    var url = getWitnessUrl();
+    if (!url) return;
+    var snap = buildSnapshotForSharing(extras);
+    if (!snap) return;
+    try {
+      var encrypted = await HCP.encryptRelayPayload(snap, sessionSharedKey);
+      await serverFetch(url + '/session/' + sessionCode + '/thread', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted_snapshot: encrypted })
+      });
+      console.log('[session] Encrypted snapshot sent');
+    } catch(e) {
+      console.error('[session] Failed to send encrypted snapshot:', e);
+    }
+  }
+
+  // Poll for partner's encrypted snapshot, decrypt when found
+  function startSnapshotPoll(onReceived) {
+    stopSnapshotPoll();
+    var url = getWitnessUrl();
+    if (!url || !sessionCode) return;
+    var attempts = 0;
+    function doCheck() {
+      if (!sessionSharedKey) return;
+      serverFetch(url + '/session/' + sessionCode).then(function(resp) {
+        if (!resp.ok) return;
+        return resp.json();
+      }).then(function(data) {
+        if (!data || !data.partner) return;
+        if (data.partner.encrypted_snapshot && sessionSharedKey) {
+          stopSnapshotPoll();
+          HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey).then(function(decrypted) {
+            sessionPartner.thread_snapshot = decrypted;
+            sessionPartner._snapshotDecrypted = true;
+            console.log('[session] Partner snapshot decrypted');
+            if (onReceived) onReceived(decrypted);
+          }).catch(function(de) {
+            console.error('[session] Decrypt partner snapshot failed:', de);
+          });
+        } else if (data.partner.thread_snapshot && !sessionPartner.thread_snapshot) {
+          // Backward compat: partner sent plaintext snapshot (old client)
+          stopSnapshotPoll();
+          sessionPartner.thread_snapshot = data.partner.thread_snapshot;
+          sessionPartner._snapshotDecrypted = true;
+          console.log('[session] Partner snapshot received (plaintext fallback)');
+          if (onReceived) onReceived(data.partner.thread_snapshot);
+        }
+      }).catch(function(e) {});
+    }
+    _snapshotPollTimer = setInterval(function() {
+      attempts++;
+      if (attempts > 40) { stopSnapshotPoll(); return; } // 2 min at 3s
+      doCheck();
+    }, 3000);
+    setTimeout(doCheck, 1000); // immediate first check
+  }
+
+  function stopSnapshotPoll() {
+    if (_snapshotPollTimer) { clearInterval(_snapshotPollTimer); _snapshotPollTimer = null; }
+  }
+
+  // Re-render session connected view when snapshot arrives
+  function refreshSessionThreadView() {
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    var content = document.getElementById('session-content');
+    if (!content) return;
+    var tabBody = document.getElementById('sess-tab-body');
+    // If tab body exists, just update tab content
+    if (tabBody) {
+      tabBody.innerHTML = renderSessionTabContent(sessionActiveTab);
+      return;
+    }
+    // Otherwise re-render connected view
+    if (sessionPartner) onSessionConnected();
+  }
 
   function coopReceiveProposal() {
     closeModal('cooperate');
@@ -1758,54 +1888,6 @@ const PAIR_CODE_LENGTH = 4;
 
       sessionTheirCode = theirCode;
 
-      // Build thread snapshot for sharing
-      let threadSnap = null;
-      try {
-        if (state.chain.length > 0) {
-          threadSnap = HCP.chainSnapshot(state.chain);
-        } else {
-          threadSnap = { n: 0, d: 0, g: 0, r: 0, cats: {}, words: {}, time: {}, stab: {}, t0: null, t1: null };
-        }
-      } catch(snapErr) {
-        console.error('[session] Thread snapshot FAILED:', snapErr);
-        // Fallback: build a minimal snapshot manually
-        try {
-          var fbDensity = 0;
-          try { fbDensity = +HCP.chainDensity(state.chain).toFixed(1); } catch(de) {}
-          var fbEx = state.chain.filter(HCP.isAct);
-          threadSnap = {
-            n: fbEx.length,
-            g: fbEx.filter(function(r){ return r.energyState === 'provided'; }).length,
-            r: fbEx.filter(function(r){ return r.energyState === 'received'; }).length,
-            d: fbDensity,
-            cats: {},
-            words: {},
-            time: {},
-            stab: {},
-            t0: state.chain[0] ? state.chain[0].timestamp : null,
-            t1: state.chain[state.chain.length-1] ? state.chain[state.chain.length-1].timestamp : null
-          };
-        } catch(e2) {
-        }
-      }
-      // Attach range exercise data to snapshot
-      if (threadSnap && state.declarations) {
-        threadSnap.range = {
-          simpleVal: state.declarations.rangeSimpleVal || 0,
-          complexVal: state.declarations.rangeComplexVal || 0,
-          dailyVal: state.declarations.rangeDailyVal || 0,
-          valTags: {
-            simple: state.declarations.valTagsSimple || [],
-            complex: state.declarations.valTagsComplex || [],
-            daily: state.declarations.valTagsDaily || []
-          }
-        };
-        threadSnap._name = state.declarations.name || '';
-        // Include genesis photo for counterparty comparison
-        var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
-        if (genesisRec) threadSnap._genesisPhoto = genesisRec.photoData;
-      }
-
       // Hide input, show connecting
       document.getElementById('session-code-input').style.display = 'none';
       document.getElementById('session-status-line').textContent = 'Connecting to server...';
@@ -1819,7 +1901,6 @@ const PAIR_CODE_LENGTH = 4;
           their_code: sessionTheirCode,
           fingerprint: state.fingerprint,
           public_key: state.publicKeyJwk,
-          thread_snapshot: threadSnap ? JSON.stringify(threadSnap) : null,
         }),
       });
 
@@ -2142,6 +2223,12 @@ const PAIR_CODE_LENGTH = 4;
       }
     } catch(ek) { console.log('[session] ECDH key derivation failed:', ek.message); sessionSharedKey = null; }
 
+    // Send our encrypted snapshot (only once)
+    if (!sessionPartner._ourSnapshotSent && sessionSharedKey) {
+      sessionPartner._ourSnapshotSent = true;
+      sendEncryptedSnapshot();
+    }
+
     // Partner info
     let html = '<div class="session-partner">' +
       '<div class="sp-label">Connected to</div>' +
@@ -2155,6 +2242,9 @@ const PAIR_CODE_LENGTH = 4;
       html += buildSessionTabBar();
       html += '<div class="sess-tab-content" id="sess-tab-body">' + renderSessionTabContent('texture') + '</div>';
       html += '</div>';
+    } else if (!sessionPartner._snapshotDecrypted) {
+      // Snapshot not yet received -- show loading state
+      html += '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">Loading encrypted thread data...</span></div></div>';
     } else {
       html += '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">No thread data shared</span></div></div>';
     }
@@ -2170,7 +2260,13 @@ const PAIR_CODE_LENGTH = 4;
           (pp.details.category ? ' \u00b7 ' + esc(pp.details.category) : '') +
           '</div></div>';
       }
-      html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
+      if (ts && ts.n) {
+        html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
+      } else if (!sessionPartner._snapshotDecrypted) {
+        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their thread data before you can send...</div>';
+      } else {
+        html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
+      }
       content.innerHTML = html;
     } else {
       html += '<div class="pair-status resolving" style="margin-top:16px;" id="session-waiting-proposal">' +
@@ -2178,6 +2274,14 @@ const PAIR_CODE_LENGTH = 4;
         '<div class="ps-text">Exploring their thread. Their proposal will appear here when they send it.</div></div>';
       content.innerHTML = html;
       startSessionPoll();
+    }
+
+    // Poll for partner's encrypted snapshot if not yet received
+    if (!sessionPartner._snapshotDecrypted && sessionSharedKey) {
+      startSnapshotPoll(function() {
+        // Re-render the connected view now that we have the snapshot
+        onSessionConnected();
+      });
     }
   }
 
@@ -2709,6 +2813,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function cleanupSession() {
     stopSessionPoll();
+    stopSnapshotPoll();
     sessionCode = null;
     sessionTheirCode = null;
     sessionPartner = null;
@@ -5526,104 +5631,18 @@ function init() {
       var url = getWitnessUrl();
       if (!url) { toast('No server available'); return; }
 
-      // Build thread snapshot
-      var threadSnap = null;
-      try {
-        if (state.chain.length > 0) {
-          threadSnap = HCP.chainSnapshot(state.chain);
-        } else {
-          threadSnap = { n: 0, d: 0, g: 0, r: 0, cats: {}, words: {}, time: {}, stab: {}, t0: null, t1: null };
-        }
-      } catch(snapErr) {
-        threadSnap = { n: state.chain.filter(HCP.isAct).length, d: 0, g: 0, r: 0, cats: {}, words: {}, time: {}, stab: {}, t0: null, t1: null };
-      }
-      if (threadSnap && state.declarations) {
-        threadSnap.range = {
-          simpleVal: state.declarations.rangeSimpleVal || 0,
-          complexVal: state.declarations.rangeComplexVal || 0,
-          dailyVal: state.declarations.rangeDailyVal || 0,
-        };
-        threadSnap._name = state.declarations.name || '';
-        var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
-        if (genesisRec) threadSnap._genesisPhoto = genesisRec.photoData;
-      }
-      // Attach initiator role so joiner knows the complement
-      if (threadSnap && exInitiatorRole) {
-        threadSnap._role = exInitiatorRole;
-      }
-
-      // Attach device reality summary for chain health assessment
-      if (threadSnap) {
-        var pohCount = 0;
-        var hasGeo = 0, hasSensor = 0, hasDevice = 0;
-        state.chain.forEach(function(r) {
-          if (r.pohSnapshot) pohCount++;
-          if (r.geo) hasGeo++;
-          if (r.sensorHash) hasSensor++;
-          if (r.device) hasDevice++;
-        });
-        var webgl = getWebGLRenderer();
-        threadSnap._device = {
-          platform: navigator.platform,
-          screen: screen.width + 'x' + screen.height,
-          touchPoints: navigator.maxTouchPoints,
-          webgl: webgl || null,
-          pohSnapshots: pohCount,
-          recordsWithGeo: hasGeo,
-          recordsWithSensor: hasSensor,
-          recordsWithDevice: hasDevice,
-          totalRecords: state.chain.length,
-          capabilityMask: (_sensor.accel ? 2 : 0) | (_sensor.gyro ? 4 : 0) | (_sensor.battery ? 8 : 0) | (_sensor.network ? 16 : 0)
-        };
-      }
-
-      // Enrich with per-service pricing data for exchange assessment
-      if (threadSnap && state.chain.length > 0) {
-        var svcMap = {};
-        state.chain.forEach(function(r) {
-          var desc = (r.description || '').trim();
-          if (!desc) return;
-          var key = desc.toLowerCase();
-          if (!svcMap[key]) {
-            svcMap[key] = { description: desc, prices: [], counterparties: {}, category: r.category || '' };
-          }
-          svcMap[key].prices.push({ value: r.value, dir: r.energyState, when: r.timestamp });
-          if (r.counterparty) svcMap[key].counterparties[r.counterparty] = 1;
-        });
-        var services = {};
-        Object.keys(svcMap).forEach(function(key) {
-          var s = svcMap[key];
-          var vals = s.prices.map(function(p) { return p.value; });
-          var provided = s.prices.filter(function(p) { return p.dir === 'provided'; });
-          var received = s.prices.filter(function(p) { return p.dir === 'received'; });
-          services[key] = {
-            desc: s.description,
-            cat: s.category,
-            n: s.prices.length,
-            g: provided.length,
-            r: received.length,
-            people: Object.keys(s.counterparties).length,
-            low: Math.min.apply(null, vals),
-            high: Math.max.apply(null, vals),
-            avg: Math.round(vals.reduce(function(a, b) { return a + b; }, 0) / vals.length),
-            prices: s.prices.slice(-10).map(function(p) { return { v: p.value, d: p.dir, w: p.when }; })
-          };
-        });
-        threadSnap._services = services;
-      }
-
       var joinPayload = {
           my_code: myCode,
           their_code: theirCode,
           fingerprint: state.fingerprint,
           public_key: state.publicKeyJwk,
-          thread_snapshot: threadSnap ? JSON.stringify(threadSnap) : null,
+          role: exInitiatorRole || null,
       };
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
         my_code: myCode, their_code: theirCode,
         fingerprint: (state.fingerprint || '').substring(0, 16) + '...',
         has_pubkey: !!state.publicKeyJwk,
-        has_snapshot: !!threadSnap,
+        role: exInitiatorRole || null,
       }));
 
       var resp = await serverFetch(url + '/session/join', {
@@ -5724,20 +5743,80 @@ function init() {
       }
     } catch(ek) { console.log('[ex-flow] ECDH key derivation failed:', ek.message); sessionSharedKey = null; }
 
+    // Send our encrypted snapshot with ex-flow extras (only once)
+    if (!sessionPartner._ourSnapshotSent && sessionSharedKey) {
+      sessionPartner._ourSnapshotSent = true;
+      // Build ex-flow extras: role, device reality, service pricing
+      var extras = {};
+      if (exInitiatorRole) extras._role = exInitiatorRole;
+      // Device reality summary
+      var pohCount = 0, hasGeo = 0, hasSensor = 0, hasDevice = 0;
+      state.chain.forEach(function(r) {
+        if (r.pohSnapshot) pohCount++;
+        if (r.geo) hasGeo++;
+        if (r.sensorHash) hasSensor++;
+        if (r.device) hasDevice++;
+      });
+      var webgl = getWebGLRenderer();
+      extras._device = {
+        platform: navigator.platform,
+        screen: screen.width + 'x' + screen.height,
+        touchPoints: navigator.maxTouchPoints,
+        webgl: webgl || null,
+        pohSnapshots: pohCount,
+        recordsWithGeo: hasGeo,
+        recordsWithSensor: hasSensor,
+        recordsWithDevice: hasDevice,
+        totalRecords: state.chain.length,
+        capabilityMask: (_sensor.accel ? 2 : 0) | (_sensor.gyro ? 4 : 0) | (_sensor.battery ? 8 : 0) | (_sensor.network ? 16 : 0)
+      };
+      // Per-service pricing data
+      if (state.chain.length > 0) {
+        var svcMap = {};
+        state.chain.forEach(function(r) {
+          var desc = (r.description || '').trim();
+          if (!desc) return;
+          var key = desc.toLowerCase();
+          if (!svcMap[key]) {
+            svcMap[key] = { description: desc, prices: [], counterparties: {}, category: r.category || '' };
+          }
+          svcMap[key].prices.push({ value: r.value, dir: r.energyState, when: r.timestamp });
+          if (r.counterparty) svcMap[key].counterparties[r.counterparty] = 1;
+        });
+        var services = {};
+        Object.keys(svcMap).forEach(function(key) {
+          var s = svcMap[key];
+          var vals = s.prices.map(function(p) { return p.value; });
+          var provided = s.prices.filter(function(p) { return p.dir === 'provided'; });
+          var received = s.prices.filter(function(p) { return p.dir === 'received'; });
+          services[key] = {
+            desc: s.description,
+            cat: s.category,
+            n: s.prices.length,
+            g: provided.length,
+            r: received.length,
+            people: Object.keys(s.counterparties).length,
+            low: Math.min.apply(null, vals),
+            high: Math.max.apply(null, vals),
+            avg: Math.round(vals.reduce(function(a, b) { return a + b; }, 0) / vals.length),
+            prices: s.prices.slice(-10).map(function(p) { return { v: p.value, d: p.dir, w: p.when }; })
+          };
+        });
+        extras._services = services;
+      }
+      sendEncryptedSnapshot(extras);
+    }
+
     // Determine session role
     if (exInitiatorRole) {
-      // I'm the initiator — I already chose my role
+      // I'm the initiator -- I already chose my role
       sessionRole = exInitiatorRole === 'provider' ? 'proposer' : 'confirmer';
     } else {
-      // I'm the joiner — take complement of partner's role
-      var partnerRole = null;
-      try { partnerRole = sessionPartner.thread_snapshot ? JSON.parse(sessionPartner.thread_snapshot)._role || sessionPartner.thread_snapshot._role : null; } catch(e) {}
-      // thread_snapshot might already be parsed
-      if (!partnerRole && sessionPartner.thread_snapshot) {
-        try {
-          var snap = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
-          partnerRole = snap._role;
-        } catch(e2) {}
+      // I'm the joiner -- take complement of partner's role
+      // Check partner.role field first (Option B), fall back to snapshot._role (old clients)
+      var partnerRole = sessionPartner.role || null;
+      if (!partnerRole) {
+        try { partnerRole = sessionPartner.thread_snapshot ? (typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot)._role : null; } catch(e) {}
       }
       if (partnerRole === 'provider') {
         sessionRole = 'confirmer'; // partner provides, I receive
@@ -5753,7 +5832,7 @@ function init() {
     const theirFp = sessionPartner.fingerprint || '';
     const sasCode = await computeSAS(myFp, theirFp);
 
-    // Get partner name from snapshot
+    // Get partner name from snapshot (may not be available yet)
     let partnerName = 'Connected';
     let partnerInitial = '?';
     try {
@@ -5769,6 +5848,19 @@ function init() {
     document.getElementById('ex-verify-name').textContent = partnerName;
     document.getElementById('ex-sas-code').textContent = sasCode;
     showExStep('verify');
+
+    // Poll for partner's encrypted snapshot if not yet received
+    if (!sessionPartner._snapshotDecrypted && sessionSharedKey) {
+      startSnapshotPoll(function(decrypted) {
+        // Update verify screen with partner name if still showing
+        if (decrypted && decrypted._name) {
+          var nameEl = document.getElementById('ex-verify-name');
+          var avatarEl = document.getElementById('ex-verify-avatar');
+          if (nameEl) nameEl.textContent = decrypted._name;
+          if (avatarEl) avatarEl.textContent = decrypted._name.charAt(0).toUpperCase();
+        }
+      });
+    }
   }
 
   async function computeSAS(fpA, fpB) {
