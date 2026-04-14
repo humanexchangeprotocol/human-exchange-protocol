@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.34.1
+// APPLICATION LAYER v2.34.2
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -4130,8 +4130,13 @@ const PAIR_CODE_LENGTH = 4;
   let relayPollTimer = null;
 
   function getWitnessUrl() {
-    const url = (state.settings.witnessUrl || '').trim().replace(/\/+$/, '');
-    return url || null;
+    const raw = (state.settings.witnessUrl || '').trim().replace(/\/+$/, '');
+    if (!raw) return DEFAULT_WITNESS_URL;
+    // Local network addresses are never valid witness servers in production
+    if (/^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost)/i.test(raw)) {
+      return DEFAULT_WITNESS_URL;
+    }
+    return raw;
   }
 
   // Wrapper for all server fetch calls — adds headers needed for tunneling services
@@ -4536,8 +4541,10 @@ const PAIR_CODE_LENGTH = 4;
 
   async function testWitnessConnection() {
     const statusEl = document.getElementById('witness-status');
+    const urlEl = document.getElementById('witness-url-display');
     if (!statusEl) return;
     const url = getWitnessUrl();
+    if (urlEl) urlEl.textContent = url || '';
     if (!url) { statusEl.textContent = 'No server configured'; statusEl.style.color = 'var(--text-dim)'; return; }
     statusEl.textContent = 'Connecting...';
     statusEl.style.color = 'var(--text-dim)';
@@ -4621,10 +4628,12 @@ const PAIR_CODE_LENGTH = 4;
       state.fingerprint = await HCP.keyFingerprint(r.publicKeyJwk);
       if (bk.declarations) state.declarations = Object.assign(state.declarations, bk.declarations);
       if (bk.settings) state.settings = Object.assign(state.settings, bk.settings);
+      // Witness URL is a device setting, not a chain property — never import it
+      state.settings.witnessUrl = DEFAULT_WITNESS_URL;
       state.pin = pin; await saveKeys(pin); save(); state.initialized = true; refreshHome();
       showScreen('home'); closeModal('settings'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
       handleIncomingPayload(); checkPingOnOpen(); checkPhotoNudge();
-    } catch(e) { toast('Import failed: ' + e.message); }
+    } catch(e) { console.error('Import error:', e); toast('Import failed: ' + e.message); }
     event.target.value = '';
   }
 
