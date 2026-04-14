@@ -1682,6 +1682,7 @@ const PAIR_CODE_LENGTH = 4;
   let sessionPartner = null;
   let sessionProposal = null;
   let sessionActiveTab = 'texture';
+  let sessionSharedKey = null; // ECDH-derived AES key for encrypted relay
 
   function coopReceiveProposal() {
     closeModal('cooperate');
@@ -1836,7 +1837,7 @@ const PAIR_CODE_LENGTH = 4;
 
       if (data.connected) {
         sessionPartner = data.partner;
-        onSessionConnected();
+        await onSessionConnected();
       } else {
         document.getElementById('session-status-line').textContent = 'Waiting for them to connect...';
         document.getElementById('session-content').style.display = 'block';
@@ -2128,11 +2129,18 @@ const PAIR_CODE_LENGTH = 4;
     return h;
   }
 
-  function onSessionConnected() {
+  async function onSessionConnected() {
     document.getElementById('session-status-line').textContent = 'Connected';
     const content = document.getElementById('session-content');
     content.style.display = 'block';
     sessionActiveTab = 'texture';
+
+    // Derive ECDH shared key for encrypted relay
+    try {
+      if (sessionPartner && sessionPartner.public_key && state.privateKeyJwk) {
+        sessionSharedKey = await HCP.deriveSharedKey(state.privateKeyJwk, sessionPartner.public_key);
+      }
+    } catch(ek) { console.log('[session] ECDH key derivation failed:', ek.message); sessionSharedKey = null; }
 
     // Partner info
     let html = '<div class="session-partner">' +
@@ -2193,23 +2201,50 @@ const PAIR_CODE_LENGTH = 4;
       var proposePhotoHash = '';
       try { if (state.declarations.photo) proposePhotoHash = await sensorSha256(state.declarations.photo); } catch(ph) {}
 
+      // Exchange content to encrypt
+      const exchangeContent = {
+        value: pp.details.value,
+        direction: pp.details.energyState,
+        description: pp.details.description,
+        category: pp.details.category || '',
+        duration: pp.details.duration || 0,
+        photo: state.declarations.photo || ''
+      };
+
+      // Build request body: attestation metadata always plaintext, exchange content encrypted if possible
+      const body = {
+        device_ts: Date.now(),
+        sensor_hash: _cachedDeviceHash,
+        platform: navigator.platform,
+        geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '',
+        device_hash: _cachedDeviceHash,
+        photo_hash: proposePhotoHash,
+      };
+
+      if (sessionSharedKey) {
+        // Encrypted path: server carries opaque blob
+        body.encrypted_exchange = await HCP.encryptRelayPayload(exchangeContent, sessionSharedKey);
+        // Placeholder values so server schema doesn't break
+        body.value = 0;
+        body.direction = '';
+        body.description = '';
+        body.category = '';
+        body.duration = 0;
+        body.photo = '';
+      } else {
+        // Fallback: plaintext (pre-encryption clients or key derivation failure)
+        body.value = exchangeContent.value;
+        body.direction = exchangeContent.direction;
+        body.description = exchangeContent.description;
+        body.category = exchangeContent.category;
+        body.duration = exchangeContent.duration;
+        body.photo = exchangeContent.photo;
+      }
+
       const resp = await serverFetch(url + '/session/' + sessionCode + '/propose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          value: pp.details.value,
-          direction: pp.details.energyState,
-          description: pp.details.description,
-          category: pp.details.category || '',
-          duration: pp.details.duration || 0,
-          device_ts: Date.now(),
-          sensor_hash: _cachedDeviceHash,
-          platform: navigator.platform,
-          geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '',
-          device_hash: _cachedDeviceHash,
-          photo: state.declarations.photo || '',
-          photo_hash: proposePhotoHash,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!resp.ok) {
@@ -2279,7 +2314,7 @@ const PAIR_CODE_LENGTH = 4;
       if (!sessionPartner && data.connected) {
         sessionPartner = data.partner;
         stopSessionPoll();
-        onSessionConnected();
+        await onSessionConnected();
         return;
       }
 
@@ -2287,6 +2322,18 @@ const PAIR_CODE_LENGTH = 4;
       if (sessionRole === 'confirmer' && data.proposal && data.proposal.status === 'pending') {
         stopSessionPoll();
         sessionProposal = data.proposal;
+        // Decrypt exchange content if encrypted
+        if (sessionProposal.encrypted_exchange && sessionSharedKey) {
+          try {
+            const dec = await HCP.decryptRelayPayload(sessionProposal.encrypted_exchange, sessionSharedKey);
+            sessionProposal.value = dec.value;
+            sessionProposal.direction = dec.direction;
+            sessionProposal.description = dec.description;
+            sessionProposal.category = dec.category;
+            sessionProposal.duration = dec.duration;
+            sessionProposal.proposer_photo = dec.photo;
+          } catch(de) { console.log('[session] Decrypt failed:', de.message); }
+        }
         if (exFlowActive) {
           // Don't auto-render — show a button so receiver can finish browsing
           exShowProposalReady();
@@ -2477,6 +2524,27 @@ const PAIR_CODE_LENGTH = 4;
   async function completeSessionExchange(data) {
     // Proposer: the confirmer has confirmed. Write proposer's chain.
     if (!data.proposal || !sessionPartner) return;
+    // Decrypt exchange content if encrypted
+    if (data.proposal.encrypted_exchange && sessionSharedKey) {
+      try {
+        const dec = await HCP.decryptRelayPayload(data.proposal.encrypted_exchange, sessionSharedKey);
+        data.proposal.value = dec.value;
+        data.proposal.direction = dec.direction;
+        data.proposal.description = dec.description;
+        data.proposal.category = dec.category;
+        data.proposal.duration = dec.duration;
+        data.proposal.proposer_photo = dec.photo;
+      } catch(de) {
+        // Fallback: use local pending proposal values
+        if (state.pendingProposal) {
+          data.proposal.value = state.pendingProposal.details.value;
+          data.proposal.direction = state.pendingProposal.details.energyState;
+          data.proposal.description = state.pendingProposal.details.description;
+          data.proposal.category = state.pendingProposal.details.category;
+          data.proposal.duration = state.pendingProposal.details.duration;
+        }
+      }
+    }
     await writeSessionRecord('proposer', data, '');
   }
 
@@ -2646,6 +2714,7 @@ const PAIR_CODE_LENGTH = 4;
     sessionPartner = null;
     sessionProposal = null;
     sessionRole = null;
+    sessionSharedKey = null;
     sessionActiveTab = 'texture';
     _sessionWritten = false;
     _pollBusy = false;
@@ -5647,6 +5716,13 @@ function init() {
 
   async function exOnConnected() {
     if (!sessionPartner) return;
+
+    // Derive ECDH shared key for encrypted relay
+    try {
+      if (sessionPartner.public_key && state.privateKeyJwk) {
+        sessionSharedKey = await HCP.deriveSharedKey(state.privateKeyJwk, sessionPartner.public_key);
+      }
+    } catch(ek) { console.log('[ex-flow] ECDH key derivation failed:', ek.message); sessionSharedKey = null; }
 
     // Determine session role
     if (exInitiatorRole) {

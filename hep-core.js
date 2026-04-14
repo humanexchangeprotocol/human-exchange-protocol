@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.34.2';
+const APP_VERSION='2.35.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -456,7 +456,37 @@ async function cmh(iPub,cPub,ts){const s=iPub.x+':'+iPub.y+':'+cPub.x+':'+cPub.y
 async function chi(iPub,cPub,ts){return await cmh(iPub,cPub,ts)}
 function psp(j){const d=JSON.parse(j);if(d.a!=='st')throw new Error('Not a settlement');if(!d.f||!d.o)throw new Error('Missing fingerprints');return{fp:d.f,confirmFp:d.o,ts:d.z}}
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf}
+// --- ECDH relay encryption ---
+// Derives a shared AES-256-GCM key from two P-256 key pairs via ECDH.
+// Same curve as ECDSA signing keys. Re-imports with ECDH algorithm.
+async function dsk(myPrivJwk,theirPubJwk){
+  const priv=await crypto.subtle.importKey('jwk',
+    {kty:myPrivJwk.kty,crv:myPrivJwk.crv,x:myPrivJwk.x,y:myPrivJwk.y,d:myPrivJwk.d},
+    {name:'ECDH',namedCurve:'P-256'},false,['deriveBits']);
+  const pub=await crypto.subtle.importKey('jwk',
+    {kty:theirPubJwk.kty,crv:theirPubJwk.crv,x:theirPubJwk.x,y:theirPubJwk.y},
+    {name:'ECDH',namedCurve:'P-256'},true,[]);
+  const bits=await crypto.subtle.deriveBits({name:'ECDH',public:pub},priv,256);
+  return await crypto.subtle.importKey('raw',bits,{name:AESN},false,['encrypt','decrypt']);
+}
+// Encrypts a payload object for relay transport. Returns base64 string (IV + ciphertext).
+async function erp(obj,sharedKey){
+  const iv=rb(IVL);
+  const ct=await crypto.subtle.encrypt({name:AESN,iv},sharedKey,u8.encode(JSON.stringify(obj)));
+  const combined=new Uint8Array(IVL+ct.byteLength);
+  combined.set(iv);combined.set(new Uint8Array(ct),IVL);
+  return btb(combined);
+}
+// Decrypts a relay payload. Input is the base64 string from erp().
+async function drp(b64,sharedKey){
+  const raw=new Uint8Array(btf(b64));
+  const iv=raw.slice(0,IVL);
+  const ct=raw.slice(IVL);
+  const plain=await crypto.subtle.decrypt({name:AESN,iv},sharedKey,ct);
+  return JSON.parse(u8d.decode(plain));
+}
+
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp}
 })();
 
 // ============================================================
