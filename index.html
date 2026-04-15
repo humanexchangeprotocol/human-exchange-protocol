@@ -734,75 +734,20 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <h1>Human Exchange Protocol</h1>
   <div class="subtitle">A record of what people do for each other</div>
 
-  <!-- WELCOME SCREEN 1: What This Is -->
+  <!-- WELCOME: Brief intro -->
   <div id="setup-welcome1" class="step active">
-    <span class="welcome-icon">&#9741;</span>
-    <div style="text-align:center; margin-bottom:16px;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous thread? Import here</button></div>
-    <div class="welcome-dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-    <div class="guidance" style="text-align:center; font-size:17px; color:var(--accent); font-weight:500;">
-      Welcome to the Human Exchange Protocol
+    <span class="welcome-icon" style="font-size:48px;">&#129309;</span>
+    <div class="guidance" style="text-align:center; font-size:18px; color:var(--accent); font-weight:600; margin-bottom:4px;">
+      Human Exchange Protocol
     </div>
-    <div class="guidance">
-      For most of human history, people cooperated without money. They helped each other, built things together, cared for each other, and kept track the only way they could: by remembering.
+    <div class="guidance" style="text-align:center; line-height:1.7;">
+      Record cooperative acts between people. When you help someone or they help you, both of you record it here. The record belongs to you, lives on your device, and builds over time into a tamper-evident history of who you are in relation to others.
     </div>
-    <div class="guidance">
-      As communities grew, memory was not enough. A system was needed to track who did what for whom. Money became that system. It solved real problems, but it also created new ones. After thousands of years, most human effort is invisible to the economy. The things you do for the people around you — the care, the knowledge, the labor — go unrecognized and unvalued. When they are recognized, they are often thought of as an expense rather than a contribution.
+    <div class="guidance" style="text-align:center; color:var(--text-dim); line-height:1.7;">
+      No bank. No platform. No permission needed. Just two people agreeing that something real happened.
     </div>
-    <div class="guidance">
-      This app picks up where memory left off, using modern tools. When two people cooperate and both confirm what happened, that act is permanently recorded on each of their own personal threads. Nothing is printed. Nothing is issued. Two people agreed that something real happened, and now it lives on both of their threads.
-    </div>
-    <button class="btn btn-primary" onclick="App.setupStep('welcome2')">Continue</button>
-  </div>
-
-  <!-- WELCOME SCREEN 2: Why It's Trustworthy -->
-  <div id="setup-welcome2" class="step">
-    <span class="welcome-icon">&#128279;</span>
-    <div class="welcome-dots"><span class="dot"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span></div>
-    <div class="guidance">
-      The way modern civilization works, we consent to trust systems outside of ourselves. Banks, governments, private companies, fiat money, cryptocurrencies. We trust institutions to manage our value, our identity, our transactions. This is exogenous trust. It comes from outside of you.
-    </div>
-    <div class="guidance">
-      <strong>This is the opposite.</strong> Here, trust is endogenous. It comes from within. It is built from your own cooperation, one act at a time. Every act on your thread was confirmed by another real person. No one can fabricate cooperation alone. As your thread grows, it becomes evidence, not of wealth, but of who you are in relation to others.
-    </div>
-    <div class="guidance">
-      That evidence is what makes your record meaningful to people you have not met yet. The more honestly you participate, the more your thread speaks for you.
-    </div>
-    <button class="btn btn-primary" onclick="App.setupStep('welcome3')">Continue</button>
-    <div style="margin-top:10px; text-align:center;"><button class="btn" style="background:none; color:var(--text-faint); font-size:13px;" onclick="App.setupStep('welcome1')">&larr; Back</button></div>
-  </div>
-
-  <!-- WELCOME SCREEN 3: Economics & Cooperation -->
-  <div id="setup-welcome3" class="step">
-    <span class="welcome-icon">&#128161;</span>
-    <div class="welcome-dots"><span class="dot"></span><span class="dot"></span><span class="dot active"></span><span class="dot"></span></div>
-    <div class="guidance">
-      <strong>You already understand this.</strong> When a child throws a ball, they do not know the theory of physics, but they understand physics. The same is true for economics. You may not know the academic language, but you understand economics deeply. You know what feels fair. You know when something costs too much. You know when someone is being generous.
-    </div>
-    <div class="guidance">
-      Economics has been the driving force of human development since the very beginning, long before any record was ever kept, long before money, long before institutions. It is an underlying principle of human survival and cooperation. And that cooperation is what gave humans exponential growth potential. Two people working together do not just produce twice as much. They produce something qualitatively different that neither could create alone. That compounding effect is what built civilizations.
-    </div>
-    <div class="guidance">
-      You will be tempted to think about this in terms of money. That is natural. Everyone goes through it. But this is not money. This is not debt. This is a record of your cooperative life. The things money could not care less about, the effort you give to the people around you, matter here.
-    </div>
-    <div class="guidance">
-      Early exchanges are how you learn. There is no harm in getting it wrong. The system is designed so that every exchange after a mistake makes the mistake less significant. Approach it thoughtfully. Give yourself time. The rest will come.
-    </div>
-    <button class="btn btn-primary" onclick="App.setupStep('welcome4')">Continue</button>
-    <div style="margin-top:10px; text-align:center;"><button class="btn" style="background:none; color:var(--text-faint); font-size:13px;" onclick="App.setupStep('welcome2')">&larr; Back</button></div>
-  </div>
-
-  <!-- WELCOME SCREEN 4: Ready -->
-  <div id="setup-welcome4" class="step">
-    <span class="welcome-icon">&#10024;</span>
-    <div class="welcome-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot active"></span></div>
-    <div class="guidance" style="text-align:center; font-size:16px; color:var(--text); line-height:1.7;">
-      Feel free to go back and read through these ideas again. Everything here, along with other learning tools, will be available inside the app whenever you want them.
-    </div>
-    <div class="guidance" style="text-align:center; color:var(--text-dim);">
-      When you are ready, continue to set up your identity.
-    </div>
-    <button class="btn btn-primary" onclick="App.setupStep('pin')">Get Started</button>
-    <div style="margin-top:10px; text-align:center;"><button class="btn" style="background:none; color:var(--text-faint); font-size:13px;" onclick="App.setupStep('welcome3')">&larr; Back</button></div>
+    <button class="btn btn-primary" onclick="App.setupStep('pin')" style="margin-top:12px;">Get Started</button>
+    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous thread? Import here</button></div>
   </div>
 
   <!-- INSTALL FIRST (iOS) -->
