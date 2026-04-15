@@ -1403,17 +1403,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP 2: Verify (SAS) -->
       <div class="hs-step" id="ex-step-verify">
-        <div class="ex-progress">
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg active"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-        </div>
-        <div style="text-align:center; margin-bottom:16px;">
-          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 2 of 5</div>
-          <div style="font-size:17px; font-weight:600; color:var(--text);">Is this the right person?</div>
-        </div>
         <div class="connect-partner" id="ex-verify-partner" style="justify-content:center; flex-direction:column; align-items:center; padding:20px;">
           <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:10px;">?</div>
           <div class="cp-name" id="ex-verify-name" style="font-size:20px; margin-bottom:6px;">Connected</div>
@@ -1431,17 +1420,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP 3: Texture review -->
       <div class="hs-step" id="ex-step-texture">
-        <div class="ex-progress">
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg active"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-        </div>
-        <div style="text-align:center; margin-bottom:16px;">
-          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 3 of 5</div>
-          <div style="font-size:17px; font-weight:600; color:var(--text);">Review their chain</div>
-        </div>
         <div id="ex-texture-content">
           <!-- Populated by JS: texture summary + optional tab viewer -->
         </div>
@@ -1451,16 +1429,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP 4: Role selection -->
       <div class="hs-step" id="ex-step-role">
-        <div class="ex-progress">
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg active"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-        </div>
         <div style="text-align:center; margin-bottom:20px;">
-          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 4 of 6</div>
           <div style="font-size:17px; font-weight:600; color:var(--text);">What are you doing?</div>
         </div>
         <button class="btn btn-primary" style="width:100%; margin-bottom:10px; padding:18px;" onclick="App.exSelectRole('provider')">I'm providing</button>
@@ -1470,32 +1439,23 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP: Waiting for provider to set up exchange (receiver path) -->
       <div class="hs-step" id="ex-step-receiver-wait">
-        <div class="ex-progress">
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg done"></div>
-          <div class="ex-progress-seg active"></div>
-          <div class="ex-progress-seg"></div>
+        <!-- Proposal card drops in here when ready -->
+        <div id="ex-rw-proposal" style="display:none;"></div>
+        <!-- Spinner (hidden when proposal arrives) -->
+        <div id="ex-rw-spinner" style="text-align:center; padding:24px 0 16px;">
+          <div style="width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; margin:0 auto 14px; animation:exSpin 1s linear infinite;"></div>
+          <div style="font-size:15px; font-weight:600; color:var(--text); margin-bottom:4px;" id="ex-rw-spinner-label">Waiting for their proposal</div>
+          <div style="font-size:13px; color:var(--text-dim);">Review their chain while you wait</div>
+          <style>@keyframes exSpin { to { transform: rotate(360deg); } }</style>
         </div>
-        <div style="text-align:center; margin-bottom:16px;">
-          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 4 of 5</div>
-          <div style="font-size:17px; font-weight:600; color:var(--text);" id="ex-receiver-wait-title">Waiting for their proposal</div>
-        </div>
-        <!-- Sticky proposal notification -->
-        <div id="proposal-ready-banner" style="display:none; padding:10px 14px; background:var(--bg-card,#fff); border:1px solid rgba(43,140,62,0.4); border-radius:var(--radius); margin-bottom:12px; cursor:pointer;" onclick="App.exViewProposal()">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <div style="width:10px; height:10px; border-radius:50%; background:var(--green); flex-shrink:0; animation:pulse 1.5s infinite;"></div>
-            <div style="flex:1; font-size:14px; font-weight:500; color:var(--green);">Proposal received</div>
-            <div style="font-size:13px; color:var(--text-dim);">Tap to review &#8250;</div>
-          </div>
-        </div>
-        <div id="ex-receiver-wait-content">
-          <!-- Chain browser while waiting -->
-        </div>
-        <div class="pair-status resolving" style="margin-top:16px;">
-          <div class="ps-icon">&#9203;</div>
-          <div class="ps-text" id="ex-receiver-wait-text">The other person is setting up the exchange. Their proposal will appear here.</div>
-        </div>
+        <!-- Chain data tiles (always available) -->
+        <div id="ex-rw-tiles"></div>
+        <!-- Cancel -->
+        <button class="btn btn-secondary" style="width:100%; margin-top:16px; color:var(--text-faint);" onclick="App.closeExchange()" id="ex-rw-cancel">Cancel exchange</button>
+        <!-- Hidden elements for compat -->
+        <div id="ex-receiver-wait-title" style="display:none;">Waiting for their proposal</div>
+        <div id="ex-receiver-wait-content" style="display:none;"></div>
+        <div id="proposal-ready-banner" style="display:none;"></div>
       </div>
 
       <!-- ===== END NEW 8-STEP FLOW ===== -->

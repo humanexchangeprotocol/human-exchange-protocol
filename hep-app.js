@@ -7539,31 +7539,217 @@ function init() {
   }
 
   function exViewProposal() {
-    var banner = document.getElementById('proposal-ready-banner');
-    if (banner) banner.style.display = 'none';
-    exRenderProposalReview();
+    exShowProposalReady();
   }
 
   function exRenderReceiverWait() {
-    const container = document.getElementById('ex-receiver-wait-content');
-    // Reset proposal banner
-    var banner = document.getElementById('proposal-ready-banner');
-    if (banner) banner.style.display = 'none';
+    // Reset proposal area
+    var proposalEl = document.getElementById('ex-rw-proposal');
+    if (proposalEl) { proposalEl.style.display = 'none'; proposalEl.innerHTML = ''; }
+    var spinnerEl = document.getElementById('ex-rw-spinner');
+    if (spinnerEl) spinnerEl.style.display = 'block';
+    var cancelEl = document.getElementById('ex-rw-cancel');
+    if (cancelEl) { cancelEl.textContent = 'Cancel exchange'; cancelEl.onclick = function() { App.closeExchange(); }; }
+
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     var name = (ts && ts._name) || 'the other person';
 
-    var html = '<div style="text-align:center; padding-top:40px;">';
-    html += '<div style="width:48px; height:48px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; margin:0 auto 20px; animation:exSpin 1s linear infinite;"></div>';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:8px;">Waiting for ' + esc(name) + '\'s proposal</div>';
-    html += '<div style="font-size:14px; color:var(--text-dim); line-height:1.5;">They\'re filling out the exchange details.<br>This screen will update automatically.</div>';
-    html += '<style>@keyframes exSpin { to { transform: rotate(360deg); } }</style>';
+    // Update spinner label
+    var spinLabel = document.getElementById('ex-rw-spinner-label');
+    if (spinLabel) spinLabel.textContent = 'Waiting for ' + name + '\'s proposal';
+
+    var tilesEl = document.getElementById('ex-rw-tiles');
+    if (!tilesEl) return;
+
+    var html = '';
+
+    // --- Their Pricing tile (most relevant while waiting) ---
+    var services = (ts && ts._services) || {};
+    var svcKeys = Object.keys(services);
+    if (svcKeys.length > 0) {
+      // Group by category
+      var byCat = {};
+      svcKeys.forEach(function(key) {
+        var s = services[key];
+        var cat = (s.cat || '').trim() || 'Uncategorized';
+        if (!byCat[cat]) byCat[cat] = { items: [], totalN: 0 };
+        byCat[cat].items.push(s);
+        byCat[cat].totalN += s.n;
+      });
+      var catNames = Object.keys(byCat).sort();
+
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
+      html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-rw-pricing-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+      html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Their Pricing</span>';
+      html += '<div style="display:flex; align-items:center; gap:8px;">';
+      html += '<span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:var(--accent-light); color:var(--accent);">' + catNames.length + ' categories</span>';
+      html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+      html += '</div></button>';
+      html += '<div id="ex-rw-pricing-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px;">';
+      catNames.forEach(function(cat) {
+        var catData = byCat[cat];
+        // Aggregate across items in this category
+        var allVals = [];
+        catData.items.forEach(function(s) {
+          if (s.low != null) allVals.push(s.low);
+          if (s.high != null) allVals.push(s.high);
+        });
+        var catLow = allVals.length ? Math.min.apply(null, allVals) : 0;
+        var catHigh = allVals.length ? Math.max.apply(null, allVals) : 0;
+        var catAvg = catData.items.reduce(function(sum, s) { return sum + (s.avg || 0); }, 0) / catData.items.length;
+        catAvg = Math.round(catAvg);
+        html += '<div style="margin-bottom:12px;" id="ex-rw-cat-' + cat.replace(/[^a-zA-Z0-9]/g, '_') + '">';
+        html += '<div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">';
+        html += '<span style="font-weight:500; color:var(--text);">' + esc(cat) + '</span>';
+        html += '<span style="color:var(--text-faint);">' + catData.totalN + ' exchanges</span>';
+        html += '</div>';
+        if (catLow !== catHigh) {
+          html += exRenderRangeBar(catLow, catHigh, catAvg, null);
+        } else {
+          html += '<div style="font-size:12px; color:var(--text-faint);">Consistent at ' + catAvg + '</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    // --- Chain Health tile (collapsed recap) ---
+    if (ts && ts.n) {
+      var n = ts.n || 0;
+      var g = ts.give || 0;
+      var r = ts.receive || 0;
+      var people = ts.counterparties ? Object.keys(ts.counterparties).length : 0;
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
+      html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-rw-health-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+      html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Chain Health</span>';
+      html += '<div style="display:flex; align-items:center; gap:8px;">';
+      html += '<span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:var(--green-light,rgba(43,140,62,0.08)); color:var(--green);">' + n + ' exchanges</span>';
+      html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+      html += '</div></button>';
+      html += '<div id="ex-rw-health-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px;">';
+      html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">';
+      html += '<div style="background:var(--green-light,rgba(43,140,62,0.08)); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--green);">' + g + '</div><div style="font-size:11px; color:var(--text-dim);">Provided</div></div>';
+      html += '<div style="background:var(--accent-light,rgba(42,90,143,0.08)); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--accent);">' + r + '</div><div style="font-size:11px; color:var(--text-dim);">Received</div></div>';
+      html += '</div>';
+      html += '<div style="font-size:13px;">';
+      html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--text-dim);">People</span><span style="font-weight:600; color:var(--text);">' + people + '</span></div>';
+      html += '</div></div></div>';
+    }
+
+    tilesEl.innerHTML = html;
+  }
+
+  function exShowProposalReady() {
+    if (!sessionProposal) return;
+
+    var p = sessionProposal;
+    var proposedValue = p.value;
+    var serviceDesc = (p.description || '').trim();
+    var serviceKey = serviceDesc.toLowerCase();
+    var serviceCat = (p.category || '').trim();
+
+    // Get partner info
+    var providerSnap = null;
+    if (sessionPartner && sessionPartner.thread_snapshot) {
+      providerSnap = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
+    }
+    var providerName = (providerSnap && providerSnap._name) || 'Partner';
+    var provSvc = null;
+    if (providerSnap && providerSnap._services && providerSnap._services[serviceKey]) {
+      provSvc = providerSnap._services[serviceKey];
+    }
+
+    // Hide spinner
+    var spinnerEl = document.getElementById('ex-rw-spinner');
+    if (spinnerEl) spinnerEl.style.display = 'none';
+
+    // Build proposal card
+    var html = '';
+    html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:12px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
+
+    html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:12px;">';
+
+    // Direction badges
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+    if (p.direction === 'provided') {
+      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
+      html += '<span style="font-size:12px; color:var(--text-faint);">You received</span>';
+    } else {
+      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
+      html += '<span style="font-size:12px; color:var(--text-faint);">You provided</span>';
+    }
     html += '</div>';
 
-    // Cancel exchange button
-    html += '<button class="btn btn-secondary" style="width:100%; margin-top:32px; color:var(--text-faint);" onclick="App.closeExchange()">Cancel exchange</button>';
+    // Description
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">What was done</div>';
+    html += '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
+    html += '</div>';
 
-    container.innerHTML = html;
+    // Category + Duration
+    html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
+    if (serviceCat) {
+      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Category</div>';
+      html += '<div style="font-size:14px; color:var(--text);">' + esc(serviceCat) + '</div></div>';
+    }
+    if (p.duration) {
+      var dH = Math.floor(p.duration / 60);
+      var dM = p.duration % 60;
+      var dStr = '';
+      if (dH) dStr += dH + ' hour' + (dH > 1 ? 's' : '');
+      if (dM) dStr += (dStr ? ' ' : '') + dM + ' min';
+      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Duration</div>';
+      html += '<div style="font-size:14px; color:var(--text);">' + esc(dStr) + '</div></div>';
+    }
+    html += '</div>';
+
+    // Value
+    html += '<div style="border-top:1px solid var(--border); padding-top:12px;">';
+    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
+    html += '<div style="font-size:28px; font-weight:700; color:var(--accent); font-family:var(--font-mono,monospace);">' + Number(proposedValue).toLocaleString() + '</div>';
+    html += '</div>';
+
+    // Pricing context for this specific category
+    if (provSvc && provSvc.n > 0 && provSvc.low != null) {
+      html += '<div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">';
+      html += '<div style="font-size:11px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">';
+      html += esc(providerName) + '\'s ' + (serviceCat ? esc(serviceCat.toLowerCase()) : 'service') + ' range</div>';
+      html += exRenderRangeBar(provSvc.low, provSvc.high, provSvc.avg, proposedValue);
+      var diff = proposedValue - provSvc.avg;
+      var pctDiff = provSvc.avg > 0 ? Math.abs(Math.round((diff / provSvc.avg) * 100)) : 0;
+      if (pctDiff <= 10) {
+        html += '<div style="font-size:11px; color:var(--text-faint);">This value is near their average</div>';
+      } else if (proposedValue > provSvc.high) {
+        html += '<div style="font-size:11px; color:var(--warning,#e67e22);">This value is above their usual range</div>';
+      } else if (proposedValue < provSvc.low) {
+        html += '<div style="font-size:11px; color:var(--accent);">This value is below their usual range</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>'; // end card
+
+    // Confirm / reject
+    html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%; margin-bottom:8px;" onclick="App.sessionConfirm()">Confirm exchange</button>';
+    html += '<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" onclick="App.sessionReject()">This doesn\'t look right</button>';
+
+    // Show it
+    var proposalEl = document.getElementById('ex-rw-proposal');
+    if (proposalEl) {
+      proposalEl.innerHTML = html;
+      proposalEl.style.display = 'block';
+    }
+
+    // Auto-expand the pricing tile for the relevant category
+    if (serviceCat) {
+      var pricingDetail = document.getElementById('ex-rw-pricing-detail');
+      if (pricingDetail) pricingDetail.style.display = 'block';
+    }
+
+    // Update cancel button
+    var cancelEl = document.getElementById('ex-rw-cancel');
+    if (cancelEl) cancelEl.style.display = 'none';
   }
 
   function exRenderServiceCategory(catName, items, totalCount) {
