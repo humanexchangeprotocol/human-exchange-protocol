@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.0
+// APPLICATION LAYER v2.39.1
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
