@@ -7623,9 +7623,29 @@ function init() {
     }
   }
 
+  var fabOpen = false;
+  function toggleFab() {
+    fabOpen = !fabOpen;
+    var menu = document.getElementById('fab-menu');
+    var btn = document.getElementById('fab-exchange');
+    if (fabOpen) {
+      menu.style.display = 'flex';
+      btn.classList.add('open');
+    } else {
+      menu.style.display = 'none';
+      btn.classList.remove('open');
+    }
+  }
+
+  function fabAction(action) {
+    toggleFab(); // close menu
+    if (action === 'provide') exStartProviding();
+    else if (action === 'join') exJoinExchange();
+  }
+
   return {
     init, setupStep, completeSetup: completeSetupWrapped,
-    switchTab, histFilter, shareApp,
+    switchTab, histFilter, shareApp, toggleFab, fabAction,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,

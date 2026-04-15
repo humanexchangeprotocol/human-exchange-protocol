@@ -87,6 +87,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .fab { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(42,90,143,0.3); z-index: 99; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
 .fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(42,90,143,0.2); }
 .fab svg { width: 26px; height: 26px; }
+.fab.open { transform: rotate(45deg); }
+.fab-menu { position: fixed; bottom: calc(136px + var(--safe-bottom)); right: 20px; z-index: 99; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+.fab-option { display: flex; align-items: center; gap: 10px; }
+.fab-option-label { padding: 6px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text); box-shadow: var(--shadow); white-space: nowrap; }
+.fab-option-btn { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.12); cursor: pointer; }
 
 /* === HISTORY PILLS === */
 .hist-pill { padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
@@ -1211,8 +1216,22 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="tab-content-inner" id="tab-settings-content"></div>
   </div>
 
-  <!-- FAB: Start exchange -->
-  <button class="fab" onclick="App.exStartProviding()" aria-label="Start exchange" id="fab-exchange">
+  <!-- FAB: Exchange actions -->
+  <div class="fab-menu" id="fab-menu" style="display:none;">
+    <div class="fab-option" onclick="App.fabAction('join')">
+      <span class="fab-option-label">Join</span>
+      <div class="fab-option-btn" style="background:var(--accent);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+    </div>
+    <div class="fab-option" onclick="App.fabAction('provide')">
+      <span class="fab-option-label">Provide</span>
+      <div class="fab-option-btn" style="background:var(--green);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+      </div>
+    </div>
+  </div>
+  <button class="fab" onclick="App.toggleFab()" aria-label="Start exchange" id="fab-exchange">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
   </button>
 
