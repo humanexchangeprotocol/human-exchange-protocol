@@ -258,6 +258,7 @@ const PAIR_CODE_LENGTH = 4;
   function showScreen(id) { document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; }); const el = document.getElementById(id); el.classList.add('active'); el.style.display = 'flex'; }
   var _returnToWallet = false;
   function showModal(id) {
+    if (fabOpen) toggleFab();
     const el = document.getElementById(id + '-overlay');
     el.style.display = 'flex';
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('active')));
@@ -7351,6 +7352,8 @@ function init() {
 
   function switchTab(tab) {
     activeTab = tab;
+    // Close FAB menu when switching tabs
+    if (fabOpen) toggleFab();
     document.querySelectorAll('.tab-bar-item').forEach(function(el) {
       el.classList.toggle('active', el.getAttribute('data-tab') === tab);
     });
