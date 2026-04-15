@@ -141,8 +141,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .ex4-indicator { display: flex; align-items: center; padding: 12px 20px 8px; flex-shrink: 0; }
 
 /* Scroll fade indicator for long modal content */
-.modal-body { position: relative; }
-.modal-body::after { content: ''; position: sticky; bottom: 0; left: 0; right: 0; height: 32px; background: linear-gradient(to bottom, transparent, var(--bg-modal)); pointer-events: none; display: block; margin-top: -32px; z-index: 1; }
+/* Removed: was covering buttons on short screens. Revisit with JS-based scroll detection. */
 .ex4-step { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .ex4-num { width: 26px; height: 26px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text-faint); transition: all 0.3s ease; }
 .ex4-step.active .ex4-num { background: var(--accent); color: #FFFFFF; }

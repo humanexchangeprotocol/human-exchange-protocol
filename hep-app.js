@@ -7830,22 +7830,13 @@ function init() {
     html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
     html += '</div></div>';
 
-    var posLabel = balance > 0 ? 'net provider' : balance < 0 ? 'net receiver' : 'balanced';
-    var posColor = balance > 0 ? 'var(--green)' : balance < 0 ? 'var(--accent)' : 'var(--text-dim)';
-
-    // Position card
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Position</div>';
-    html += '<div style="font-size:var(--fs-xl); font-weight:700; color:' + posColor + ';">' + (balance >= 0 ? '+' : '') + balance + '</div>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-top:4px;">' + posLabel + '</div>';
-    html += '<div style="display:flex; gap:16px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">';
-    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Provided</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--green);">' + provided.length + '</div></div>';
-    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Received</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--accent);">' + received.length + '</div></div>';
-    html += '</div></div>';
-
-    // Participation card
+    // Participation card (no position/balance shown - person can check via wallet)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Participation</div>';
+    html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
+    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Provided</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--green);">' + provided.length + '</div></div>';
+    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Received</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--accent);">' + received.length + '</div></div>';
+    html += '</div>';
     html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">People</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(counterparties).length + '</span></div>';
     html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Categories</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(cats).length + '</span></div>';
     html += '<div style="display:flex; justify-content:space-between;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Total exchanges</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ex.length + '</span></div>';
@@ -7859,23 +7850,9 @@ function init() {
     }
     html += '</div>';
 
-    // Exchange actions
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="display:flex; gap:10px;">';
-    html += '<button class="btn btn-primary" style="flex:1; padding:14px;" onclick="App.fabNew()">New Exchange</button>';
-    if (ex.length > 0) {
-      html += '<button style="flex:1; padding:14px; background:none; border:1.5px solid var(--accent); color:var(--accent); border-radius:var(--radius); font-size:15px; font-weight:600;" onclick="App.fabUse()">Use Previous</button>';
-    }
-    html += '</div>';
-    html += '<div style="text-align:center; margin-top:10px;">';
-    html += '<span style="font-size:var(--fs-sm); color:var(--text-faint);">Have someone' + "'" + 's code? </span>';
-    html += '<span style="font-size:var(--fs-sm); color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.exJoinExchange()">Join their exchange</span>';
-    html += '</div>';
-    html += '</div>';
-
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
-      html += 'No exchanges yet. Tap <strong>New Exchange</strong> to start your first one.';
+      html += 'No exchanges yet. Tap <strong>+</strong> to start your first one.';
       html += '</div>';
     } else if (ex.length > 0) {
       // Recent activity (last 3)
