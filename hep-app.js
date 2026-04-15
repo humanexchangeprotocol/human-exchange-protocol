@@ -7467,12 +7467,12 @@ function init() {
       var valColor = isProv ? 'var(--green)' : 'var(--red)';
       var valSign = isProv ? '+' : '-';
       var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
-      // Clear directional SVG arrows: outgoing (top-right) for provided, incoming (bottom-left) for received
-      var arrowSvg = isProv
-        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>'
-        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/></svg>';
+      // Person + directional arrow: outgoing for provided, incoming for received
+      var personArrow = isProv
+        ? '<svg width="32" height="18" viewBox="0 0 32 18" fill="none" stroke="' + valColor + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3" fill="none"/><path d="M8 10c-3 0-5 1.5-5 3"/><line x1="20" y1="9" x2="28" y2="9"/><polyline points="25 6 28 9 25 12"/></svg>'
+        : '<svg width="32" height="18" viewBox="0 0 32 18" fill="none" stroke="' + valColor + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="7" r="3" fill="none"/><path d="M24 10c3 0 5 1.5 5 3"/><line x1="12" y1="9" x2="4" y2="9"/><polyline points="7 6 4 9 7 12"/></svg>';
       html += '<div class="hist-row" data-dir="' + r.energyState + '" style="display:flex; align-items:center; gap:12px; padding:14px 0; border-bottom:1px solid var(--border);">';
-      html += '<div style="width:36px; height:36px; border-radius:50%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; color:' + valColor + '; flex-shrink:0;">' + arrowSvg + '</div>';
+      html += '<div style="width:44px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; flex-shrink:0;">' + personArrow + '</div>';
       html += '<div style="flex:1; min-width:0;">';
       html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
       html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + '</div>';
@@ -7538,30 +7538,60 @@ function init() {
     var el = document.getElementById('tab-settings-content');
     if (!el) return;
     var html = '';
+
+    // Privacy
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; margin-top:4px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Identity</div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="color:var(--text-dim);">Name</span><span style="color:var(--text); font-weight:500;">' + esc(state.declarations.name || 'Not set') + '</span></div>';
-    html += '<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-dim);">Fingerprint</span><span style="color:var(--text); font-family:var(--font-mono); font-size:var(--fs-sm);">' + esc(state.fingerprint || '') + '</span></div>';
-    html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
-    html += '</div>';
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
     html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
     html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Hide counterparty names</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Names hidden in shared data</div></div>';
     html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
     html += '</div></div>';
+
+    // Network
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
     html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="color:var(--text-dim);">Witness server</span><span style="color:var(--text); font-size:var(--fs-sm);">' + esc(getWitnessUrl() || 'None') + '</span></div>';
+    html += '<div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-bottom:8px;"></div>';
     html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.testWitnessConnection()">Test connection</button>';
     html += '</div>';
+
+    // Data
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
-    html += '<div style="display:flex; gap:10px;">';
+    html += '<div style="display:flex; gap:10px; margin-bottom:10px;">';
     html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.exportBackup()">Export backup</button>';
     html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.importBackup()">Import backup</button>';
+    html += '</div>';
+    // Chain tools
+    html += '<div style="border-top:1px solid var(--border); padding-top:10px;">';
+    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openChainViewer()">';
+    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">View full chain</span>';
+    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
+    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openMyTexture()">';
+    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">Chain health</span>';
+    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
+    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openMyPricing()">';
+    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">Pricing history</span>';
+    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
     html += '</div></div>';
+
+    // Security
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Security</div>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.changePIN()">Change PIN</button>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.installFromSettings()">Install to home screen</button>';
+    html += '</div>';
+
+    // Danger zone
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--red-light); border-radius:var(--radius); padding:16px; margin-bottom:16px;">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--red); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Danger zone</div>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--red); border-radius:var(--radius-sm); color:var(--red); font-size:var(--fs-sm); font-weight:500;" onclick="App.deleteChain()">Delete chain</button>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:8px; line-height:1.5;">This permanently deletes your chain and keys. Export a backup first.</div>';
+    html += '</div>';
+
+    // Version
     html += '<div style="text-align:center; padding:16px 0; color:var(--text-faint); font-size:var(--fs-sm);">HEP v' + APP_VERSION + '</div>';
+
     el.innerHTML = html;
   }
 
