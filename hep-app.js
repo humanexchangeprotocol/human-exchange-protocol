@@ -4944,9 +4944,15 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function togglePrivacy(key) {
+    if (!key) key = 'hideNames'; // default for tab toggle
     state.settings[key] = !state.settings[key];
-    document.getElementById('switch-hide-names').classList.toggle('on', state.settings.hideNames);
-    document.getElementById('switch-hide-location').classList.toggle('on', state.settings.hideLocations);
+    // Update both old modal and new tab switches if they exist
+    var el1 = document.getElementById('switch-hide-names');
+    if (el1) el1.classList.toggle('on', state.settings.hideNames);
+    var el2 = document.getElementById('switch-hide-names-tab');
+    if (el2) el2.classList.toggle('on', state.settings.hideNames);
+    var el3 = document.getElementById('switch-hide-location');
+    if (el3) el3.classList.toggle('on', state.settings.hideLocations);
     save();
   }
 
