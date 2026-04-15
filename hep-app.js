@@ -4913,16 +4913,24 @@ const PAIR_CODE_LENGTH = 4;
       if (!resp.ok) return;
       const data = await resp.json();
       if (data.version && data.version !== APP_VERSION) {
-        const banner = document.getElementById('update-banner');
-        const bannerText = document.getElementById('update-banner-text');
-        const bannerLink = document.getElementById('update-banner-link');
-        if (banner) {
-          bannerText.textContent = 'Version ' + data.version + ' is available.';
-          if (data.url) bannerLink.href = data.url;
-          banner.classList.add('show');
+        showUpdateBanner('Version ' + data.version + ' is available.');
+        // Trigger SW update check so new files are cached
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistration().then(function(reg) {
+            if (reg) reg.update();
+          });
         }
       }
     } catch(e) { /* silent -- version check is optional */ }
+  }
+
+  function showUpdateBanner(msg) {
+    var banner = document.getElementById('update-banner');
+    var bannerText = document.getElementById('update-banner-text');
+    if (banner && bannerText) {
+      bannerText.textContent = msg || 'A new version is available.';
+      banner.classList.add('show');
+    }
   }
 
   // --- Settings ---
@@ -5631,10 +5639,37 @@ const PAIR_CODE_LENGTH = 4;
 
 function init() {
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
-      navigator.serviceWorker.register('./sw.js').catch(function(e) {
+      navigator.serviceWorker.register('./sw.js').then(function(reg) {
+        // Listen for new SW versions
+        reg.addEventListener('updatefound', function() {
+          var newSW = reg.installing;
+          if (newSW) {
+            newSW.addEventListener('statechange', function() {
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                // New version installed, waiting to activate
+                showUpdateBanner('Update ready. Tap to reload.');
+              }
+            });
+          }
+        });
+      }).catch(function(e) {
         console.log('[SW] Registration failed:', e.message);
       });
+
+      // Detect when a new SW takes control (after skipWaiting)
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        // New SW is active -- if we haven't reloaded yet, prompt
+        showUpdateBanner('Updated. Tap to reload.');
+      });
     }
+
+    // Check for updates when app comes back to foreground
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && state.fingerprint) {
+        checkForUpdates();
+      }
+    });
+
     initSensors();
     checkReferral();
     setupInstallPrompt();
