@@ -4971,7 +4971,9 @@ const PAIR_CODE_LENGTH = 4;
       bk.settings = state.settings;
       const blob = new Blob([JSON.stringify(bk, null, 2)], { type: 'application/json' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-      a.download = `${new Date().toISOString().replace(/[:.]/g, '-').split('T').join('_').slice(0,19)}_hep-backup-${state.fingerprint.slice(0,8)}.json`;
+      var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
+      var exportDate = new Date().toISOString().slice(0, 10);
+      a.download = 'HEP-Backup_' + exportName + '_' + exportDate + '.json';
       a.click(); URL.revokeObjectURL(a.href); toast('Backup downloaded');
     } catch(e) { toast('Backup failed'); }
   }
@@ -7653,11 +7655,14 @@ function init() {
     fabOpen = !fabOpen;
     var menu = document.getElementById('fab-menu');
     var btn = document.getElementById('fab-exchange');
+    var backdrop = document.getElementById('fab-backdrop');
     if (fabOpen) {
       menu.style.display = 'flex';
+      if (backdrop) backdrop.style.display = 'block';
       btn.classList.add('open');
     } else {
       menu.style.display = 'none';
+      if (backdrop) backdrop.style.display = 'none';
       btn.classList.remove('open');
     }
   }
