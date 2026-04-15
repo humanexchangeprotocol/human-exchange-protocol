@@ -7409,6 +7409,10 @@ function init() {
     html += '</div>';
     // Expanded panel
     html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
+    var aboutText = (state.declarations.about || '').trim();
+    if (aboutText) {
+      html += '<div style="margin-top:12px; font-size:var(--fs-md); color:var(--text-dim); line-height:1.5;">' + esc(aboutText) + '</div>';
+    }
     if (decls.length) {
       html += '<div style="margin-top:12px;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Skills</div>';
       html += '<div style="display:flex; flex-wrap:wrap; gap:6px;">';
@@ -7437,6 +7441,14 @@ function init() {
     html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">People</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(counterparties).length + '</span></div>';
     html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Categories</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(cats).length + '</span></div>';
     html += '<div style="display:flex; justify-content:space-between;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Total exchanges</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ex.length + '</span></div>';
+    // Chain age
+    if (state.chain.length > 0) {
+      var genesis = new Date(state.chain[0].timestamp);
+      var now = new Date();
+      var days = Math.floor((now - genesis) / 86400000);
+      var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
+      html += '<div style="display:flex; justify-content:space-between; margin-top:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Chain age</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ageStr + '</span></div>';
+    }
     html += '</div>';
 
     // Exchange actions
