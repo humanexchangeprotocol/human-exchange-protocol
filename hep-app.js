@@ -7477,13 +7477,26 @@ function init() {
       var personArrow = isProv
         ? '<svg width="32" height="18" viewBox="0 0 32 18" fill="none" stroke="' + valColor + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3" fill="none"/><path d="M8 10c-3 0-5 1.5-5 3"/><line x1="20" y1="9" x2="28" y2="9"/><polyline points="25 6 28 9 25 12"/></svg>'
         : '<svg width="32" height="18" viewBox="0 0 32 18" fill="none" stroke="' + valColor + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="7" r="3" fill="none"/><path d="M24 10c3 0 5 1.5 5 3"/><line x1="12" y1="9" x2="4" y2="9"/><polyline points="7 6 4 9 7 12"/></svg>';
-      html += '<div class="hist-row" data-dir="' + r.energyState + '" style="display:flex; align-items:center; gap:12px; padding:14px 0; border-bottom:1px solid var(--border);">';
+      html += '<div class="hist-row" data-dir="' + r.energyState + '" style="border-bottom:1px solid var(--border); cursor:pointer;" onclick="var d=this.querySelector(\'.hist-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+      html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
       html += '<div style="width:44px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; flex-shrink:0;">' + personArrow + '</div>';
       html += '<div style="flex:1; min-width:0;">';
       html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
       html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + '</div>';
       html += '</div>';
       html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
+      html += '</div>';
+      // Expandable detail
+      html += '<div class="hist-detail" style="display:none; padding:0 0 14px 56px; font-size:var(--fs-sm); color:var(--text-dim); line-height:1.8;">';
+      if (r.category) html += '<div><span style="color:var(--text-faint);">Category:</span> ' + esc(r.category) + '</div>';
+      if (r.duration) html += '<div><span style="color:var(--text-faint);">Duration:</span> ' + formatDuration(r.duration) + '</div>';
+      var fullName = r.counterpartyName || '';
+      var fpShort = (r.counterparty || '').substring(0, 16);
+      if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
+      html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
+      html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
+      if (r.witnessAttestation) html += '<div style="color:var(--green);">&#10003; Witness attested</div>';
+      html += '</div>';
       html += '</div>';
     });
     html += '</div>';
@@ -7495,8 +7508,8 @@ function init() {
       p.classList.toggle('active', p.getAttribute('data-filter') === dir);
     });
     document.querySelectorAll('.hist-row').forEach(function(row) {
-      if (dir === 'all') row.style.display = 'flex';
-      else row.style.display = row.getAttribute('data-dir') === dir ? 'flex' : 'none';
+      if (dir === 'all') row.style.display = '';
+      else row.style.display = row.getAttribute('data-dir') === dir ? '' : 'none';
     });
   }
 
