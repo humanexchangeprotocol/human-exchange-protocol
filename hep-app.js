@@ -7370,6 +7370,41 @@ function init() {
     ex.forEach(function(r) { var k = r.category || 'uncategorized'; cats[k] = (cats[k] || 0) + 1; });
 
     var html = '';
+
+    // Identity panel (collapsible)
+    var name = state.declarations.name || 'Anonymous';
+    var photo = '';
+    var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
+    if (genesisRec) photo = genesisRec.photoData;
+    else if (state.declarations.photo) photo = state.declarations.photo;
+    var fp = state.fingerprint || '';
+    var decls = [];
+    if (state.declarations.skills && state.declarations.skills.length) decls = state.declarations.skills;
+
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px; box-shadow:var(--shadow); overflow:hidden;">';
+    html += '<div style="display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer;" onclick="var p=this.nextElementSibling; p.style.display=p.style.display===\'block\'?\'none\':\'block\'; this.querySelector(\'.id-chev\').style.transform=p.style.display===\'block\'?\'rotate(90deg)\':\'\';">';
+    if (photo) {
+      html += '<img src="' + photo + '" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0;">';
+    } else {
+      html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--text-dim); flex-shrink:0;">' + name.charAt(0).toUpperCase() + '</div>';
+    }
+    html += '<div style="flex:1; min-width:0;">';
+    html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text);">' + esc(name) + '</div>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-family:var(--font-mono);">' + esc(fp) + '</div>';
+    html += '</div>';
+    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    html += '</div>';
+    // Expanded panel
+    html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
+    if (decls.length) {
+      html += '<div style="margin-top:12px;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Skills</div>';
+      html += '<div style="display:flex; flex-wrap:wrap; gap:6px;">';
+      decls.forEach(function(s) { html += '<span style="padding:4px 10px; background:var(--accent-light); color:var(--accent); border-radius:12px; font-size:var(--fs-sm); font-weight:500;">' + esc(s) + '</span>'; });
+      html += '</div></div>';
+    }
+    html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
+    html += '</div></div>';
+
     var posLabel = balance > 0 ? 'net provider' : balance < 0 ? 'net receiver' : 'balanced';
     var posColor = balance > 0 ? 'var(--green)' : balance < 0 ? 'var(--accent)' : 'var(--text-dim)';
 
