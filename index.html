@@ -98,6 +98,47 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .hist-pill { padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
 .hist-pill.active { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
 
+/* === LEARN TAB (topic cards + lesson list) === */
+.ltab-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.ltab-header { width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px 18px; background: none; border: none; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; font-family: var(--font); }
+.ltab-icon { font-size: 24px; flex-shrink: 0; }
+.ltab-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.ltab-sub { font-size: var(--fs-sm); color: var(--text-faint); }
+.ltab-chev { font-size: 14px; color: var(--text-faint); transition: transform 0.25s ease; flex-shrink: 0; }
+.ltab-chev.open { transform: rotate(180deg); }
+.ltab-progress { height: 3px; background: var(--border); border-radius: 2px; margin: 0 18px 12px; overflow: hidden; }
+.ltab-progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s ease; }
+.ltab-done { width: 28px; height: 28px; border-radius: 50%; background: rgba(43,140,62,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ltab-lessons { border-top: 1px solid var(--border); padding: 4px 0; }
+.ltab-lesson { width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 18px; background: none; border: none; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; font-family: var(--font); }
+.ltab-lesson:last-child { border-bottom: none; }
+.ltab-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--fs-sm); font-weight: 600; flex-shrink: 0; }
+.ltab-num.pending { background: rgba(42,90,143,0.08); color: var(--accent); }
+.ltab-num.done { background: rgba(43,140,62,0.1); color: var(--green); }
+.ltab-lesson-title { font-size: var(--fs-md); font-weight: 500; color: var(--text); }
+.ltab-lesson-steps { font-size: var(--fs-sm); color: var(--text-faint); }
+
+/* === LESSON MODAL === */
+.lesson-modal { position: fixed; inset: 0; z-index: 600; background: var(--bg); display: none; flex-direction: column; }
+.lesson-modal.active { display: flex; }
+.lesson-modal-header { padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.lesson-modal-progress { padding: 0 24px 16px; flex-shrink: 0; }
+.lesson-modal-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.lesson-modal-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s ease; }
+.lesson-modal-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; overflow: hidden; }
+.lesson-tile-visual { font-size: 56px; margin-bottom: 32px; }
+.lesson-tile-heading { font-size: var(--fs-xl); font-weight: 500; color: var(--text); text-align: center; margin: 0 0 16px; animation: lessonFadeUp 0.35s ease; }
+.lesson-tile-body { font-size: var(--fs-md); color: var(--text-dim); line-height: 1.6; text-align: center; margin: 0; max-width: 320px; animation: lessonFadeUp 0.35s ease 0.05s both; }
+.lesson-modal-bottom { padding: 16px 24px 32px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.lesson-dots { display: flex; gap: 8px; justify-content: center; align-items: center; }
+.lesson-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--border); transition: all 0.3s ease; }
+.lesson-dot.current { width: 24px; background: var(--accent); }
+.lesson-dot.done { background: var(--accent-dim); }
+.lesson-complete { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; text-align: center; }
+.lesson-complete-icon { width: 80px; height: 80px; border-radius: 50%; background: rgba(43,140,62,0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 24px; animation: lessonPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes lessonFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes lessonPopIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
 /* === SETUP === */
 #setup { align-items: center; justify-content: flex-start; padding: 24px; padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #setup h1 { font-size: 26px; font-weight: 600; color: var(--accent); margin-bottom: 2px; flex-shrink: 0; }
@@ -2145,6 +2186,24 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
   <button class="ib-btn" id="install-btn" onclick="App.installApp()">Install</button>
   <button class="ib-dismiss" onclick="App.dismissInstall()">&times;</button>
+</div>
+
+<!-- Lesson modal -->
+<div class="lesson-modal" id="lesson-modal">
+  <div class="lesson-modal-header">
+    <button style="background:none; border:none; cursor:pointer; padding:8px;" onclick="App.lessonPrev()" id="lesson-back-btn">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    </button>
+    <span style="font-size:var(--fs-sm); color:var(--text-faint); font-weight:500;" id="lesson-counter"></span>
+    <button style="background:none; border:none; cursor:pointer; padding:8px;" onclick="App.lessonClose()">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="lesson-modal-progress">
+    <div class="lesson-modal-bar"><div class="lesson-modal-bar-fill" id="lesson-bar-fill"></div></div>
+  </div>
+  <div class="lesson-modal-content" id="lesson-content"></div>
+  <div class="lesson-modal-bottom" id="lesson-bottom"></div>
 </div>
 
 <!-- Toast -->

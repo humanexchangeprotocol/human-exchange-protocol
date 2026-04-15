@@ -7770,38 +7770,38 @@ function init() {
       var allDone = doneLessons === totalLessons;
       var groupId = 'learn-group-' + gi;
 
-      html += '<div class="learn-topic">';
+      html += '<div class="ltab-card">';
       // Topic header
-      html += '<button class="learn-topic-header" onclick="var el=document.getElementById(\'' + groupId + '\'); var chev=this.querySelector(\'.learn-topic-chev\'); if(el.style.display===\'block\'){el.style.display=\'none\'; chev.classList.remove(\'open\');}else{el.style.display=\'block\'; chev.classList.add(\'open\');}">';
-      html += '<span class="learn-topic-icon">' + group.icon + '</span>';
-      html += '<div style="flex:1; min-width:0;"><div class="learn-topic-title">' + group.title + '</div>';
-      html += '<div class="learn-topic-sub">' + (allDone ? 'Completed' : doneLessons + ' of ' + totalLessons + ' lessons') + '</div></div>';
+      html += '<button class="ltab-header" onclick="var el=document.getElementById(\'' + groupId + '\'); var chev=this.querySelector(\'.ltab-chev\'); if(el.style.display===\'block\'){el.style.display=\'none\'; chev.classList.remove(\'open\');}else{el.style.display=\'block\'; chev.classList.add(\'open\');}">';
+      html += '<span class="ltab-icon">' + group.icon + '</span>';
+      html += '<div style="flex:1; min-width:0;"><div class="ltab-title">' + group.title + '</div>';
+      html += '<div class="ltab-sub">' + (allDone ? 'Completed' : doneLessons + ' of ' + totalLessons + ' lessons') + '</div></div>';
       if (allDone) {
-        html += '<div class="learn-topic-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
+        html += '<div class="ltab-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
       } else {
-        html += '<span class="learn-topic-chev">&#9662;</span>';
+        html += '<span class="ltab-chev">&#9662;</span>';
       }
       html += '</button>';
 
       // Progress bar (partial completion)
       if (doneLessons > 0 && !allDone) {
-        html += '<div class="learn-topic-progress"><div class="learn-topic-progress-fill" style="width:' + (doneLessons / totalLessons * 100) + '%"></div></div>';
+        html += '<div class="ltab-progress"><div class="ltab-progress-fill" style="width:' + (doneLessons / totalLessons * 100) + '%"></div></div>';
       }
 
       // Lessons list (hidden by default)
-      html += '<div class="learn-lessons" id="' + groupId + '" style="display:none;">';
+      html += '<div class="ltab-lessons" id="' + groupId + '" style="display:none;">';
       group.lessons.forEach(function(lesson, li) {
         var isDone = done[lesson.key];
         var topic = LEARN_TOPICS[lesson.key];
         var stepCount = topic ? topic.slides.length : 0;
-        html += '<button class="learn-lesson-row" onclick="App.openLessonTile(\'' + lesson.key + '\')">';
+        html += '<button class="ltab-lesson" onclick="App.openLessonTile(\'' + lesson.key + '\')">';
         if (isDone) {
-          html += '<div class="learn-lesson-num done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
+          html += '<div class="ltab-num done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
         } else {
-          html += '<div class="learn-lesson-num pending">' + (li + 1) + '</div>';
+          html += '<div class="ltab-num pending">' + (li + 1) + '</div>';
         }
-        html += '<div style="flex:1; min-width:0;"><div class="learn-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + lesson.title + '</div>';
-        html += '<div class="learn-lesson-steps">' + stepCount + ' steps</div></div>';
+        html += '<div style="flex:1; min-width:0;"><div class="ltab-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + lesson.title + '</div>';
+        html += '<div class="ltab-lesson-steps">' + stepCount + ' steps</div></div>';
         html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span>';
         html += '</button>';
       });
