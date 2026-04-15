@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.1
+// APPLICATION LAYER v2.39.2
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -5204,23 +5204,42 @@ const PAIR_CODE_LENGTH = 4;
 
   function forceUpdate() {
     toast('Checking for updates...');
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        var unregPromises = regs.map(function(r) { return r.unregister(); });
-        return Promise.all(unregPromises);
-      }).then(function() {
-        return caches.keys();
-      }).then(function(keys) {
-        return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-      }).then(function() {
-        toast('Caches cleared. Reloading...');
-        setTimeout(function() { window.location.reload(true); }, 800);
-      }).catch(function(e) {
-        toast('Update failed: ' + e.message);
+    // Step 1: Check version.json for newer version
+    fetch(VERSION_CHECK_URL, { cache: 'no-store', signal: AbortSignal.timeout(5000) })
+      .then(function(resp) { return resp.ok ? resp.json() : null; })
+      .then(function(data) {
+        if (data && data.version && data.version !== APP_VERSION) {
+          toast('Version ' + data.version + ' found. Updating...');
+        } else if (data && data.version === APP_VERSION) {
+          toast('Already on latest version (v' + APP_VERSION + ')');
+          return;
+        }
+        // Step 2: Tell SW to check for new version
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistration().then(function(reg) {
+            if (reg) reg.update();
+          });
+        }
+        // Step 3: Reload to pick up new files (network-first SW will fetch fresh)
+        setTimeout(function() { window.location.reload(); }, 1000);
+      })
+      .catch(function() {
+        // Offline or error -- fall back to nuclear option
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            return Promise.all(regs.map(function(r) { return r.unregister(); }));
+          }).then(function() {
+            return caches.keys();
+          }).then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          }).then(function() {
+            toast('Caches cleared. Reloading...');
+            setTimeout(function() { window.location.reload(true); }, 800);
+          });
+        } else {
+          window.location.reload(true);
+        }
       });
-    } else {
-      window.location.reload(true);
-    }
   }
 
   function deleteChain() {
@@ -7967,6 +7986,11 @@ function init() {
     ex.forEach(function(r) { var k = r.category || 'uncategorized'; cats[k] = (cats[k] || 0) + 1; });
 
     var html = '';
+
+    // TEST BANNER: Remove after confirming in-app update works
+    html += '<div id="test-update-banner" style="background:#B45309; color:#fff; padding:12px 16px; font-size:15px; font-weight:600; text-align:center; letter-spacing:0.5px; border-radius:var(--radius); margin-bottom:12px;">';
+    html += 'v' + APP_VERSION + ' ORANGE = NEW <span style="font-weight:400; font-size:13px; opacity:0.85;">Blue was 2.39.1, orange means this updated.</span>';
+    html += '</div>';
 
     // Identity panel (collapsible) with three-state photo logic
     var name = state.declarations.name || 'Anonymous';
