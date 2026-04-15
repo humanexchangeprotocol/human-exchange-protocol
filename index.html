@@ -84,15 +84,13 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .tab-content-inner { padding: 0 20px 80px; }
 
 /* === FAB (Floating Action Button) === */
-.fab { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(42,90,143,0.3); z-index: 99; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
-.fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(42,90,143,0.2); }
-.fab svg { width: 26px; height: 26px; }
-.fab.open { transform: rotate(45deg); }
-.fab-menu { position: fixed; bottom: calc(136px + var(--safe-bottom)); right: 20px; z-index: 99; display: flex; flex-direction: column; gap: 14px; align-items: flex-end; }
-.fab-option { display: flex; align-items: center; gap: 10px; }
-.fab-option-label { padding: 6px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text); box-shadow: var(--shadow); white-space: nowrap; }
-.fab-option-btn { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer; }
-.fab-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 98; display: none; }
+.fab-bar { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; z-index: 99; display: flex; gap: 10px; align-items: center; }
+.fab-btn { height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(42,90,143,0.25); cursor: pointer; border: none; font-family: var(--font); font-size: 14px; font-weight: 600; transition: transform 0.15s, box-shadow 0.15s; -webkit-tap-highlight-color: transparent; }
+.fab-btn:active { transform: scale(0.95); box-shadow: 0 2px 8px rgba(42,90,143,0.15); }
+.fab-btn-new { width: 48px; background: var(--accent); color: #FFFFFF; }
+.fab-btn-new svg { width: 24px; height: 24px; }
+.fab-btn-use { padding: 0 18px; background: var(--bg-raised); color: var(--accent); border: 1.5px solid var(--accent); }
+.fab-btn-use svg { width: 16px; height: 16px; }
 
 /* === HISTORY PILLS === */
 .hist-pill { padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
@@ -1203,27 +1201,16 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="tab-content-inner" id="tab-settings-content"></div>
   </div>
 
-  <!-- FAB backdrop (click-outside dismiss) -->
-  <div class="fab-backdrop" id="fab-backdrop" onclick="App.toggleFab()"></div>
-
-  <!-- FAB: Exchange actions -->
-  <div class="fab-menu" id="fab-menu" style="display:none;">
-    <div class="fab-option" onclick="App.fabAction('join')">
-      <span class="fab-option-label">Join</span>
-      <div class="fab-option-btn" style="background:var(--accent);">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </div>
-    </div>
-    <div class="fab-option" onclick="App.fabAction('provide')">
-      <span class="fab-option-label">Provide</span>
-      <div class="fab-option-btn" style="background:var(--green);">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-      </div>
-    </div>
+  <!-- FAB: Exchange action buttons -->
+  <div class="fab-bar" id="fab-bar">
+    <button class="fab-btn fab-btn-use" onclick="App.fabUse()" aria-label="Reuse previous exchange">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      Use
+    </button>
+    <button class="fab-btn fab-btn-new" onclick="App.fabNew()" aria-label="New exchange">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
   </div>
-  <button class="fab" onclick="App.toggleFab()" aria-label="Start exchange" id="fab-exchange">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-  </button>
 
   <!-- Tab bar -->
   <div class="tab-bar" id="main-tab-bar">
@@ -2186,6 +2173,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
   <button class="ib-btn" id="install-btn" onclick="App.installApp()">Install</button>
   <button class="ib-dismiss" onclick="App.dismissInstall()">&times;</button>
+</div>
+
+<!-- Use Previous Exchange picker -->
+<div class="modal-overlay" id="use-picker-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Use previous</h2>
+      <button class="modal-close" onclick="App.closeModal('use-picker')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="use-picker-body"></div>
+  </div>
 </div>
 
 <!-- Lesson modal -->

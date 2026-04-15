@@ -7632,13 +7632,15 @@ function init() {
     // Exchange actions
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="display:flex; gap:10px;">';
-    html += '<button class="btn btn-primary" style="flex:1; padding:14px;" onclick="App.exStartProviding()">Provide</button>';
-    html += '<button style="flex:1; padding:14px; background:none; border:1.5px solid var(--accent); color:var(--accent); border-radius:var(--radius); font-size:15px; font-weight:600;" onclick="App.exJoinExchange()">Join</button>';
+    html += '<button class="btn btn-primary" style="flex:1; padding:14px;" onclick="App.fabNew()">New Exchange</button>';
+    if (ex.length > 0) {
+      html += '<button style="flex:1; padding:14px; background:none; border:1.5px solid var(--accent); color:var(--accent); border-radius:var(--radius); font-size:15px; font-weight:600;" onclick="App.fabUse()">Use Previous</button>';
+    }
     html += '</div></div>';
 
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
-      html += 'No exchanges yet. Tap <strong>Provide</strong> to start your first one, or <strong>Join</strong> if someone has a code for you.';
+      html += 'No exchanges yet. Tap <strong>New Exchange</strong> to start your first one.';
       html += '</div>';
     } else if (ex.length > 0) {
       // Recent activity (last 3)
@@ -7885,30 +7887,79 @@ function init() {
 
   var fabOpen = false;
   function toggleFab() {
-    fabOpen = !fabOpen;
-    var menu = document.getElementById('fab-menu');
-    var btn = document.getElementById('fab-exchange');
-    var backdrop = document.getElementById('fab-backdrop');
-    if (fabOpen) {
-      menu.style.display = 'flex';
-      if (backdrop) backdrop.style.display = 'block';
-      btn.classList.add('open');
-    } else {
-      menu.style.display = 'none';
-      if (backdrop) backdrop.style.display = 'none';
-      btn.classList.remove('open');
-    }
+    // Legacy — no-op now, kept for any remaining references
   }
 
   function fabAction(action) {
-    toggleFab(); // close menu
-    if (action === 'provide') exStartProviding();
+    // Legacy — redirect to new functions
+    if (action === 'provide') fabNew();
     else if (action === 'join') exJoinExchange();
+  }
+
+  function fabNew() {
+    exStartProviding();
+  }
+
+  function fabUse() {
+    var ex = state.chain.filter(HCP.isAct).slice().reverse();
+    if (ex.length === 0) {
+      toast('No previous exchanges to reuse');
+      fabNew();
+      return;
+    }
+
+    // Build picker modal
+    showModal('use-picker');
+    var modal = document.getElementById('use-picker-body');
+    if (!modal) return;
+
+    var html = '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-bottom:12px;">Tap an exchange to use it as a template</div>';
+    // Deduplicate by description
+    var seen = {};
+    var unique = [];
+    ex.forEach(function(r) {
+      var key = (r.description || '') + '|' + (r.category || '') + '|' + r.value;
+      if (!seen[key] && unique.length < 15) {
+        seen[key] = true;
+        unique.push(r);
+      }
+    });
+
+    unique.forEach(function(r, i) {
+      var desc = r.description || r.category || 'Exchange';
+      var isProv = r.energyState === 'provided';
+      var valColor = isProv ? 'var(--green)' : 'var(--accent)';
+      var dirLabel = isProv ? 'Provided' : 'Received';
+      var cat = r.category || '';
+      html += '<button style="width:100%; display:flex; align-items:center; gap:12px; padding:14px 0; border:none; background:none; cursor:pointer; text-align:left; font-family:var(--font);' + (i < unique.length - 1 ? ' border-bottom:1px solid var(--border);' : '') + '" onclick="App.fabUseSelect(' + i + ')">';
+      html += '<div style="flex:1; min-width:0;">';
+      html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (cat ? esc(cat) + ' · ' : '') + dirLabel + '</div>';
+      html += '</div>';
+      html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + ';">' + r.value + '</div>';
+      html += '</button>';
+    });
+    modal.innerHTML = html;
+
+    // Store the unique list for selection
+    window._fabUseList = unique;
+  }
+
+  function fabUseSelect(idx) {
+    var list = window._fabUseList;
+    if (!list || !list[idx]) return;
+    var act = list[idx];
+    closeModal('use-picker');
+    // Start exchange flow and pre-fill
+    exInitiatorRole = act.energyState === 'provided' ? 'provider' : 'receiver';
+    exBeginStart();
+    // Store prefill data for when the form step renders
+    window._fabPrefill = act;
   }
 
   return {
     init, setupStep, completeSetup: completeSetupWrapped,
-    switchTab, histFilter, shareApp, toggleFab, fabAction,
+    switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
