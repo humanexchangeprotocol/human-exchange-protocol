@@ -1048,12 +1048,8 @@ const PAIR_CODE_LENGTH = 4;
 
   function refreshHome() {
     const name = state.declarations.name;
-    document.getElementById('home-greeting').textContent = name ? name + '\u2019s Thread' : 'Your Thread';
-    var vb = document.getElementById('app-version-badge');
-    if (vb) vb.textContent = 'HEP v' + APP_VERSION;
-    // Hide "Received a proposal?" when online
-    var recvBtn = document.querySelector('.coop-receive-btn');
-    if (recvBtn) recvBtn.parentElement.style.display = navigator.onLine ? 'none' : 'block';
+    document.getElementById('home-greeting').textContent = name ? name : 'Your Thread';
+    renderStandingTab();
   }
 
   function makeCard(r) {
@@ -7342,8 +7338,201 @@ function init() {
     return months + 'mo ago';
   }
 
+  // === TAB NAVIGATION ===
+  var activeTab = 'standing';
+
+  function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab-bar-item').forEach(function(el) {
+      el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+    });
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+      el.classList.toggle('active', el.id === 'tab-' + tab);
+    });
+    if (tab === 'standing') renderStandingTab();
+    else if (tab === 'history') renderHistoryTab();
+    else if (tab === 'learn') renderLearnTab();
+    else if (tab === 'settings') renderSettingsTab();
+  }
+
+  function renderStandingTab() {
+    var el = document.getElementById('tab-standing-content');
+    if (!el) return;
+    var ex = state.chain.filter(HCP.isAct);
+    var balance = HCP.walletBalance(state.chain);
+    var provided = ex.filter(function(r) { return r.energyState === 'provided'; });
+    var received = ex.filter(function(r) { return r.energyState === 'received'; });
+    var counterparties = {};
+    ex.forEach(function(r) { if (r.counterparty) counterparties[r.counterparty] = 1; });
+    var cats = {};
+    ex.forEach(function(r) { var k = r.category || 'uncategorized'; cats[k] = (cats[k] || 0) + 1; });
+
+    var html = '';
+    var posLabel = balance > 0 ? 'net provider' : balance < 0 ? 'net receiver' : 'balanced';
+    var posColor = balance > 0 ? 'var(--green)' : balance < 0 ? 'var(--accent)' : 'var(--text-dim)';
+
+    // Position card
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Position</div>';
+    html += '<div style="font-size:var(--fs-xl); font-weight:700; color:' + posColor + ';">' + (balance >= 0 ? '+' : '') + balance + '</div>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-top:4px;">' + posLabel + '</div>';
+    html += '<div style="display:flex; gap:16px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">';
+    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Provided</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--green);">' + provided.length + '</div></div>';
+    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Received</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--accent);">' + received.length + '</div></div>';
+    html += '</div></div>';
+
+    // Participation card
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Participation</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">People</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(counterparties).length + '</span></div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Categories</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(cats).length + '</span></div>';
+    html += '<div style="display:flex; justify-content:space-between;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Total exchanges</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ex.length + '</span></div>';
+    html += '</div>';
+
+    // Exchange actions
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="display:flex; gap:10px;">';
+    html += '<button class="btn btn-primary" style="flex:1; padding:14px;" onclick="App.exStartProviding()">Provide</button>';
+    html += '<button style="flex:1; padding:14px; background:none; border:1.5px solid var(--accent); color:var(--accent); border-radius:var(--radius); font-size:15px; font-weight:600;" onclick="App.exJoinExchange()">Join</button>';
+    html += '</div></div>';
+
+    if (ex.length === 0) {
+      html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
+      html += 'No exchanges yet. Tap <strong>Provide</strong> to start your first one, or <strong>Join</strong> if someone has a code for you.';
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function renderHistoryTab() {
+    var el = document.getElementById('tab-history-content');
+    if (!el) return;
+    var ex = state.chain.filter(HCP.isAct).slice().reverse();
+    var html = '';
+    if (ex.length === 0) {
+      html += '<div style="text-align:center; padding:40px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
+      html += 'Your exchange history will appear here once you complete your first exchange.</div>';
+      el.innerHTML = html;
+      return;
+    }
+    html += '<div style="display:flex; gap:8px; margin-bottom:16px; padding-top:4px;">';
+    html += '<button class="hist-pill active" data-filter="all" onclick="App.histFilter(\'all\')">All</button>';
+    html += '<button class="hist-pill" data-filter="provided" onclick="App.histFilter(\'provided\')">Provided</button>';
+    html += '<button class="hist-pill" data-filter="received" onclick="App.histFilter(\'received\')">Received</button>';
+    html += '</div>';
+    html += '<div id="hist-list">';
+    ex.forEach(function(r) {
+      var desc = r.description || r.category || 'Exchange';
+      var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
+      var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      var isProv = r.energyState === 'provided';
+      var valColor = isProv ? 'var(--green)' : 'var(--red)';
+      var valSign = isProv ? '+' : '-';
+      var arrow = isProv ? '\u2191' : '\u2193';
+      var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+      html += '<div class="hist-row" data-dir="' + r.energyState + '" style="display:flex; align-items:center; gap:12px; padding:14px 0; border-bottom:1px solid var(--border);">';
+      html += '<div style="width:36px; height:36px; border-radius:50%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; font-size:16px; color:' + valColor + '; flex-shrink:0;">' + arrow + '</div>';
+      html += '<div style="flex:1; min-width:0;">';
+      html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + '</div>';
+      html += '</div>';
+      html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  function histFilter(dir) {
+    document.querySelectorAll('.hist-pill').forEach(function(p) {
+      p.classList.toggle('active', p.getAttribute('data-filter') === dir);
+    });
+    document.querySelectorAll('.hist-row').forEach(function(row) {
+      if (dir === 'all') row.style.display = 'flex';
+      else row.style.display = row.getAttribute('data-dir') === dir ? 'flex' : 'none';
+    });
+  }
+
+  function renderLearnTab() {
+    var el = document.getElementById('tab-learn-content');
+    if (!el || el.innerHTML.trim()) return; // render once
+    var html = '<div style="padding-top:4px;">';
+    var sections = [
+      { title: 'Getting started', items: [
+        { q: 'What is HEP?', a: 'HEP is a protocol for recording cooperative acts between people. When you help someone or they help you, both of you record it on your personal chains. The record is tamper-evident and belongs to you.' },
+        { q: 'What is the value scale?', a: 'Everything in HEP is valued between 0 and 1,000,000. Think of it as a universal measuring tape for effort. A small favor might be 500. A day of skilled work might be 50,000. You and the other person agree on the number together.' },
+        { q: 'What is my position?', a: 'Your position is the difference between what you have provided and what you have received. A positive number means you have given more than you have taken. A negative number means the opposite. Neither is bad. Both are honest.' },
+      ]},
+      { title: 'Understanding your chain', items: [
+        { q: 'What is chain health?', a: 'Chain health measures how real your chain looks. A healthy chain has photos, sensor data, diverse counterparties, and regular activity. These signals are hard to fake and help others trust that your chain represents real cooperation.' },
+        { q: 'Can someone cheat?', a: 'They can try. But fabricating a chain requires simulating physical reality across devices, locations, and time. The chain makes dishonesty visible. It does not prevent it. Communities decide what to do with the information.' },
+        { q: 'What happens if I lose my phone?', a: 'Export your chain backup regularly from Settings. The backup contains your full chain and keys, protected by your PIN. You can restore it on a new device.' },
+      ]},
+      { title: 'The bigger picture', items: [
+        { q: 'How is this different from money?', a: 'Money requires permission. Someone must issue it before you can use it. HEP requires only cooperation. Two people agree to record an act, and the record exists. No bank, no government, no platform stands between you and your ability to cooperate.' },
+        { q: 'Why does this matter?', a: 'Every monetary system in history eventually becomes a permission system for what counts as work. Care work, community work, informal exchange -- these become invisible because no one issues currency for them. HEP makes all cooperation visible and countable.' },
+      ]},
+    ];
+    sections.forEach(function(sec) {
+      html += '<div style="margin-bottom:20px;">';
+      html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text); margin-bottom:12px;">' + sec.title + '</div>';
+      sec.items.forEach(function(item) {
+        html += '<div style="border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:8px; overflow:hidden; background:var(--bg-raised);">';
+        html += '<div style="padding:14px 16px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="var s=this.nextElementSibling; s.style.display=s.style.display===\'block\'?\'none\':\'block\';">';
+        html += '<span style="font-size:var(--fs-md); font-weight:500; color:var(--text);">' + item.q + '</span>';
+        html += '<span style="font-size:var(--fs-sm); color:var(--text-faint);">&#9662;</span>';
+        html += '</div>';
+        html += '<div style="display:none; padding:0 16px 14px; font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">' + item.a + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  function renderSettingsTab() {
+    var el = document.getElementById('tab-settings-content');
+    if (!el) return;
+    var html = '';
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; margin-top:4px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Identity</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="color:var(--text-dim);">Name</span><span style="color:var(--text); font-weight:500;">' + esc(state.declarations.name || 'Not set') + '</span></div>';
+    html += '<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-dim);">Fingerprint</span><span style="color:var(--text); font-family:var(--font-mono); font-size:var(--fs-sm);">' + esc(state.fingerprint || '') + '</span></div>';
+    html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
+    html += '</div>';
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Hide counterparty names</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Names hidden in shared data</div></div>';
+    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
+    html += '</div></div>';
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="color:var(--text-dim);">Witness server</span><span style="color:var(--text); font-size:var(--fs-sm);">' + esc(getWitnessUrl() || 'None') + '</span></div>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.testWitnessConnection()">Test connection</button>';
+    html += '</div>';
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
+    html += '<div style="display:flex; gap:10px;">';
+    html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.exportBackup()">Export backup</button>';
+    html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.importBackup()">Import backup</button>';
+    html += '</div></div>';
+    html += '<div style="text-align:center; padding:16px 0; color:var(--text-faint); font-size:var(--fs-sm);">HEP v' + APP_VERSION + '</div>';
+    el.innerHTML = html;
+  }
+
+  function shareApp() {
+    if (navigator.share) {
+      navigator.share({ title: 'Human Exchange Protocol', text: 'Record cooperative acts between people.', url: 'https://humanexchangeprotocol.org' }).catch(function() {});
+    } else {
+      try { navigator.clipboard.writeText('https://humanexchangeprotocol.org'); toast('Link copied'); } catch(e) { toast('Share not available'); }
+    }
+  }
+
   return {
     init, setupStep, completeSetup: completeSetupWrapped,
+    switchTab, histFilter, shareApp,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
