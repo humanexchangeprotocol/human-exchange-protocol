@@ -7567,18 +7567,6 @@ function init() {
   };
 })();
 
-// DEVELOPMENT MODE: No service worker. Kill any old ones.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(r => r.unregister());
-  });
-}
-if ('caches' in window) {
-  caches.keys().then(keys => {
-    keys.forEach(k => caches.delete(k));
-  });
-}
-
 // Viewport height fix for mobile browsers
 function setVH() {
   const vh = window.innerHeight * 0.01;

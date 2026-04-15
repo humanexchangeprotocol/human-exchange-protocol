@@ -79,9 +79,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .tab-bar-item.active { color: var(--accent); }
 .tab-bar-item svg { width: 22px; height: 22px; margin-bottom: 2px; }
 .tab-bar-item .tab-label { font-size: 11px; font-weight: 500; letter-spacing: 0.2px; }
-.tab-content { position: absolute; top: 0; left: 0; right: 0; bottom: 56px; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; }
+.tab-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; }
 .tab-content.active { display: block; }
-.tab-content-inner { padding: 0 20px 24px; }
+.tab-content-inner { padding: 0 20px 80px; }
 
 /* === FAB (Floating Action Button) === */
 .fab { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(42,90,143,0.3); z-index: 99; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
@@ -177,7 +177,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
 /* === HOME === */
 #home { padding: 0; flex-direction: column; overflow: hidden; }
-.home-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 8px; padding-top: calc(16px + var(--safe-top)); flex-shrink: 0; }
+.home-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 8px; padding-top: calc(16px + var(--safe-top)); flex-shrink: 0; background: var(--bg); position: relative; z-index: 10; }
 .home-identity { flex: 1; min-width: 0; }
 .home-identity .greeting { font-size: 17px; color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home-identity .fp { font-family: var(--font-mono); font-size: 13px; color: var(--text-faint); }
@@ -1220,7 +1220,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 
   <!-- FAB: Start exchange -->
-  <button class="fab" onclick="App.toggleCoopStart()" aria-label="Start exchange" id="fab-exchange">
+  <button class="fab" onclick="App.exStartProviding()" aria-label="Start exchange" id="fab-exchange">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
   </button>
 
