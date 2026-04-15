@@ -7518,26 +7518,6 @@ function init() {
     }
   }
 
-  function exShowProposalReady() {
-    // Show sticky banner at top of service catalog
-    var banner = document.getElementById('proposal-ready-banner');
-    if (banner) banner.style.display = 'block';
-    // Also update the bottom waiting indicator
-    var waitStatus = document.querySelector('#ex-step-receiver-wait .pair-status');
-    if (waitStatus) {
-      waitStatus.className = 'pair-status';
-      waitStatus.innerHTML =
-        '<div style="padding:14px; background:rgba(43,140,62,0.06); border:1px solid rgba(43,140,62,0.15); border-radius:var(--radius); text-align:center;">' +
-        '<div style="font-size:14px; font-weight:500; color:var(--green); margin-bottom:6px;">Proposal received</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Take your time reviewing their services. When you\u2019re ready:</div>' +
-        '<button class="btn btn-primary" style="width:100%;" onclick="App.exViewProposal()">View proposal</button>' +
-        '</div>';
-    }
-    // Also update the step header
-    var stepTitle = document.getElementById('ex-receiver-wait-title');
-    if (stepTitle) stepTitle.textContent = 'Browse their services';
-  }
-
   function exViewProposal() {
     exShowProposalReady();
   }
@@ -7663,6 +7643,13 @@ function init() {
     // Hide spinner
     var spinnerEl = document.getElementById('ex-rw-spinner');
     if (spinnerEl) spinnerEl.style.display = 'none';
+
+    // Pulse the Exchange step in the progress bar
+    var indicator = document.getElementById('ex4-indicator');
+    if (indicator) {
+      var step3 = indicator.querySelector('[data-step="3"]');
+      if (step3) step3.classList.add('notify');
+    }
 
     // Build proposal card
     var html = '';
