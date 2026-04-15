@@ -6986,6 +6986,24 @@ function init() {
       document.getElementById('ex-city').value = '';
       document.getElementById('ex-state').value = '';
       renderSkillPicker();
+      // Apply prefill from "Use previous" if available
+      if (window._fabPrefill) {
+        var pf = window._fabPrefill;
+        if (pf.description) document.getElementById('ex-desc').value = pf.description;
+        if (pf.value) document.getElementById('ex-value').value = pf.value;
+        if (pf.category) document.getElementById('ex-category').value = pf.category;
+        if (pf.duration) {
+          var pfHrs = Math.floor(pf.duration / 60);
+          var pfMins = pf.duration % 60;
+          if (pfHrs) document.getElementById('ex-hours').value = pfHrs;
+          if (pfMins) document.getElementById('ex-minutes').value = pfMins;
+        }
+        if (pf.city) document.getElementById('ex-city').value = pf.city;
+        if (pf.state_field) document.getElementById('ex-state').value = pf.state_field;
+        setDirection(pf.energyState || 'provided');
+        showPrefillBar(pf.description || pf.category || 'Previous exchange');
+        window._fabPrefill = null;
+      }
       // Inject back link + reusable acts above the form
       var formStep = document.getElementById('ex-step-form');
       var oldBack = document.getElementById('ex-form-back');
@@ -7950,11 +7968,19 @@ function init() {
     if (!list || !list[idx]) return;
     var act = list[idx];
     closeModal('use-picker');
-    // Start exchange flow and pre-fill
+    // Store prefill data — will be applied when form step renders
+    window._fabPrefill = {
+      description: act.description || '',
+      value: act.value || '',
+      category: act.category || '',
+      duration: act.duration || 0,
+      energyState: act.energyState || 'provided',
+      city: act.city || '',
+      state_field: act.state_field || ''
+    };
+    // Start exchange flow
     exInitiatorRole = act.energyState === 'provided' ? 'provider' : 'receiver';
     exBeginStart();
-    // Store prefill data for when the form step renders
-    window._fabPrefill = act;
   }
 
   return {
