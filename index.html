@@ -1668,12 +1668,14 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP 6: Success -->
       <div class="hs-step" id="ex-step-done">
-        <div class="hs-status-line done">Done. Both recorded.</div>
         <div class="hs-success">
           <div class="hs-check">&#10003;</div>
           <h3>Exchange Complete</h3>
-          <p id="ex-done-summary"></p>
-          <button class="btn btn-primary" onclick="App.closeExchange()">Done</button>
+          <p id="ex-done-summary" style="color:var(--text-dim); margin-bottom:20px;"></p>
+          <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="App.closeExchange()">Return to Standing</button>
+          <div style="text-align:center;">
+            <span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.closeExchange(); setTimeout(function(){ App.exStartProviding(); }, 400);">Start another exchange</span>
+          </div>
         </div>
       </div>
 
