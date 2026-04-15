@@ -1050,8 +1050,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function refreshHome() {
-    const name = state.declarations.name;
-    document.getElementById('home-greeting').textContent = name ? name : 'Your Thread';
+    const name = state.declarations.name || '';
+    var hour = new Date().getHours();
+    var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    document.getElementById('home-greeting').textContent = name ? greeting + ', ' + name : 'Your Thread';
     renderStandingTab();
   }
 
