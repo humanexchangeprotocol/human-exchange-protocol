@@ -1,6 +1,6 @@
 // HEP Service Worker
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.37.0-tabs8';
+const CACHE_VERSION = '2.37.0-tabs9';
 const CACHE_NAME = 'hep-v' + CACHE_VERSION;
 
 // Files to cache on install
