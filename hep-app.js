@@ -6287,9 +6287,156 @@ function init() {
   }
 
   function exConfirmSAS() {
-    // SAS confirmed — show texture review
-    exRenderTexture();
-    showExStep('texture');
+    // SAS confirmed — render combined Review screen with chain health + proof of human
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
+    _textureTs = ts;
+    var name = (ts && ts._name) || 'Partner';
+    var initial = name.charAt(0).toUpperCase();
+    var dev = (ts && ts._device) || {};
+    var cl = ts ? exClassifyChain(ts) : { state: 'young', observations: [] };
+    var sasCode = document.getElementById('ex-sas-code') ? document.getElementById('ex-sas-code').textContent : '--';
+    var fp = sessionPartner ? (sessionPartner.fingerprint || '').substring(0, 16) : '';
+
+    // Determine overall assessment
+    var assessLabel, assessColor, assessBg, assessSub;
+    if (cl.state === 'nonhuman') {
+      assessLabel = 'Ask about this'; assessColor = 'var(--red)'; assessBg = 'var(--red-light)';
+      assessSub = 'Device signals are unusual. Make sure you are with a real person.';
+    } else if (cl.state === 'unusual') {
+      assessLabel = 'A few things to note'; assessColor = '#B45309'; assessBg = 'rgba(180,83,9,0.08)';
+      assessSub = 'Some patterns are uncommon. Worth a conversation before proceeding.';
+    } else if (cl.state === 'young' || !ts || !ts.n || ts.n < 6) {
+      assessLabel = 'Developing chain'; assessColor = 'var(--accent)'; assessBg = 'var(--accent-light)';
+      assessSub = 'Limited history. This chain is still building its record.';
+    } else {
+      assessLabel = 'Everything looks good'; assessColor = 'var(--green)'; assessBg = 'var(--green-light)';
+      assessSub = 'Strong chain, normal device signals.';
+    }
+
+    // Chain health badge
+    var healthBadge = cl.state === 'nonhuman' ? 'Unusual' : cl.state === 'unusual' ? 'Ask' : cl.state === 'young' ? 'Developing' : 'Strong';
+    var healthColor = cl.state === 'nonhuman' ? 'var(--red)' : cl.state === 'unusual' ? '#B45309' : cl.state === 'young' ? 'var(--accent)' : 'var(--green)';
+    var healthBg = cl.state === 'nonhuman' ? 'var(--red-light)' : cl.state === 'unusual' ? 'rgba(180,83,9,0.08)' : cl.state === 'young' ? 'var(--accent-light)' : 'var(--green-light)';
+
+    // Proof of human assessment
+    var pohOk = !exIsEmulator(dev) && dev.touchPoints > 0;
+    var hasSensors = dev.recordsWithSensor > 0;
+    var hasGeo = dev.recordsWithGeo > 0;
+    var pohLabel = pohOk ? 'Normal' : 'Unusual';
+    var pohColor = pohOk ? 'var(--green)' : 'var(--red)';
+    var pohBg = pohOk ? 'var(--green-light)' : 'var(--red-light)';
+
+    var n = ts ? (ts.n || 0) : 0;
+    var g = ts ? (ts.g || 0) : 0;
+    var r = ts ? (ts.r || 0) : 0;
+    var people = ts ? (ts.people || 0) : 0;
+
+    var html = '';
+
+    // Partner identity + SAS (compact)
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:10px; box-shadow:var(--shadow);">';
+    html += '<div style="display:flex; gap:14px; align-items:center;">';
+    html += '<div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, var(--accent), var(--accent-dim)); display:flex; align-items:center; justify-content:center; color:#fff; font-size:20px; flex-shrink:0;">' + initial + '</div>';
+    html += '<div style="flex:1; min-width:0;">';
+    html += '<div style="font-size:17px; font-weight:600; color:var(--text);">' + esc(name) + '</div>';
+    html += '<div style="font-size:11px; color:var(--text-faint); font-family:var(--font-mono);">' + esc(fp) + '</div>';
+    html += '</div>';
+    html += '<div style="background:var(--accent-light); border-radius:8px; padding:6px 14px; text-align:center;">';
+    html += '<div style="font-size:9px; color:var(--text-dim); font-weight:500; letter-spacing:0.5px;">CODE</div>';
+    html += '<div style="font-size:24px; font-weight:700; color:var(--accent); font-family:var(--font-mono); letter-spacing:4px;">' + esc(sasCode) + '</div>';
+    html += '</div></div></div>';
+
+    // Overall assessment bar
+    html += '<div style="background:' + assessBg + '; border:1px solid ' + assessColor + '22; border-radius:var(--radius); padding:12px 14px; margin-bottom:10px; display:flex; align-items:center; gap:12px;">';
+    html += '<div style="width:10px; height:10px; border-radius:50%; background:' + assessColor + '; flex-shrink:0;"></div>';
+    html += '<div><div style="font-size:14px; font-weight:600; color:' + assessColor + ';">' + assessLabel + '</div>';
+    html += '<div style="font-size:12px; color:var(--text-dim); margin-top:2px;">' + assessSub + '</div></div></div>';
+
+    // Confirm button
+    html += '<button class="btn btn-primary" style="width:100%; margin-bottom:4px;" onclick="App.exReviewConfirm()">Confirm</button>';
+    html += '<div style="text-align:center; margin-bottom:14px;"><span style="font-size:13px; color:var(--text-faint); cursor:pointer;" onclick="App.exRejectSAS()">Not the right person?</span></div>';
+
+    // Divider
+    html += '<div style="height:1px; background:var(--border); margin:4px 0 12px;"></div>';
+    html += '<div style="font-size:12px; color:var(--text-faint); text-align:center; margin-bottom:10px;">More about this person</div>';
+
+    // Chain Health tile (collapsed)
+    html += '<div id="ex-review-health" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
+    html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-health-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+    html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Chain Health</span>';
+    html += '<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:' + healthBg + '; color:' + healthColor + ';">' + healthBadge + '</span>';
+    html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>';
+    html += '</button>';
+    html += '<div id="ex-health-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px;">';
+    // Stats grid
+    html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">';
+    html += '<div style="background:var(--green-light); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--green);">' + g + '</div><div style="font-size:11px; color:var(--text-dim);">Provided</div></div>';
+    html += '<div style="background:var(--accent-light); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--accent);">' + r + '</div><div style="font-size:11px; color:var(--text-dim);">Received</div></div>';
+    html += '</div>';
+    html += '<div style="font-size:13px;">';
+    html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--text-dim);">Exchanges</span><span style="font-weight:600; color:var(--text);">' + n + '</span></div>';
+    html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--text-dim);">People</span><span style="font-weight:600; color:var(--text);">' + people + '</span></div>';
+    html += '</div>';
+    // Observations
+    if (cl.observations && cl.observations.length > 0) {
+      html += '<div style="margin-top:8px; padding:8px 10px; background:rgba(0,0,0,0.02); border-radius:6px; font-size:12px; color:var(--text-dim); line-height:1.5;">';
+      cl.observations.forEach(function(o) { html += '<div style="margin-bottom:4px;">' + esc(o.text).substring(0, 120) + '</div>'; });
+      html += '</div>';
+    }
+    html += '<button style="width:100%; margin-top:8px; padding:9px; background:none; border:1px solid var(--border); border-radius:6px; font-size:13px; color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.showTextureDetail(\'full\')">View full chain analysis</button>';
+    html += '</div></div>';
+
+    // Proof of Human tile (collapsed)
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
+    html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-poh-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+    html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Proof of Human</span>';
+    html += '<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:' + pohBg + '; color:' + pohColor + ';">' + pohLabel + '</span>';
+    html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>';
+    html += '</button>';
+    html += '<div id="ex-poh-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px; font-size:13px;">';
+    var signals = [
+      ['Device', dev.touchPoints > 0 ? 'Mobile phone' : 'Unknown', dev.touchPoints > 0],
+      ['Sensors', dev.recordsWithSensor ? (Math.round(dev.recordsWithSensor / Math.max(dev.totalRecords, 1) * 100) + '% present') : 'Unknown', hasSensors],
+      ['GPS', dev.recordsWithGeo ? 'Present' : 'None', hasGeo],
+      ['Server', 'Recognized', true],
+    ];
+    signals.forEach(function(s) {
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">';
+      html += '<span style="color:var(--text-dim);">' + s[0] + '</span>';
+      html += '<span style="color:' + (s[2] ? 'var(--green)' : '#B45309') + '; font-weight:500;">' + s[1] + '</span>';
+      html += '</div>';
+    });
+    if (!pohOk) {
+      html += '<div style="margin-top:8px; padding:8px 10px; background:rgba(204,68,68,0.06); border-radius:6px; font-size:12px; color:var(--text-dim); line-height:1.5;">Device signals suggest this may not be a typical phone. Are you standing with a real person?</div>';
+    }
+    html += '</div></div>';
+
+    // Render into the verify step container (replacing the SAS-only view)
+    var verifyStep = document.getElementById('ex-step-verify');
+    // Clear old progress bar and content, replace with review
+    var oldProg = verifyStep.querySelector('.ex-progress');
+    if (oldProg) oldProg.style.display = 'none';
+    var verifyPartner = document.getElementById('ex-verify-partner');
+    if (verifyPartner) verifyPartner.style.display = 'none';
+    // Hide old buttons
+    verifyStep.querySelectorAll('button, div').forEach(function(el) {
+      if (el.id !== 'ex-review-container') el.style.display = 'none';
+    });
+    // Insert review content
+    var reviewContainer = document.getElementById('ex-review-container');
+    if (!reviewContainer) {
+      reviewContainer = document.createElement('div');
+      reviewContainer.id = 'ex-review-container';
+      verifyStep.appendChild(reviewContainer);
+    }
+    reviewContainer.style.display = 'block';
+    reviewContainer.innerHTML = html;
+  }
+
+  function exReviewConfirm() {
+    // Skip texture step, go directly to exchange form
+    exContinueFromTexture();
   }
 
   function exRejectSAS() {
@@ -8039,7 +8186,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exContinueFromTexture, exBackToTexture, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
