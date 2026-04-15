@@ -5057,6 +5057,27 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
+  function forceUpdate() {
+    toast('Checking for updates...');
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        var unregPromises = regs.map(function(r) { return r.unregister(); });
+        return Promise.all(unregPromises);
+      }).then(function() {
+        return caches.keys();
+      }).then(function(keys) {
+        return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+      }).then(function() {
+        toast('Caches cleared. Reloading...');
+        setTimeout(function() { window.location.reload(true); }, 800);
+      }).catch(function(e) {
+        toast('Update failed: ' + e.message);
+      });
+    } else {
+      window.location.reload(true);
+    }
+  }
+
   function deleteChain() {
     // Step 1: Offer backup first
     const hasChain = state.chain.length > 0;
@@ -8076,6 +8097,7 @@ function init() {
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Security</div>';
     html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.changePIN()">Change PIN</button>';
     html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.installFromSettings()">Install to home screen</button>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-top:8px;" onclick="App.forceUpdate()">Check for updates</button>';
     html += '</div>';
 
     // Danger zone
@@ -8242,7 +8264,7 @@ function init() {
     openSettings, togglePrivacy, toggleLocation,
     testWitnessConnection,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
-    changePIN, installFromSettings, deleteChain, closeModal,
+    changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
 })();
