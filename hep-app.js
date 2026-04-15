@@ -7473,14 +7473,14 @@ function init() {
       var valColor = isProv ? 'var(--green)' : 'var(--red)';
       var valSign = isProv ? '+' : '-';
       var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
-      // Simple person silhouette with direction indicator
-      var personIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+      // Horizontal arrow (left) + person silhouette (right). Arrow toward person = received, away = provided.
       var arrowIcon = isProv
-        ? '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="10" x2="10" y2="2"/><polyline points="4 2 10 2 10 8"/></svg>'
-        : '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="2" x2="2" y2="10"/><polyline points="8 10 2 10 2 4"/></svg>';
+        ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+        : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+      var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
       html += '<div class="hist-row" data-dir="' + r.energyState + '" style="border-bottom:1px solid var(--border); cursor:pointer;" onclick="var d=this.querySelector(\'.hist-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
       html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
-      html += '<div style="width:40px; height:36px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:3px; flex-shrink:0;">' + personIcon + arrowIcon + '</div>';
+      html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
       html += '<div style="flex:1; min-width:0;">';
       html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
       html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + '</div>';

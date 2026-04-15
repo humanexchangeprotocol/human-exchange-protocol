@@ -526,9 +526,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .share-url { width: 100%; padding: 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent); font-family: var(--font-mono); font-size: 13px; text-align: center; margin-bottom: 12px; word-break: break-all; }
 
 /* === UPDATE BANNER === */
-.update-banner { position: fixed; top: 0; left: 0; right: 0; background: var(--accent); color: #FFFFFF; padding: 12px 20px; z-index: 300; display: none; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; }
+.update-banner { position: fixed; top: 0; left: 0; right: 0; background: #FFFFFF; color: var(--text); padding: 14px 20px; z-index: 300; display: none; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; border-bottom: 2px solid var(--green); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .update-banner.show { display: flex; }
-.update-banner .ub-btn { padding: 6px 16px; background: #1a1a1a; color: var(--accent); border-radius: var(--radius-sm); font-weight: 600; font-size: 13px; }
+.update-banner .ub-btn { padding: 8px 20px; background: var(--green); color: #FFFFFF; border-radius: var(--radius-sm); font-weight: 600; font-size: 13px; }
 
 /* === INSTALL BANNER === */
 .install-banner { position: fixed; bottom: 56px; left: 0; right: 0; background: var(--bg-raised); border-top: 1px solid var(--border); padding: 14px 20px; padding-bottom: calc(14px + var(--safe-bottom)); z-index: 101; display: none; align-items: center; gap: 12px; box-shadow: 0 -2px 8px rgba(0,0,0,0.06); }
