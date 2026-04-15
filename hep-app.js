@@ -417,7 +417,7 @@ const PAIR_CODE_LENGTH = 4;
     html += '<div style="margin-top:8px;">';
     html += '<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-faint); margin-bottom:4px;"><span>0</span><span>1,000,000</span></div>';
     html += '<div style="position:relative; height:16px; background:var(--bg-input); border-radius:8px; border:1px solid var(--border);">';
-    html += '<div style="position:absolute; left:0; top:0; bottom:0; width:' + barPct + '%; background:rgba(125,204,123,0.3); border-radius:8px 0 0 8px;"></div>';
+    html += '<div style="position:absolute; left:0; top:0; bottom:0; width:' + barPct + '%; background:rgba(43,140,62,0.3); border-radius:8px 0 0 8px;"></div>';
     html += '<div style="position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--red); border-radius:0 8px 8px 0;"></div>';
     html += '</div>';
 
@@ -1124,7 +1124,7 @@ const PAIR_CODE_LENGTH = 4;
       let html = '';
       if (!hasRange) {
         // Strong pre-exchange prompt for undone scale exercise
-        html += '<div style="padding:16px; background:rgba(224,180,138,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:16px; line-height:1.6;">';
+        html += '<div style="padding:16px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:16px; line-height:1.6;">';
         html += '<div style="font-size:16px; font-weight:500; color:var(--text); margin-bottom:10px;">Before your first exchange</div>';
         html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:10px;">It is really worth taking the time to think about how you value things. It may take you one minute, it might take five, but it matters. It helps you understand your own effort and helps the other person understand you.</div>';
         html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:14px;">If you want to cooperate well, this is how you start.</div>';
@@ -1145,7 +1145,7 @@ const PAIR_CODE_LENGTH = 4;
     // Subtle nudge for experienced users who still haven't declared
     let rangeNudge = '';
     if (!hasRange) {
-      rangeNudge = '<div style="padding:12px 14px; background:rgba(224,180,138,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:14px; font-size:14px; color:var(--text-dim); line-height:1.5;">' +
+      rangeNudge = '<div style="padding:12px 14px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:14px; font-size:14px; color:var(--text-dim); line-height:1.5;">' +
       'You have not done the scale exercise yet. It helps you think about how you value your effort before exchanging. ' +
       '<button style="background:none; border:none; color:var(--accent); font-size:14px; font-weight:500; text-decoration:underline; cursor:pointer; padding:0; margin-top:4px; display:block;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Do the scale exercise</button>' +
       '</div>';
@@ -1213,7 +1213,7 @@ const PAIR_CODE_LENGTH = 4;
       const card = document.createElement('div');
       card.className = 'coop-act';
       const dir = act.energyState === 'provided' ? '\u2191' : '\u2193';
-      const dirColor = act.energyState === 'provided' ? 'rgba(125,204,123,0.15)' : 'rgba(217,106,106,0.15)';
+      const dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(204,68,68,0.15)';
       const dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--red)';
       const name = act.counterpartyName || '';
       const meta = [];
@@ -2133,7 +2133,7 @@ const PAIR_CODE_LENGTH = 4;
         var word = e[0], count = e[1];
         var size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
         var opacity = 0.5 + (count / maxCount) * 0.5;
-        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(224,180,138,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
       });
       h += '</div>';
       h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Words from their exchange descriptions. Larger words appear more often.</p>';
@@ -2198,7 +2198,7 @@ const PAIR_CODE_LENGTH = 4;
         var minPct = d[0] / maxVal * 100;
         var maxPct = d[1] / maxVal * 100;
         var avgPct = d[2] / maxVal * 100;
-        h += '<div style="position:absolute;left:' + minPct + '%;width:' + (maxPct - minPct) + '%;top:4px;height:16px;background:rgba(224,180,138,0.2);border-radius:3px;"></div>';
+        h += '<div style="position:absolute;left:' + minPct + '%;width:' + (maxPct - minPct) + '%;top:4px;height:16px;background:rgba(42,90,143,0.2);border-radius:3px;"></div>';
         h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
         h += '</div></div>';
       });
@@ -2282,7 +2282,7 @@ const PAIR_CODE_LENGTH = 4;
       var conversionRatio = catMatch ? catMatch.ratio : overallRatio;
       var converted = Math.round(propVal * conversionRatio);
       var rateLabel = catMatch ? 'category-specific' : 'overall';
-      h += '<div style="margin-top:14px;padding:12px;background:rgba(224,180,138,0.08);border:1px solid var(--accent-dim);border-radius:var(--radius-sm);text-align:center;">';
+      h += '<div style="margin-top:14px;padding:12px;background:rgba(42,90,143,0.08);border:1px solid var(--accent-dim);border-radius:var(--radius-sm);text-align:center;">';
       h += '<div style="font-size: 13px;color:var(--text-dim);margin-bottom:4px;">Your proposal: ' + propVal + ' units (' + esc(proposalCat) + ')</div>';
       h += '<div style="font-size:20px;font-weight:500;color:var(--accent);">\u2248 ' + converted + ' in their units</div>';
       h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:4px;">Using ' + rateLabel + ' rate</div>';
@@ -3238,7 +3238,7 @@ const PAIR_CODE_LENGTH = 4;
         const word = e[0], count = e[1];
         const size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
         const opacity = 0.5 + (count / maxCount) * 0.5;
-        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;cursor:pointer;padding:4px 8px;background:rgba(224,180,138,0.08);border-radius:6px;" onclick="App.wordCloudDetail(\'' + esc(word) + '\')">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;cursor:pointer;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;" onclick="App.wordCloudDetail(\'' + esc(word) + '\')">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
       });
       h += '</div>';
       h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Tap a word to see details. Larger words appear more often in their exchange descriptions.</p>';
@@ -3251,7 +3251,7 @@ const PAIR_CODE_LENGTH = 4;
       const isParity = Math.abs(ratio - 1) < 0.15;
       const ratioStr = isParity ? '1 : 1' : (ratio >= 1 ? '1 : ' + ratio.toFixed(2) : (1/ratio).toFixed(2) + ' : 1');
 
-      let h = '<div style="text-align:center;padding:20px;border-radius:var(--radius);margin-bottom:16px;background:' + (isParity ? 'rgba(125,204,123,0.1)' : 'rgba(107,143,199,0.1)') + ';border:1px solid ' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">';
+      let h = '<div style="text-align:center;padding:20px;border-radius:var(--radius);margin-bottom:16px;background:' + (isParity ? 'rgba(43,140,62,0.1)' : 'rgba(42,90,143,0.1)') + ';border:1px solid ' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">';
       h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:4px;">Exchange Ratio</div>';
       h += '<div style="font-size:36px;font-weight:300;color:' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">' + ratioStr + '</div>';
       h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:6px;">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
@@ -3326,7 +3326,7 @@ const PAIR_CODE_LENGTH = 4;
         const minPct = d[0] / maxVal * 100;
         const maxPct = d[1] / maxVal * 100;
         const avgPct = d[2] / maxVal * 100;
-        h += '<div style="position:absolute;left:' + minPct + '%;width:' + (maxPct - minPct) + '%;top:4px;height:16px;background:rgba(224,180,138,0.2);border-radius:3px;"></div>';
+        h += '<div style="position:absolute;left:' + minPct + '%;width:' + (maxPct - minPct) + '%;top:4px;height:16px;background:rgba(42,90,143,0.2);border-radius:3px;"></div>';
         h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
         h += '</div>';
         h += '</div>';
@@ -4058,7 +4058,7 @@ const PAIR_CODE_LENGTH = 4;
       if (m >= 1) months = ' over ' + m + ' month' + (m > 1 ? 's' : '');
     }
     var catCount = Object.keys(ts.cats || {}).length;
-    var html = '<div style="padding:16px; background:rgba(125,204,123,0.04); border:1px solid rgba(125,204,123,0.12); border-radius:var(--radius); overflow:hidden;">';
+    var html = '<div style="padding:16px; background:rgba(43,140,62,0.04); border:1px solid rgba(43,140,62,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--green);">&#10003;</span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--green);">Healthy chain</div>';
@@ -4204,8 +4204,8 @@ const PAIR_CODE_LENGTH = 4;
       // Direction filter
       var dirFilter = '<div style="display:flex; gap:6px; margin-bottom:10px;">';
       dirFilter += '<button class="filter-chip active" data-dir="all" onclick="App.chainDirFilter(\'all\')">All</button>';
-      dirFilter += '<button class="filter-chip" data-dir="provided" onclick="App.chainDirFilter(\'provided\')" style="border-color:rgba(125,204,123,0.3);">Provided</button>';
-      dirFilter += '<button class="filter-chip" data-dir="received" onclick="App.chainDirFilter(\'received\')" style="border-color:rgba(107,143,199,0.3);">Received</button>';
+      dirFilter += '<button class="filter-chip" data-dir="provided" onclick="App.chainDirFilter(\'provided\')" style="border-color:rgba(43,140,62,0.3);">Provided</button>';
+      dirFilter += '<button class="filter-chip" data-dir="received" onclick="App.chainDirFilter(\'received\')" style="border-color:rgba(42,90,143,0.3);">Received</button>';
       dirFilter += '</div>';
 
       // Category filter
@@ -4280,7 +4280,7 @@ const PAIR_CODE_LENGTH = 4;
           const word = e[0], count = e[1];
           const size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
           const opacity = 0.5 + (count / maxCount) * 0.5;
-          h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(224,180,138,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+          h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
         });
         h += '</div>';
         h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Words from your exchange descriptions. Larger words appear more often.</p>';
@@ -4326,7 +4326,7 @@ const PAIR_CODE_LENGTH = 4;
           const minPct = d[0] / maxVal * 100;
           const maxPct = d[1] / maxVal * 100;
           const avgPct = d[2] / maxVal * 100;
-          h += '<div style="position:absolute;left:' + minPct + '%;width:' + (maxPct - minPct) + '%;top:4px;height:16px;background:rgba(224,180,138,0.2);border-radius:3px;"></div>';
+          h += '<div style="position:absolute;left:' + minPct + '%;width:' + (maxPct - minPct) + '%;top:4px;height:16px;background:rgba(42,90,143,0.2);border-radius:3px;"></div>';
           h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
           h += '</div></div>';
         });
@@ -4426,7 +4426,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function dismissRangePrompt() {
     const body = document.getElementById('cooperate-body');
-    const prompt = body.querySelector('[style*="rgba(224,180,138"]');
+    const prompt = body.querySelector('[style*="rgba(42,90,143"]');
     if (prompt) prompt.style.display = 'none';
   }
 
@@ -6704,7 +6704,7 @@ function init() {
 
   // --- State: Brand new (0 records, real device) ---
   function exRenderNew(ts, name, dev) {
-    var html = '<div style="padding:16px; background:rgba(123,170,204,0.04); border:1px solid rgba(123,170,204,0.12); border-radius:var(--radius); overflow:hidden;">';
+    var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--blue);">&#9679;</span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--blue);">New participant</div>';
@@ -6733,7 +6733,7 @@ function init() {
 
   // --- State: Young ---
   function exRenderYoung(ts, name, dev, cl) {
-    var html = '<div style="padding:16px; background:rgba(123,170,204,0.04); border:1px solid rgba(123,170,204,0.12); border-radius:var(--radius); overflow:hidden;">';
+    var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--blue);">&#9679;</span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--blue);">This chain is young.</div>';
@@ -6744,7 +6744,7 @@ function init() {
 
     // Observations within young
     if (cl.observations.length > 0) {
-      html += '<div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(123,170,204,0.12);">';
+      html += '<div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(42,90,143,0.12);">';
       cl.observations.forEach(function(obs) {
         html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5; margin-bottom:4px;">\u2022 ' + obs.text + '</div>';
       });
@@ -6782,7 +6782,7 @@ function init() {
       var m = Math.round((Date.now() - new Date(ts.t0).getTime()) / (1000 * 60 * 60 * 24 * 30));
       if (m >= 1) months = ' over ' + m + ' month' + (m > 1 ? 's' : '');
     }
-    var html = '<div style="padding:16px; background:rgba(224,180,138,0.04); border:1px solid rgba(224,180,138,0.12); border-radius:var(--radius); overflow:hidden;">';
+    var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--accent);">&#9888;</span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
@@ -6812,7 +6812,7 @@ function init() {
 
   // --- State: Non-human ---
   function exRenderNonhuman(ts, name, dev, cl) {
-    var html = '<div style="padding:16px; background:rgba(204,123,123,0.04); border:1px solid rgba(204,123,123,0.15); border-radius:var(--radius); overflow:hidden;">';
+    var html = '<div style="padding:16px; background:rgba(204,68,68,0.04); border:1px solid rgba(204,68,68,0.15); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;">&#10006;</span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
@@ -6912,7 +6912,7 @@ function init() {
       var card = document.createElement('div');
       card.className = 'coop-act';
       var dir = act.energyState === 'provided' ? '\u2191' : '\u2193';
-      var dirColor = act.energyState === 'provided' ? 'rgba(125,204,123,0.15)' : 'rgba(217,106,106,0.15)';
+      var dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(204,68,68,0.15)';
       var dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--red)';
       var meta = [];
       if (act.category) meta.push(esc(act.category));
@@ -6980,7 +6980,7 @@ function init() {
     if (waitStatus) {
       waitStatus.className = 'pair-status';
       waitStatus.innerHTML =
-        '<div style="padding:14px; background:rgba(125,204,123,0.06); border:1px solid rgba(125,204,123,0.15); border-radius:var(--radius); text-align:center;">' +
+        '<div style="padding:14px; background:rgba(43,140,62,0.06); border:1px solid rgba(43,140,62,0.15); border-radius:var(--radius); text-align:center;">' +
         '<div style="font-size:14px; font-weight:500; color:var(--green); margin-bottom:6px;">Proposal received</div>' +
         '<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Take your time reviewing their services. When you\u2019re ready:</div>' +
         '<button class="btn btn-primary" style="width:100%;" onclick="App.exViewProposal()">View proposal</button>' +
@@ -7163,7 +7163,7 @@ function init() {
       assessment = { color: 'var(--green)', icon: '&#10003;', text: esc(providerName) + ' typically offers ' + esc(serviceDesc) + ' between ' + provSvc.low + ' and ' + provSvc.high + ' units. This price is within that range.' };
     }
 
-    var borderColor = assessment.color === 'var(--red)' ? 'rgba(204,123,123,0.15)' : assessment.color === 'var(--accent)' ? 'rgba(224,180,138,0.15)' : assessment.color === 'var(--blue)' ? 'rgba(123,170,204,0.15)' : 'rgba(125,204,123,0.15)';
+    var borderColor = assessment.color === 'var(--red)' ? 'rgba(204,68,68,0.15)' : assessment.color === 'var(--accent)' ? 'rgba(42,90,143,0.15)' : assessment.color === 'var(--blue)' ? 'rgba(42,90,143,0.15)' : 'rgba(43,140,62,0.15)';
     var bgColor = borderColor.replace('0.15', '0.04');
 
     var html = '';
@@ -7314,7 +7314,7 @@ function init() {
     var proposedColor = proposed > high ? 'var(--red)' : proposed < low ? 'var(--blue)' : 'var(--green)';
     var h = '<div style="margin-bottom:14px;">';
     h += '<div style="position:relative; height:8px; background:var(--bg-input); border-radius:4px;">';
-    h += '<div style="position:absolute; left:' + lowPct + '%; width:' + Math.max(1, highPct - lowPct) + '%; top:0; bottom:0; background:rgba(224,180,138,0.2); border-radius:4px;"></div>';
+    h += '<div style="position:absolute; left:' + lowPct + '%; width:' + Math.max(1, highPct - lowPct) + '%; top:0; bottom:0; background:rgba(42,90,143,0.2); border-radius:4px;"></div>';
     h += '<div style="position:absolute; left:' + avgPct + '%; top:-4px; width:2px; height:16px; background:var(--accent); border-radius:1px; opacity:0.5;"></div>';
     if (proposedPct != null) {
       h += '<div style="position:absolute; left:calc(' + proposedPct + '% - 1px); top:-6px; width:3px; height:20px; background:' + proposedColor + '; border-radius:2px;"></div>';
