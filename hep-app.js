@@ -271,6 +271,8 @@ const PAIR_CODE_LENGTH = 4;
       _returnToWallet = false;
       setTimeout(() => openWallet(), 340);
     }
+    // Refresh active tab after modal closes (e.g., exchange completed)
+    if (activeTab) setTimeout(function() { switchTab(activeTab); }, 350);
   }
 
   // --- Toast ---
@@ -7425,16 +7427,20 @@ function init() {
       var desc = r.description || r.category || 'Exchange';
       var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
       var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       var isProv = r.energyState === 'provided';
       var valColor = isProv ? 'var(--green)' : 'var(--red)';
       var valSign = isProv ? '+' : '-';
-      var arrow = isProv ? '\u2191' : '\u2193';
       var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+      // Clear directional SVG arrows: outgoing (top-right) for provided, incoming (bottom-left) for received
+      var arrowSvg = isProv
+        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>'
+        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/></svg>';
       html += '<div class="hist-row" data-dir="' + r.energyState + '" style="display:flex; align-items:center; gap:12px; padding:14px 0; border-bottom:1px solid var(--border);">';
-      html += '<div style="width:36px; height:36px; border-radius:50%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; font-size:16px; color:' + valColor + '; flex-shrink:0;">' + arrow + '</div>';
+      html += '<div style="width:36px; height:36px; border-radius:50%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; color:' + valColor + '; flex-shrink:0;">' + arrowSvg + '</div>';
       html += '<div style="flex:1; min-width:0;">';
       html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + '</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + '</div>';
       html += '</div>';
       html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
       html += '</div>';
@@ -7455,7 +7461,9 @@ function init() {
 
   function renderLearnTab() {
     var el = document.getElementById('tab-learn-content');
-    if (!el || el.innerHTML.trim()) return; // render once
+    if (!el) return;
+    if (el.getAttribute('data-rendered')) return; // render once
+    el.setAttribute('data-rendered', '1');
     var html = '<div style="padding-top:4px;">';
     var sections = [
       { title: 'Getting started', items: [
