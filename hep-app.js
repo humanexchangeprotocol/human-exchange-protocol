@@ -8111,7 +8111,37 @@ function init() {
   }
 
   function fabNew() {
-    exStartProviding();
+    var url = getWitnessUrl();
+    if (!url) { openCooperate(); return; }
+
+    exFlowActive = true;
+    cleanupSession();
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'New Exchange';
+    showExStep('connect');
+
+    var html = '<div style="text-align:center; margin-bottom:24px; padding-top:8px;">';
+    html += '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:6px;">How are you connecting?</div>';
+    html += '<div style="font-size:14px; color:var(--text-dim);">Both people need to start an exchange</div>';
+    html += '</div>';
+
+    // Two equal buttons
+    html += '<div style="display:flex; flex-direction:column; gap:12px;">';
+
+    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--accent); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.exStartProviding()">';
+    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>';
+    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Start</div>';
+    html += '<div style="font-size:13px; color:var(--text-dim);">Generate a code for the other person to enter</div></div>';
+    html += '</button>';
+
+    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.exJoinExchange()">';
+    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>';
+    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Join</div>';
+    html += '<div style="font-size:13px; color:var(--text-dim);">Enter the code the other person gave you</div></div>';
+    html += '</button>';
+
+    html += '</div>';
+    document.getElementById('ex-connect-content').innerHTML = html;
   }
 
   function fabUse() {
