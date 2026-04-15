@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.2
+// APPLICATION LAYER v2.39.3
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -640,7 +640,7 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('setup-fp').textContent = state.fingerprint;
     setupStep('done');
   }
-  function completeSetup() { showScreen('home'); refreshHome(); checkPingOnOpen(); }
+  function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); }
 
   // --- Lock ---
   // --- PIN attempt tracking ---
@@ -734,6 +734,7 @@ const PAIR_CODE_LENGTH = 4;
         state.initialized = true;
         showScreen('home');
         refreshHome();
+        showPendingUpdateBanner();
         handleIncomingPayload();
         resumePendingPair();
         checkPingOnOpen();
@@ -5106,12 +5107,27 @@ const PAIR_CODE_LENGTH = 4;
     } catch(e) { /* silent -- version check is optional */ }
   }
 
+  var _pendingUpdateMsg = null;
+
   function showUpdateBanner(msg) {
+    // Only show after PIN unlock (home screen visible)
+    var homeEl = document.getElementById('home');
+    if (!homeEl || homeEl.style.display === 'none') {
+      _pendingUpdateMsg = msg;
+      return;
+    }
     var banner = document.getElementById('update-banner');
     var bannerText = document.getElementById('update-banner-text');
     if (banner && bannerText) {
       bannerText.textContent = msg || 'A new version is available.';
       banner.classList.add('show');
+    }
+  }
+
+  function showPendingUpdateBanner() {
+    if (_pendingUpdateMsg) {
+      showUpdateBanner(_pendingUpdateMsg);
+      _pendingUpdateMsg = null;
     }
   }
 
@@ -6066,6 +6082,7 @@ function init() {
   function completeSetupWrapped() {
     showScreen('home');
     refreshHome();
+    showPendingUpdateBanner();
     showGuidedIntro();
     resumePendingPair();
   }
@@ -7986,11 +8003,6 @@ function init() {
     ex.forEach(function(r) { var k = r.category || 'uncategorized'; cats[k] = (cats[k] || 0) + 1; });
 
     var html = '';
-
-    // TEST BANNER: Remove after confirming in-app update works
-    html += '<div id="test-update-banner" style="background:#B45309; color:#fff; padding:12px 16px; font-size:15px; font-weight:600; text-align:center; letter-spacing:0.5px; border-radius:var(--radius); margin-bottom:12px;">';
-    html += 'v' + APP_VERSION + ' ORANGE = NEW <span style="font-weight:400; font-size:13px; opacity:0.85;">Blue was 2.39.1, orange means this updated.</span>';
-    html += '</div>';
 
     // Identity panel (collapsible) with three-state photo logic
     var name = state.declarations.name || 'Anonymous';

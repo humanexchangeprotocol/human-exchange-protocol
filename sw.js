@@ -1,6 +1,6 @@
 // HEP Service Worker
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.39.2';
+const CACHE_VERSION = '2.39.3';
 const CACHE_NAME = 'hep-v' + CACHE_VERSION;
 
 // Files to cache on install
