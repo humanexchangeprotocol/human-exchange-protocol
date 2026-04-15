@@ -5982,7 +5982,7 @@ const PAIR_CODE_LENGTH = 4;
 
 function init() {
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
-      navigator.serviceWorker.register('./sw.js').then(function(reg) {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function(reg) {
         // Listen for new SW versions
         reg.addEventListener('updatefound', function() {
           var newSW = reg.installing;

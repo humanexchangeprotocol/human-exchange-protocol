@@ -1,6 +1,6 @@
 // HEP Service Worker
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.39.0';
+const CACHE_VERSION = '2.39.1';
 const CACHE_NAME = 'hep-v' + CACHE_VERSION;
 
 // Files to cache on install
@@ -43,7 +43,7 @@ self.addEventListener('activate', function(event) {
   );
 });
 
-// Fetch: cache-first for app assets, network-only for API calls
+// Fetch: network-first for core app files, cache-first for static assets
 self.addEventListener('fetch', function(event) {
   var url = new URL(event.request.url);
 
@@ -57,13 +57,37 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
+  // Core app files: network-first (always get latest when online)
+  var path = url.pathname.replace(/.*\//, ''); // filename only
+  var isCore = (path === '' || path === 'index.html' || path === 'hep-core.js' || path === 'hep-app.js' || path === 'sw.js');
+
+  if (isCore || event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' }).then(function(response) {
+        if (response.ok) {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, clone);
+          });
+        }
+        return response;
+      }).catch(function() {
+        // Offline: serve from cache
+        return caches.match(event.request).then(function(cached) {
+          return cached || caches.match('./index.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // Static assets (icons, vendor libs): cache-first (fast, rarely change)
   event.respondWith(
     caches.match(event.request).then(function(cached) {
       if (cached) {
         return cached;
       }
       return fetch(event.request).then(function(response) {
-        // Only cache successful same-origin responses
         if (response.ok && url.hostname === self.location.hostname) {
           var clone = response.clone();
           caches.open(CACHE_NAME).then(function(cache) {
@@ -73,7 +97,6 @@ self.addEventListener('fetch', function(event) {
         return response;
       });
     }).catch(function() {
-      // Offline fallback: return cached index for navigation requests
       if (event.request.mode === 'navigate') {
         return caches.match('./index.html');
       }
