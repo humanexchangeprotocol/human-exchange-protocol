@@ -5934,20 +5934,20 @@ function init() {
     sessionCode = Array.from(bytes).map(b => PAIR_CHARS[b % PAIR_CHARS.length]).join('');
     sessionTheirCode = deriveJoinCode(sessionCode);
 
-    var roleLabel = exInitiatorRole === 'provider' ? 'PROVIDING' : 'RECEIVING';
-    var roleColor = exInitiatorRole === 'provider' ? 'var(--green)' : 'var(--blue)';
-
     var html = '<div style="text-align:center; margin-bottom:16px;">';
-    html += '<div style="font-size:11px; color:var(--text-faint); letter-spacing:1px; margin-bottom:4px;">STEP 1 OF 5 \u00b7 ' + roleLabel + '</div>';
     html += '<div style="font-size:17px; font-weight:600; color:var(--text);">Your code</div>';
     html += '</div>';
     html += '<div class="pair-code-display">';
-    html += '<div class="pair-code-chars" style="color:' + roleColor + '; border-color:' + roleColor + ';">' + esc(sessionCode) + '</div>';
+    html += '<div class="pair-code-chars">' + esc(sessionCode) + '</div>';
     html += '<div class="pair-code-hint">Read this to the other person</div>';
     html += '</div>';
     html += '<div style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:20px;">';
     html += '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>';
     html += '<span style="font-size:13px; color:var(--accent);">Waiting for them to join...</span>';
+    html += '</div>';
+    html += '<div style="text-align:center; margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">';
+    html += '<span style="font-size:14px; color:var(--text-faint);">Have their code? </span>';
+    html += '<span style="font-size:14px; color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.exSwitchToJoin()">Enter it here</span>';
     html += '</div>';
     document.getElementById('ex-connect-content').innerHTML = html;
 
@@ -5958,6 +5958,15 @@ function init() {
   function startCooperateFlow() {
     // Legacy entry — redirect to providing by default
     exStartProviding();
+  }
+
+  function exSwitchToJoin() {
+    // Stop polling for the code we generated, switch to join mode
+    exStopConnectPoll();
+    cleanupSession();
+    // Close and reopen as joiner
+    closeModal('exchange');
+    setTimeout(function() { exJoinExchange(); }, 100);
   }
 
   function exJoinExchange() {
@@ -5973,7 +5982,6 @@ function init() {
     showExStep('connect');
 
     var html = '<div style="text-align:center; margin-bottom:16px;">';
-    html += '<div style="font-size:11px; color:var(--text-faint); letter-spacing:1px; margin-bottom:4px;">STEP 1 OF 5</div>';
     html += '<div style="font-size:17px; font-weight:600; color:var(--text);">Enter their code</div>';
     html += '</div>';
     html += '<div class="pair-input-section" style="margin-top:20px;">';
@@ -8026,7 +8034,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exContinueFromTexture, exBackToTexture, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exContinueFromTexture, exBackToTexture, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
