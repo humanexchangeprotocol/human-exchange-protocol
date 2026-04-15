@@ -7698,7 +7698,12 @@ function init() {
     if (ex.length > 0) {
       html += '<button style="flex:1; padding:14px; background:none; border:1.5px solid var(--accent); color:var(--accent); border-radius:var(--radius); font-size:15px; font-weight:600;" onclick="App.fabUse()">Use Previous</button>';
     }
-    html += '</div></div>';
+    html += '</div>';
+    html += '<div style="text-align:center; margin-top:10px;">';
+    html += '<span style="font-size:var(--fs-sm); color:var(--text-faint);">Have someone' + "'" + 's code? </span>';
+    html += '<span style="font-size:var(--fs-sm); color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.exJoinExchange()">Join their exchange</span>';
+    html += '</div>';
+    html += '</div>';
 
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
