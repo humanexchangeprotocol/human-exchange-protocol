@@ -1343,19 +1343,21 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
         <div style="text-align:center; margin-bottom:16px;">
           <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Step 2 of 5</div>
-          <div style="font-size:17px; font-weight:600; color:var(--text);">Verify connection</div>
+          <div style="font-size:17px; font-weight:600; color:var(--text);">Is this the right person?</div>
         </div>
-        <div class="connect-partner" id="ex-verify-partner">
-          <div class="cp-avatar" id="ex-verify-avatar">?</div>
-          <div class="cp-name" id="ex-verify-name">Connected</div>
+        <div class="connect-partner" id="ex-verify-partner" style="justify-content:center; flex-direction:column; align-items:center; padding:20px;">
+          <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:10px;">?</div>
+          <div class="cp-name" id="ex-verify-name" style="font-size:20px; margin-bottom:6px;">Connected</div>
+          <div class="sas-badge" style="margin:8px 0 0 0;">
+            <span class="sas-lock">&#128274;</span>
+            <span class="sas-code" id="ex-sas-code" style="font-size:26px; letter-spacing:6px;">--</span>
+          </div>
+          <div style="font-size:12px; color:var(--text-faint); margin-top:6px;">Check this matches their screen</div>
         </div>
-        <div style="text-align:center; font-size:13px; color:var(--text-faint); margin-bottom:4px;">Verify this matches what they see</div>
-        <div class="sas-badge">
-          <span class="sas-lock">&#128274;</span>
-          <span class="sas-code" id="ex-sas-code">----</span>
+        <button class="btn btn-primary" style="margin-top:20px;" onclick="App.exConfirmSAS()">Confirm</button>
+        <div style="text-align:center; margin-top:12px;">
+          <span style="font-size:13px; color:var(--text-faint); cursor:pointer; text-decoration:underline;" onclick="App.exRejectSAS()">Not the right person?</span>
         </div>
-        <button class="btn btn-primary" style="margin-top:20px;" onclick="App.exConfirmSAS()">It matches</button>
-        <button class="btn btn-secondary" style="margin-top:8px;" onclick="App.exRejectSAS()">It doesn't match</button>
       </div>
 
       <!-- STEP 3: Texture review -->

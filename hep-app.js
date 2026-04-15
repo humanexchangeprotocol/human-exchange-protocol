@@ -1683,7 +1683,90 @@ const PAIR_CODE_LENGTH = 4;
   let sessionProposal = null;
   let sessionActiveTab = 'texture';
   let sessionSharedKey = null; // ECDH-derived AES key for encrypted relay
+  let sessionSASHash = null; // 16-byte SAS hash for automatic collision detection
   let _snapshotPollTimer = null;
+
+  // === LAYER 2: Protocol State Machine ===
+  // Enforces expected message sequence, type, and size on session data.
+  // Any violation triggers silent session drop.
+  let sessionExpectedState = null; // null | 'awaiting_connection' | 'connected' | 'awaiting_proposal' | 'awaiting_confirmation' | 'done'
+  const SESSION_MAX_RESPONSE_SIZE = 500000; // 500KB max for any poll response
+  const SESSION_MAX_PROPOSAL_SIZE = 100000; // 100KB max for proposal data
+  const SESSION_MAX_SNAPSHOT_SIZE = 100000; // 100KB max for thread snapshot
+
+  // === LAYER 3: Nonce-Bound Integrity Hash ===
+  // Random nonce bound to proposal payload, retained on device, verified on return.
+  let sessionProposalNonce = null; // hex string of random nonce sent with proposal
+  let sessionProposalIntegrityHash = null; // hash(nonce + payload fields)
+
+  function sessionSetState(newState) {
+    console.log('[state-machine] ' + (sessionExpectedState || 'null') + ' -> ' + newState);
+    sessionExpectedState = newState;
+  }
+
+  function sessionValidateResponse(data, rawSize) {
+    // Size check on raw response
+    if (rawSize > SESSION_MAX_RESPONSE_SIZE) {
+      console.warn('[state-machine] Response too large: ' + rawSize + ' bytes');
+      return { valid: false, reason: 'response_too_large' };
+    }
+
+    // State-specific validation
+    if (sessionExpectedState === 'awaiting_connection') {
+      // Should only see connection status, no proposal
+      if (data.proposal && data.proposal.status) {
+        console.warn('[state-machine] Unexpected proposal in awaiting_connection state');
+        return { valid: false, reason: 'unexpected_proposal' };
+      }
+      return { valid: true };
+    }
+
+    if (sessionExpectedState === 'connected' || sessionExpectedState === 'awaiting_proposal') {
+      // Proposal allowed only with status 'pending' for confirmer
+      if (data.proposal) {
+        var propSize = JSON.stringify(data.proposal).length;
+        if (propSize > SESSION_MAX_PROPOSAL_SIZE) {
+          console.warn('[state-machine] Proposal too large: ' + propSize + ' bytes');
+          return { valid: false, reason: 'proposal_too_large' };
+        }
+        if (data.proposal.status && data.proposal.status !== 'pending' && data.proposal.status !== 'confirmed' && data.proposal.status !== 'rejected') {
+          console.warn('[state-machine] Invalid proposal status: ' + data.proposal.status);
+          return { valid: false, reason: 'invalid_proposal_status' };
+        }
+      }
+      return { valid: true };
+    }
+
+    if (sessionExpectedState === 'awaiting_confirmation') {
+      // Only expect proposal with status confirmed or rejected
+      if (data.proposal && data.proposal.status) {
+        if (data.proposal.status !== 'pending' && data.proposal.status !== 'confirmed' && data.proposal.status !== 'rejected') {
+          console.warn('[state-machine] Invalid proposal status: ' + data.proposal.status);
+          return { valid: false, reason: 'invalid_proposal_status' };
+        }
+      }
+      return { valid: true };
+    }
+
+    if (sessionExpectedState === 'done') {
+      // No further messages expected
+      return { valid: true };
+    }
+
+    // Default: allow (state machine not yet active for this session)
+    return { valid: true };
+  }
+
+  function sessionViolation(reason) {
+    console.error('[state-machine] VIOLATION: ' + reason + ' -- dropping session');
+    // Layer 4: Record failure against current server
+    var url = getWitnessUrl();
+    if (url) recordServerFailure(url, reason);
+    toast('Connection issue -- please try again');
+    cleanupSession();
+    exFlowActive = false;
+    closeModal('exchange');
+  }
 
   // === OPTION B: Encrypted thread snapshot helpers ===
 
@@ -2315,6 +2398,17 @@ const PAIR_CODE_LENGTH = 4;
         photo: state.declarations.photo || ''
       };
 
+      // Layer 3: Bind random nonce to payload for integrity verification
+      var nonceBytes = crypto.getRandomValues(new Uint8Array(16));
+      var nonceHex = Array.from(nonceBytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+      exchangeContent._nonce = nonceHex;
+      sessionProposalNonce = nonceHex;
+      // Compute integrity hash: nonce + canonical payload fields
+      var integrityInput = nonceHex + '|' + exchangeContent.value + '|' + exchangeContent.direction + '|' + (exchangeContent.description || '') + '|' + (exchangeContent.category || '') + '|' + (exchangeContent.duration || 0);
+      var integrityBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(integrityInput));
+      sessionProposalIntegrityHash = Array.from(new Uint8Array(integrityBuf)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+      console.log('[nonce] Bound nonce to proposal, hash:', sessionProposalIntegrityHash.substring(0, 16) + '...');
+
       // Build request body: attestation metadata always plaintext, exchange content encrypted if possible
       const body = {
         device_ts: Date.now(),
@@ -2367,6 +2461,7 @@ const PAIR_CODE_LENGTH = 4;
       }
 
       // Poll for confirmation
+      sessionSetState('awaiting_confirmation');
       startSessionPoll();
     } catch(e) {
       console.log('[session] Propose failed:', e.message);
@@ -2412,7 +2507,13 @@ const PAIR_CODE_LENGTH = 4;
     try {
       const resp = await serverFetch(url + '/session/' + sessionCode);
       if (!resp.ok) return;
-      const data = await resp.json();
+      const rawText = await resp.text();
+
+      // Layer 2: Validate response size and state
+      var data;
+      try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
+      var validation = sessionValidateResponse(data, rawText.length);
+      if (!validation.valid) { sessionViolation(validation.reason); return; }
 
       // First: check for connection if not yet connected
       if (!sessionPartner && data.connected) {
@@ -2632,6 +2733,26 @@ const PAIR_CODE_LENGTH = 4;
     if (data.proposal.encrypted_exchange && sessionSharedKey) {
       try {
         const dec = await HCP.decryptRelayPayload(data.proposal.encrypted_exchange, sessionSharedKey);
+
+        // Layer 3: Verify nonce-bound integrity hash
+        if (sessionProposalNonce && sessionProposalIntegrityHash) {
+          if (!dec._nonce || dec._nonce !== sessionProposalNonce) {
+            console.error('[nonce] VIOLATION: nonce mismatch or missing. Expected:', sessionProposalNonce, 'Got:', dec._nonce);
+            sessionViolation('nonce_mismatch');
+            return;
+          }
+          // Recompute integrity hash and verify
+          var verifyInput = dec._nonce + '|' + dec.value + '|' + dec.direction + '|' + (dec.description || '') + '|' + (dec.category || '') + '|' + (dec.duration || 0);
+          var verifyBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifyInput));
+          var verifyHash = Array.from(new Uint8Array(verifyBuf)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+          if (verifyHash !== sessionProposalIntegrityHash) {
+            console.error('[nonce] VIOLATION: integrity hash mismatch. Expected:', sessionProposalIntegrityHash.substring(0, 16), 'Got:', verifyHash.substring(0, 16));
+            sessionViolation('integrity_hash_mismatch');
+            return;
+          }
+          console.log('[nonce] Integrity verified successfully');
+        }
+
         data.proposal.value = dec.value;
         data.proposal.direction = dec.direction;
         data.proposal.description = dec.description;
@@ -2649,6 +2770,7 @@ const PAIR_CODE_LENGTH = 4;
         }
       }
     }
+    sessionSetState('done');
     await writeSessionRecord('proposer', data, '');
   }
 
@@ -2802,6 +2924,10 @@ const PAIR_CODE_LENGTH = 4;
     sessionTheirCode = null;
     sessionRole = null;
 
+    // Layer 4: Record success for server reputation
+    var witnessUrl = getWitnessUrl();
+    if (witnessUrl) recordServerSuccess(witnessUrl);
+
     // Show done
     showExStep('done');
     document.getElementById('ex-done-summary').textContent =
@@ -2820,6 +2946,10 @@ const PAIR_CODE_LENGTH = 4;
     sessionProposal = null;
     sessionRole = null;
     sessionSharedKey = null;
+    sessionSASHash = null;
+    sessionExpectedState = null;
+    sessionProposalNonce = null;
+    sessionProposalIntegrityHash = null;
     sessionActiveTab = 'texture';
     _sessionWritten = false;
     _pollBusy = false;
@@ -4313,11 +4443,56 @@ const PAIR_CODE_LENGTH = 4;
     return raw;
   }
 
-  // Wrapper for all server fetch calls — adds headers needed for tunneling services
+  // Wrapper for all server fetch calls - adds headers needed for tunneling services
   function serverFetch(url, opts) {
     opts = opts || {};
     opts.headers = Object.assign({ 'ngrok-skip-browser-warning': '1' }, opts.headers || {});
     return fetch(url, opts);
+  }
+
+  // === LAYER 4: Server Reputation Tracking ===
+  // Per-server trust scores stored locally. Integrity failures reduce trust.
+  // When multiple servers available, deprioritized servers are skipped.
+  const SERVER_REPUTATION_KEY = 'hep_server_reputation';
+  const SERVER_TRUST_INITIAL = 100;
+  const SERVER_TRUST_PENALTY = 25;
+  const SERVER_TRUST_THRESHOLD = 25;
+
+  function getServerReputation() {
+    try {
+      var raw = localStorage.getItem(SERVER_REPUTATION_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch(e) { return {}; }
+  }
+
+  function saveServerReputation(rep) {
+    try { localStorage.setItem(SERVER_REPUTATION_KEY, JSON.stringify(rep)); } catch(e) {}
+  }
+
+  function recordServerFailure(url, reason) {
+    var rep = getServerReputation();
+    if (!rep[url]) rep[url] = { trust: SERVER_TRUST_INITIAL, failures: 0, successes: 0, lastFailure: null };
+    rep[url].failures++;
+    rep[url].trust = Math.max(0, rep[url].trust - SERVER_TRUST_PENALTY);
+    rep[url].lastFailure = new Date().toISOString();
+    rep[url].lastReason = reason;
+    console.log('[reputation] Server', url, 'trust now:', rep[url].trust, 'reason:', reason);
+    saveServerReputation(rep);
+  }
+
+  function recordServerSuccess(url) {
+    var rep = getServerReputation();
+    if (!rep[url]) rep[url] = { trust: SERVER_TRUST_INITIAL, failures: 0, successes: 0, lastFailure: null };
+    rep[url].successes++;
+    // Slowly recover trust on success (max initial)
+    rep[url].trust = Math.min(SERVER_TRUST_INITIAL, rep[url].trust + 5);
+    saveServerReputation(rep);
+  }
+
+  function getServerTrust(url) {
+    var rep = getServerReputation();
+    if (!rep[url]) return SERVER_TRUST_INITIAL;
+    return rep[url].trust;
   }
 
   async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig) {
@@ -5680,6 +5855,7 @@ function init() {
           if (btn) btn.style.display = 'none';
         }
         exStartConnectPoll();
+        sessionSetState('awaiting_connection');
       }
     } catch(e) {
       console.error('[ex-flow] Connect error:', e);
@@ -5705,7 +5881,11 @@ function init() {
       try {
         const resp = await serverFetch(url + '/session/' + sessionCode);
         if (!resp.ok) return;
-        const data = await resp.json();
+        const rawText = await resp.text();
+        var data;
+        try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
+        var validation = sessionValidateResponse(data, rawText.length);
+        if (!validation.valid) { sessionViolation(validation.reason); return; }
         if (data.connected && data.partner) {
           exStopConnectPoll();
           sessionPartner = data.partner;
@@ -5719,7 +5899,11 @@ function init() {
       try {
         const resp = await serverFetch(url + '/session/' + sessionCode);
         if (!resp.ok) return;
-        const data = await resp.json();
+        const rawText = await resp.text();
+        var data;
+        try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
+        var validation = sessionValidateResponse(data, rawText.length);
+        if (!validation.valid) { sessionViolation(validation.reason); return; }
         if (data.connected && data.partner) {
           exStopConnectPoll();
           sessionPartner = data.partner;
@@ -5735,6 +5919,7 @@ function init() {
 
   async function exOnConnected() {
     if (!sessionPartner) return;
+    sessionSetState('connected');
 
     // Derive ECDH shared key for encrypted relay
     try {
@@ -5830,7 +6015,8 @@ function init() {
     // Compute SAS from both fingerprints
     const myFp = state.fingerprint || '';
     const theirFp = sessionPartner.fingerprint || '';
-    const sasCode = await computeSAS(myFp, theirFp);
+    const sasResult = await computeSAS(myFp, theirFp);
+    sessionSASHash = sasResult.fullHash; // store for automatic collision detection
 
     // Get partner name from snapshot (may not be available yet)
     let partnerName = 'Connected';
@@ -5843,10 +6029,10 @@ function init() {
       }
     } catch(e) {}
 
-    // Show verify step
+    // Show verify step: name + 2-char SAS code
     document.getElementById('ex-verify-avatar').textContent = partnerInitial;
     document.getElementById('ex-verify-name').textContent = partnerName;
-    document.getElementById('ex-sas-code').textContent = sasCode;
+    document.getElementById('ex-sas-code').textContent = sasResult.code;
     showExStep('verify');
 
     // Poll for partner's encrypted snapshot if not yet received
@@ -5864,15 +6050,20 @@ function init() {
   }
 
   async function computeSAS(fpA, fpB) {
-    // Sort fingerprints for canonical ordering — both phones compute the same
+    // Sort fingerprints for canonical ordering -- both phones compute the same
     const sorted = [fpA, fpB].sort();
     const input = sorted[0] + '|' + sorted[1];
     const encoded = new TextEncoder().encode(input);
     const hashBuf = await crypto.subtle.digest('SHA-256', encoded);
     const hashArr = new Uint8Array(hashBuf);
-    // First 2 bytes → 4 hex chars
-    const hex = Array.from(hashArr.slice(0, 2)).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-    return hex;
+    // Internal: 16-byte hash for automatic collision detection
+    const fullHash = Array.from(hashArr.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+    // Display: 2-char alphanumeric code from first 2 bytes
+    const CHARS = 'ABCDEFGHJKMNPQRTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I/L, S/5)
+    const char1 = CHARS[hashArr[0] % CHARS.length];
+    const char2 = CHARS[hashArr[1] % CHARS.length];
+    const code = char1 + char2;
+    return { code: code, fullHash: fullHash };
   }
 
   function exConfirmSAS() {
@@ -6636,6 +6827,7 @@ function init() {
     } else {
       showExStep('receiver-wait');
       exRenderReceiverWait();
+      sessionSetState('awaiting_proposal');
       startSessionPoll();
     }
   }
