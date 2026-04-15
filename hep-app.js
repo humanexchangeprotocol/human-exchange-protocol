@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.36.0
+// APPLICATION LAYER v2.38.0
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -5473,6 +5473,138 @@ const PAIR_CODE_LENGTH = 4;
   let currentLearnTopic = null;
   let currentLearnSlide = 0;
 
+  // Lesson modal state (new tile-based system for Learn tab)
+  var _lessonTopicKey = null;
+  var _lessonSlideIdx = 0;
+  var _lessonTouchStartX = null;
+
+  function _getLessonCompleted() {
+    try { return JSON.parse(localStorage.getItem('hep_lessons_done') || '{}'); } catch(e) { return {}; }
+  }
+  function _setLessonCompleted(key) {
+    var done = _getLessonCompleted();
+    done[key] = true;
+    localStorage.setItem('hep_lessons_done', JSON.stringify(done));
+  }
+
+  function openLessonTile(topicKey) {
+    var topic = LEARN_TOPICS[topicKey];
+    if (!topic) return;
+    _lessonTopicKey = topicKey;
+    _lessonSlideIdx = 0;
+    var modal = document.getElementById('lesson-modal');
+    modal.classList.add('active');
+    _lessonRenderTile();
+
+    // Touch swipe
+    var content = document.getElementById('lesson-content');
+    content.ontouchstart = function(e) { _lessonTouchStartX = e.touches[0].clientX; };
+    content.ontouchmove = function(e) { e.preventDefault(); };
+    content.ontouchend = function(e) {
+      if (_lessonTouchStartX === null) return;
+      var dx = e.changedTouches[0].clientX - _lessonTouchStartX;
+      _lessonTouchStartX = null;
+      if (Math.abs(dx) > 60) {
+        if (dx < 0) lessonNext();
+        else lessonPrev();
+      }
+    };
+  }
+
+  function _lessonRenderTile() {
+    var topic = LEARN_TOPICS[_lessonTopicKey];
+    if (!topic) return;
+    var slides = topic.slides;
+    var total = slides.length;
+    var idx = _lessonSlideIdx;
+
+    // Counter
+    document.getElementById('lesson-counter').textContent = (idx + 1) + ' of ' + total;
+
+    // Progress bar
+    document.getElementById('lesson-bar-fill').style.width = ((idx + 1) / total * 100) + '%';
+
+    // Back button opacity
+    var backBtn = document.getElementById('lesson-back-btn');
+    if (backBtn) backBtn.style.opacity = idx === 0 ? '0.3' : '1';
+
+    // Content
+    var s = slides[idx];
+    var icon = s.icon || '';
+    // Strip HTML entities for visual display
+    var content = document.getElementById('lesson-content');
+    content.innerHTML = '<div class="lesson-tile-visual" style="animation:lessonFadeUp 0.35s ease">' + icon + '</div>' +
+      '<h3 class="lesson-tile-heading" key="h' + idx + '">' + s.title + '</h3>' +
+      '<div class="lesson-tile-body" key="b' + idx + '">' + _lessonStripHTML(s.body) + '</div>';
+
+    // Bottom (dots + button)
+    var bottom = document.getElementById('lesson-bottom');
+    var dotsHtml = '<div style="display:flex; gap:8px; justify-content:center; align-items:center;">';
+    for (var i = 0; i < total; i++) {
+      var cls = i === idx ? 'lesson-dot current' : (i < idx ? 'lesson-dot done' : 'lesson-dot');
+      dotsHtml += '<div class="' + cls + '"></div>';
+    }
+    dotsHtml += '</div>';
+    var btnLabel = idx === total - 1 ? 'Finish' : 'Next';
+    dotsHtml += '<button class="btn btn-primary" style="width:100%; max-width:320px; padding:14px;" onclick="App.lessonNext()">' + btnLabel + '</button>';
+    bottom.innerHTML = dotsHtml;
+  }
+
+  function _lessonStripHTML(body) {
+    // Extract plain text from the rich HTML slides, keeping it concise for tile display
+    var tmp = document.createElement('div');
+    tmp.innerHTML = body;
+    var text = tmp.textContent || tmp.innerText || '';
+    // Truncate to ~200 chars for tile readability
+    if (text.length > 250) text = text.substring(0, 247) + '...';
+    return text;
+  }
+
+  function _lessonShowComplete() {
+    _setLessonCompleted(_lessonTopicKey);
+    var topic = LEARN_TOPICS[_lessonTopicKey];
+    var content = document.getElementById('lesson-content');
+    content.innerHTML = '<div class="lesson-complete">' +
+      '<div class="lesson-complete-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+      '<h2 style="font-size:var(--fs-xl); font-weight:500; color:var(--text); margin:0 0 12px;">Lesson complete</h2>' +
+      '<p style="font-size:var(--fs-md); color:var(--text-dim); line-height:1.5; margin:0 0 8px; max-width:280px;">Great job taking the time to learn about this. Every bit of understanding strengthens the network.</p>' +
+      '<p style="font-size:var(--fs-sm); color:var(--text-faint); margin:0;">' + esc(topic.title) + '</p>' +
+      '</div>';
+    document.getElementById('lesson-counter').textContent = '';
+    document.getElementById('lesson-bar-fill').style.width = '100%';
+    var bottom = document.getElementById('lesson-bottom');
+    bottom.innerHTML = '<button class="btn btn-primary" style="width:100%; max-width:320px; padding:14px;" onclick="App.lessonClose()">Continue learning</button>';
+  }
+
+  function lessonNext() {
+    var topic = LEARN_TOPICS[_lessonTopicKey];
+    if (!topic) return;
+    if (_lessonSlideIdx < topic.slides.length - 1) {
+      _lessonSlideIdx++;
+      _lessonRenderTile();
+    } else {
+      _lessonShowComplete();
+    }
+  }
+
+  function lessonPrev() {
+    if (_lessonSlideIdx > 0) {
+      _lessonSlideIdx--;
+      _lessonRenderTile();
+    }
+  }
+
+  function lessonClose() {
+    var modal = document.getElementById('lesson-modal');
+    modal.classList.remove('active');
+    _lessonTopicKey = null;
+    _lessonSlideIdx = 0;
+    // Re-render learn tab to reflect completion state
+    var el = document.getElementById('tab-learn-content');
+    if (el) el.removeAttribute('data-rendered');
+    renderLearnTab();
+  }
+
   function openLearn() {
     showModal('learn');
     learnShowMenu();
@@ -7384,22 +7516,31 @@ function init() {
 
     var html = '';
 
-    // Identity panel (collapsible)
+    // Identity panel (collapsible) with three-state photo logic
     var name = state.declarations.name || 'Anonymous';
-    var photo = '';
+    var genesisPhoto = '';
     var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
-    if (genesisRec) photo = genesisRec.photoData;
-    else if (state.declarations.photo) photo = state.declarations.photo;
+    if (genesisRec) genesisPhoto = genesisRec.photoData;
+    var currentPhoto = state.declarations.photo || '';
+    // Determine photo state: 'none', 'genesis', 'both'
+    var photoState = 'none';
+    if (genesisPhoto && currentPhoto && genesisPhoto !== currentPhoto) photoState = 'both';
+    else if (genesisPhoto || currentPhoto) photoState = 'genesis';
+    var displayPhoto = currentPhoto || genesisPhoto || '';
     var fp = state.fingerprint || '';
     var decls = [];
     if (state.declarations.skills && state.declarations.skills.length) decls = state.declarations.skills;
 
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px; box-shadow:var(--shadow); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer;" onclick="var p=this.nextElementSibling; p.style.display=p.style.display===\'block\'?\'none\':\'block\'; this.querySelector(\'.id-chev\').style.transform=p.style.display===\'block\'?\'rotate(90deg)\':\'\';">';
-    if (photo) {
-      html += '<img src="' + photo + '" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0;">';
+    if (displayPhoto) {
+      html += '<div style="position:relative; flex-shrink:0;"><img src="' + displayPhoto + '" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);">';
+      if (photoState === 'genesis') html += '<div style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:rgba(180,83,9,0.15); border:2px solid var(--bg-raised); display:flex; align-items:center; justify-content:center; font-size:9px; color:#B45309;">!</div>';
+      html += '</div>';
     } else {
-      html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--text-dim); flex-shrink:0;">' + name.charAt(0).toUpperCase() + '</div>';
+      html += '<div style="position:relative; flex-shrink:0;"><div style="width:44px; height:44px; border-radius:50%; background:var(--accent-light); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--accent); flex-shrink:0;">' + name.charAt(0).toUpperCase() + '</div>';
+      html += '<div style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:rgba(180,83,9,0.15); border:2px solid var(--bg-raised); display:flex; align-items:center; justify-content:center; font-size:9px; color:#B45309;">!</div>';
+      html += '</div>';
     }
     html += '<div style="flex:1; min-width:0;">';
     html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text);">' + esc(name) + '</div>';
@@ -7409,6 +7550,43 @@ function init() {
     html += '</div>';
     // Expanded panel
     html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
+
+    // Photo state nudges
+    if (photoState === 'none') {
+      html += '<div style="background:rgba(180,83,9,0.08); border-radius:var(--radius-sm); padding:12px 14px; margin-top:12px; display:flex; gap:12px; align-items:flex-start;">';
+      html += '<div style="width:32px; height:32px; border-radius:50%; background:rgba(180,83,9,0.12); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>';
+      html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-sm); font-weight:600; color:var(--text); margin-bottom:4px;">Add your genesis photo</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4; margin-bottom:10px;">Your first photo anchors your identity on-chain. It is how others know your chain started with a real person.</div>';
+      html += '<div style="display:flex; gap:12px; align-items:center;">';
+      html += '<button style="background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;" onclick="App.openDeclarationsEdit()">Take photo</button>';
+      html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
+      html += '</div></div></div>';
+    } else if (photoState === 'genesis') {
+      // Show genesis photo circle + empty current circle
+      html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
+      html += '<div style="text-align:center;"><img src="' + (genesisPhoto || currentPhoto) + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
+      html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--accent); background:var(--accent-light); display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="App.openDeclarationsEdit()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
+      html += '</div>';
+      html += '<div style="background:rgba(180,83,9,0.08); border-radius:var(--radius-sm); padding:12px 14px; display:flex; gap:12px; align-items:flex-start;">';
+      html += '<div style="width:32px; height:32px; border-radius:50%; background:rgba(180,83,9,0.12); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>';
+      html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-sm); font-weight:600; color:var(--text); margin-bottom:4px;">Add a current photo</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4; margin-bottom:10px;">A recent photo shows continuity. It tells others the same person is still behind this chain.</div>';
+      html += '<div style="display:flex; gap:12px; align-items:center;">';
+      html += '<button style="background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;" onclick="App.openDeclarationsEdit()">Update photo</button>';
+      html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
+      html += '</div></div></div>';
+    } else if (photoState === 'both') {
+      // Both photos - toggle view
+      html += '<div style="display:flex; justify-content:center; gap:24px; margin:12px 0 16px; padding:4px 0 8px;">';
+      html += '<div style="text-align:center; cursor:pointer;" onclick="var g=this.querySelector(\'img\'); var c=this.parentElement.querySelector(\'[data-photo=current]\'); if(g)g.style.border=\'3px solid var(--accent)\'; if(c)c.style.border=\'3px solid transparent\';"><img data-photo="genesis" src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid transparent;"><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
+      html += '<div style="text-align:center; cursor:pointer;" onclick="var c=this.querySelector(\'img\'); var g=this.parentElement.querySelector(\'[data-photo=genesis]\'); if(c)c.style.border=\'3px solid var(--accent)\'; if(g)g.style.border=\'3px solid transparent\';"><img data-photo="current" src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
+      html += '</div>';
+      html += '<div style="background:var(--green-light); border-radius:var(--radius-sm); padding:10px 14px; display:flex; gap:10px; align-items:center;">';
+      html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+      html += '<span style="font-size:var(--fs-sm); color:var(--green); font-weight:500;">Identity signals complete</span>';
+      html += '</div>';
+    }
+
     var aboutText = (state.declarations.about || '').trim();
     if (aboutText) {
       html += '<div style="margin-top:12px; font-size:var(--fs-md); color:var(--text-dim); line-height:1.5;">' + esc(aboutText) + '</div>';
@@ -7558,39 +7736,80 @@ function init() {
   function renderLearnTab() {
     var el = document.getElementById('tab-learn-content');
     if (!el) return;
-    if (el.getAttribute('data-rendered')) return; // render once
+    if (el.getAttribute('data-rendered')) return;
     el.setAttribute('data-rendered', '1');
-    var html = '<div style="padding-top:4px;">';
-    var sections = [
-      { title: 'Getting started', items: [
-        { q: 'What is HEP?', a: 'HEP is a protocol for recording cooperative acts between people. When you help someone or they help you, both of you record it on your personal chains. The record is tamper-evident and belongs to you.' },
-        { q: 'What is the value scale?', a: 'Everything in HEP is valued between 0 and 1,000,000. Think of it as a universal measuring tape for effort. A small favor might be 500. A day of skilled work might be 50,000. You and the other person agree on the number together.' },
-        { q: 'What is my position?', a: 'Your position is the difference between what you have provided and what you have received. A positive number means you have given more than you have taken. A negative number means the opposite. Neither is bad. Both are honest.' },
+    var done = _getLessonCompleted();
+
+    // Topic groups with their lesson keys
+    var topicGroups = [
+      { title: 'Getting Started', icon: '&#127793;', description: 'Learn the basics of cooperative exchange', lessons: [
+        { key: 'act', title: 'The Cooperative Act' },
+        { key: 'value', title: 'Value Is Yours' },
+        { key: 'calibrate', title: 'Find Your Unit' },
       ]},
-      { title: 'Understanding your chain', items: [
-        { q: 'What is chain health?', a: 'Chain health measures how real your chain looks. A healthy chain has photos, sensor data, diverse counterparties, and regular activity. These signals are hard to fake and help others trust that your chain represents real cooperation.' },
-        { q: 'Can someone cheat?', a: 'They can try. But fabricating a chain requires simulating physical reality across devices, locations, and time. The chain makes dishonesty visible. It does not prevent it. Communities decide what to do with the information.' },
-        { q: 'What happens if I lose my phone?', a: 'Export your chain backup regularly from Settings. The backup contains your full chain and keys, protected by your PIN. You can restore it on a new device.' },
+      { title: 'Understanding Your Chain', icon: '&#128279;', description: 'How your cooperation record works', lessons: [
+        { key: 'foundations', title: 'Foundations' },
+        { key: 'pricing', title: 'Price Discovery' },
+        { key: 'exchange', title: 'Exchange & Parity' },
       ]},
-      { title: 'The bigger picture', items: [
-        { q: 'How is this different from money?', a: 'Money requires permission. Someone must issue it before you can use it. HEP requires only cooperation. Two people agree to record an act, and the record exists. No bank, no government, no platform stands between you and your ability to cooperate.' },
-        { q: 'Why does this matter?', a: 'Every monetary system in history eventually becomes a permission system for what counts as work. Care work, community work, informal exchange -- these become invisible because no one issues currency for them. HEP makes all cooperation visible and countable.' },
+      { title: 'The Bigger Picture', icon: '&#127760;', description: 'Why cooperative exchange matters', lessons: [
+        { key: 'beyond', title: 'Beyond the Moment' },
+        { key: 'community', title: 'Building Community' },
+        { key: 'sovereignty', title: 'Your Phone, Your Server' },
+        { key: 'privacy', title: 'Privacy & Safety' },
       ]},
     ];
-    sections.forEach(function(sec) {
-      html += '<div style="margin-bottom:20px;">';
-      html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text); margin-bottom:12px;">' + sec.title + '</div>';
-      sec.items.forEach(function(item) {
-        html += '<div style="border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:8px; overflow:hidden; background:var(--bg-raised);">';
-        html += '<div style="padding:14px 16px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="var s=this.nextElementSibling; s.style.display=s.style.display===\'block\'?\'none\':\'block\';">';
-        html += '<span style="font-size:var(--fs-md); font-weight:500; color:var(--text);">' + item.q + '</span>';
-        html += '<span style="font-size:var(--fs-sm); color:var(--text-faint);">&#9662;</span>';
-        html += '</div>';
-        html += '<div style="display:none; padding:0 16px 14px; font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">' + item.a + '</div>';
-        html += '</div>';
+
+    var html = '<div style="padding-top:4px;">';
+    html += '<div style="margin-bottom:16px;"><div style="font-size:var(--fs-xl); font-weight:500; color:var(--text);">Learn</div>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">Understanding builds trust</div></div>';
+
+    topicGroups.forEach(function(group, gi) {
+      var totalLessons = group.lessons.length;
+      var doneLessons = group.lessons.filter(function(l) { return done[l.key]; }).length;
+      var allDone = doneLessons === totalLessons;
+      var groupId = 'learn-group-' + gi;
+
+      html += '<div class="learn-topic">';
+      // Topic header
+      html += '<button class="learn-topic-header" onclick="var el=document.getElementById(\'' + groupId + '\'); var chev=this.querySelector(\'.learn-topic-chev\'); if(el.style.display===\'block\'){el.style.display=\'none\'; chev.classList.remove(\'open\');}else{el.style.display=\'block\'; chev.classList.add(\'open\');}">';
+      html += '<span class="learn-topic-icon">' + group.icon + '</span>';
+      html += '<div style="flex:1; min-width:0;"><div class="learn-topic-title">' + group.title + '</div>';
+      html += '<div class="learn-topic-sub">' + (allDone ? 'Completed' : doneLessons + ' of ' + totalLessons + ' lessons') + '</div></div>';
+      if (allDone) {
+        html += '<div class="learn-topic-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
+      } else {
+        html += '<span class="learn-topic-chev">&#9662;</span>';
+      }
+      html += '</button>';
+
+      // Progress bar (partial completion)
+      if (doneLessons > 0 && !allDone) {
+        html += '<div class="learn-topic-progress"><div class="learn-topic-progress-fill" style="width:' + (doneLessons / totalLessons * 100) + '%"></div></div>';
+      }
+
+      // Lessons list (hidden by default)
+      html += '<div class="learn-lessons" id="' + groupId + '" style="display:none;">';
+      group.lessons.forEach(function(lesson, li) {
+        var isDone = done[lesson.key];
+        var topic = LEARN_TOPICS[lesson.key];
+        var stepCount = topic ? topic.slides.length : 0;
+        html += '<button class="learn-lesson-row" onclick="App.openLessonTile(\'' + lesson.key + '\')">';
+        if (isDone) {
+          html += '<div class="learn-lesson-num done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
+        } else {
+          html += '<div class="learn-lesson-num pending">' + (li + 1) + '</div>';
+        }
+        html += '<div style="flex:1; min-width:0;"><div class="learn-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + lesson.title + '</div>';
+        html += '<div class="learn-lesson-steps">' + stepCount + ' steps</div></div>';
+        html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span>';
+        html += '</button>';
       });
       html += '</div>';
+
+      html += '</div>';
     });
+
     html += '</div>';
     el.innerHTML = html;
   }
@@ -7714,6 +7933,7 @@ function init() {
     togglePasteMode, inviteViaText, inviteViaQR,
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
+    openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     openSettings, togglePrivacy, toggleLocation,
