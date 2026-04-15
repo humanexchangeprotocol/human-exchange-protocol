@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.38.0
+// APPLICATION LAYER v2.39.0
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -195,6 +195,7 @@ const PAIR_CODE_LENGTH = 4;
     proposalPath: 'inperson',
     settlementPayload: null,
     doneSummary: '',
+    doneDetails: null,
   };
 
   const SK = 'hcp_data';
@@ -1054,10 +1055,11 @@ const PAIR_CODE_LENGTH = 4;
   function clearPrefill() {
     prefillSource = null;
     document.getElementById('ex-prefill-bar').style.display = 'none';
-    ['ex-desc','ex-value','ex-category','ex-hours','ex-minutes','ex-city','ex-state'].forEach(id => document.getElementById(id).value = '');
+    ['ex-desc','ex-value','ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
     setDirection('provided');
-    // Deselect skills
-    document.querySelectorAll('#ex-skill-chips .skill-pick.selected').forEach(c => c.classList.remove('selected'));
+    exRenderCategoryPills('');
+    var ctx = document.getElementById('ex-pricing-context');
+    if (ctx) ctx.innerHTML = '';
     toast('Cleared');
   }
 
@@ -1331,11 +1333,97 @@ const PAIR_CODE_LENGTH = 4;
     if (wasDone) toast('Exchange complete');
   }
 
+  // === Exchange form v2 ===
+  var EX_CATEGORIES = ['Skilled work', 'Teaching', 'Transport', 'Food & meals', 'Care & support', 'Physical help', 'Repair', 'Creative work'];
+
+  function exRenderCategoryPills(selected) {
+    var container = document.getElementById('ex-cat-pills');
+    if (!container) return;
+    container.innerHTML = '';
+    EX_CATEGORIES.forEach(function(cat) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'exf-pill' + (selected === cat ? ' sel' : '');
+      btn.textContent = cat;
+      btn.addEventListener('click', function() {
+        document.getElementById('ex-category').value = cat;
+        exRenderCategoryPills(cat);
+        exRenderPricingContext(cat);
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  function exRenderPricingContext(cat) {
+    var ctx = document.getElementById('ex-pricing-context');
+    if (!ctx) return;
+    ctx.innerHTML = '';
+    if (!cat) return;
+
+    // Partner's pricing for this category
+    var partnerSnap = null;
+    if (sessionPartner && sessionPartner.thread_snapshot) {
+      partnerSnap = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
+    }
+    var partnerName = (partnerSnap && partnerSnap._name) || 'Partner';
+    var partnerSvc = null;
+    if (partnerSnap && partnerSnap._services) {
+      // Find matching category across services
+      var catLow = cat.toLowerCase();
+      Object.keys(partnerSnap._services).forEach(function(key) {
+        var s = partnerSnap._services[key];
+        if (s.cat && s.cat.toLowerCase() === catLow && (!partnerSvc || s.n > partnerSvc.n)) {
+          partnerSvc = s;
+        }
+      });
+    }
+
+    // My own history for this category
+    var myVals = [];
+    state.chain.forEach(function(r) {
+      if (r.category && r.category.toLowerCase() === cat.toLowerCase()) {
+        myVals.push(r.value);
+      }
+    });
+    var myAvg = myVals.length ? Math.round(myVals.reduce(function(a,b){return a+b;},0) / myVals.length) : null;
+
+    if (!partnerSvc && !myVals.length) return;
+
+    var html = '<div class="exf-pricing-ctx">';
+    if (partnerSvc && partnerSvc.n > 0 && partnerSvc.low != null) {
+      html += '<div class="exf-pricing-label">' + esc(partnerName) + '\'s ' + cat.toLowerCase() + ' range</div>';
+      html += exRenderRangeBar(partnerSvc.low, partnerSvc.high, partnerSvc.avg, null);
+    }
+    if (myAvg != null) {
+      html += '<div class="exf-pricing-yours">Your past ' + cat.toLowerCase() + ': avg ' + myAvg.toLocaleString() + ' across ' + myVals.length + ' exchange' + (myVals.length > 1 ? 's' : '') + '</div>';
+    }
+    html += '</div>';
+    ctx.innerHTML = html;
+  }
+
+  function exParseDuration(text) {
+    if (!text || !text.trim()) return 0;
+    text = text.trim().toLowerCase();
+    // Try patterns: "2 hours", "2h", "2.5 hours", "30 min", "30m", "1h 30m", "90"
+    var totalMins = 0;
+    var hMatch = text.match(/([\d.]+)\s*h/);
+    var mMatch = text.match(/([\d.]+)\s*m/);
+    if (hMatch) totalMins += Math.round(parseFloat(hMatch[1]) * 60);
+    if (mMatch) totalMins += Math.round(parseFloat(mMatch[1]));
+    if (!hMatch && !mMatch) {
+      // Plain number -- if > 10 assume minutes, otherwise hours
+      var n = parseFloat(text);
+      if (!isNaN(n)) totalMins = n > 10 ? Math.round(n) : Math.round(n * 60);
+    }
+    return totalMins;
+  }
+
   function setDirection(dir) {
     state.direction = dir;
-    const btns = document.getElementById('dir-toggle').children;
-    btns[0].className = dir === 'provided' ? 'active providing' : '';
-    btns[1].className = dir === 'received' ? 'active receiving' : '';
+    var prov = document.getElementById('dir-providing');
+    var recv = document.getElementById('dir-receiving');
+    if (prov) { prov.className = 'exf-seg-btn' + (dir === 'provided' ? ' active' : ''); }
+    if (recv) { recv.className = 'exf-seg-btn' + (dir === 'received' ? ' active' : ''); }
   }
 
   async function generateProposal() {
@@ -1344,13 +1432,10 @@ const PAIR_CODE_LENGTH = 4;
     const desc = document.getElementById('ex-desc').value.trim();
     if (!desc) { toast('Enter a description'); return; }
 
-    // Append selected skills to description
-    const selectedSkills = getSelectedSkills();
-    const fullDesc = selectedSkills.length ? desc + ' [Skills: ' + selectedSkills.join(', ') + ']' : desc;
+    const fullDesc = desc;
 
-    const hrs = parseInt(document.getElementById('ex-hours').value) || 0;
-    const mins = parseInt(document.getElementById('ex-minutes').value) || 0;
-    const totalMins = (hrs * 60) + mins;
+    var durEl = document.getElementById('ex-duration');
+    const totalMins = durEl ? exParseDuration(durEl.value) : 0;
 
     const details = {
       type: 'exchange',
@@ -1679,9 +1764,17 @@ const PAIR_CODE_LENGTH = 4;
     }
 
     // If we're still on the pair step, show done
+    state.doneDetails = {
+      partner: '',
+      direction: half.direction === 'provided' ? 'You provided' : 'You received',
+      description: half.description || '',
+      category: half.category || '',
+      value: half.value,
+      witnessed: true
+    };
+    state.doneSummary = (half.direction === 'provided' ? 'Provided' : 'Received') + ': ' + half.description + ' -- ' + half.value + ' units';
+    exRenderDoneCard();
     showExStep('done');
-    document.getElementById('ex-done-summary').textContent =
-      (half.direction === 'provided' ? 'Provided' : 'Received') + ': ' + half.description + ' — ' + half.value + ' units';
 
     refreshHome();
     toast('Exchange complete');
@@ -2966,9 +3059,22 @@ const PAIR_CODE_LENGTH = 4;
     if (witnessUrl) recordServerSuccess(witnessUrl);
 
     // Show done
+    var _cfPartnerName = '';
+    if (sessionPartner && sessionPartner.thread_snapshot) {
+      var _cpts = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
+      _cfPartnerName = (_cpts && _cpts._name) || '';
+    }
+    state.doneDetails = {
+      partner: _cfPartnerName,
+      direction: myDirection === 'provided' ? 'You provided' : 'You received',
+      description: p.description || '',
+      category: p.category || '',
+      value: p.value,
+      witnessed: !!(getWitnessUrl())
+    };
+    state.doneSummary = (myDirection === 'provided' ? 'Provided' : 'Received') + ': ' + (p.description || '') + ' -- ' + p.value + ' units';
+    exRenderDoneCard();
     showExStep('done');
-    document.getElementById('ex-done-summary').textContent =
-      (myDirection === 'provided' ? 'Provided' : 'Received') + ': ' + (p.description || '') + ' — ' + p.value + ' units';
 
     refreshHome();
     toast('Exchange complete');
@@ -3160,7 +3266,20 @@ const PAIR_CODE_LENGTH = 4;
 
     // Store done summary
     const dirLabel = h.details.energyState === 'provided' ? 'Provided' : 'Received';
-    state.doneSummary = dirLabel + ' ' + h.details.value + ' for "' + h.details.description + '" — recorded.';
+    state.doneSummary = dirLabel + ' ' + h.details.value + ' for "' + h.details.description + '" -- recorded.';
+    var _donePartnerName = '';
+    if (sessionPartner && sessionPartner.thread_snapshot) {
+      var _dts = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
+      _donePartnerName = (_dts && _dts._name) || '';
+    }
+    state.doneDetails = {
+      partner: _donePartnerName,
+      direction: h.details.energyState === 'provided' ? 'You provided' : 'You received',
+      description: h.details.description || '',
+      category: h.details.category || '',
+      value: h.details.value,
+      witnessed: !!(getWitnessUrl())
+    };
 
     // Clear pending
     const pending = loadPending();
@@ -3168,13 +3287,13 @@ const PAIR_CODE_LENGTH = 4;
     if (match >= 0) { pending.splice(match, 1); savePending(pending); }
 
     // Clear form
-    ['ex-desc','ex-value','ex-category','ex-hours','ex-minutes','ex-city','ex-state'].forEach(id => document.getElementById(id).value = '');
+    ['ex-desc','ex-value','ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
     state.pendingProposal = null;
     localStorage.removeItem('hcp_pending_proposal');
 
     if (relayDelivered) {
-      // Server delivered the settlement — skip the QR, go straight to done
-      document.getElementById('ex-done-summary').textContent = state.doneSummary;
+      // Server delivered the settlement -- skip the QR, go straight to done
+      exRenderDoneCard();
       showModal('exchange');
       showExStep('done');
     } else {
@@ -3981,8 +4100,34 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Settlement (A side) ---
   function finishExchange() {
-    document.getElementById('ex-done-summary').textContent = state.doneSummary || 'Exchange recorded.';
+    exRenderDoneCard();
     showExStep('done');
+  }
+
+  function exRenderDoneCard() {
+    var card = document.getElementById('ex-done-card');
+    if (!card) return;
+    var d = state.doneDetails;
+    if (!d) {
+      card.innerHTML = '<div style="font-size:14px; color:var(--text-dim);">' + esc(state.doneSummary || 'Exchange recorded.') + '</div>';
+      return;
+    }
+    var rows = [];
+    if (d.partner) rows.push(['With', d.partner]);
+    rows.push(['Direction', d.direction]);
+    if (d.description) rows.push(['Description', d.description]);
+    if (d.category) rows.push(['Category', d.category]);
+    rows.push(['Value', Number(d.value).toLocaleString()]);
+    rows.push(['Witnessed', d.witnessed ? 'Yes' : 'No']);
+    var html = '';
+    rows.forEach(function(r, i) {
+      var valStyle = r[0] === 'Witnessed' && d.witnessed ? ' color:var(--green);' : '';
+      html += '<div class="exf-done-row">';
+      html += '<span class="exf-done-label">' + esc(r[0]) + '</span>';
+      html += '<span class="exf-done-val" style="' + valStyle + '">' + esc(String(r[1])) + '</span>';
+      html += '</div>';
+    });
+    card.innerHTML = html;
   }
 
   function settleViaMessage() {
@@ -7190,33 +7335,52 @@ function init() {
     if (sessionRole === 'proposer') {
       showExStep('form');
       document.getElementById('exchange-header').textContent = 'Set up the exchange';
+      // Reset form fields
       document.getElementById('ex-desc').value = '';
       document.getElementById('ex-value').value = '';
       document.getElementById('ex-category').value = '';
+      var durEl = document.getElementById('ex-duration');
+      if (durEl) durEl.value = '';
       document.getElementById('ex-hours').value = '';
       document.getElementById('ex-minutes').value = '';
       document.getElementById('ex-city').value = '';
       document.getElementById('ex-state').value = '';
-      renderSkillPicker();
+      // Render category pills
+      exRenderCategoryPills('');
+      // Clear pricing context
+      var ctx = document.getElementById('ex-pricing-context');
+      if (ctx) ctx.innerHTML = '';
+      // Set partner label
+      var partnerSnap = null;
+      if (sessionPartner && sessionPartner.thread_snapshot) {
+        partnerSnap = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
+      }
+      var partnerName = (partnerSnap && partnerSnap._name) || 'the other person';
+      var labelEl = document.getElementById('ex-form-partner-label');
+      if (labelEl) labelEl.innerHTML = 'Describe the exchange with <strong style="color:var(--text);">' + esc(partnerName) + '</strong>';
       // Apply prefill from "Use previous" if available
       if (window._fabPrefill) {
         var pf = window._fabPrefill;
         if (pf.description) document.getElementById('ex-desc').value = pf.description;
         if (pf.value) document.getElementById('ex-value').value = pf.value;
-        if (pf.category) document.getElementById('ex-category').value = pf.category;
-        if (pf.duration) {
+        if (pf.category) {
+          document.getElementById('ex-category').value = pf.category;
+          exRenderCategoryPills(pf.category);
+          exRenderPricingContext(pf.category);
+        }
+        if (pf.duration && durEl) {
           var pfHrs = Math.floor(pf.duration / 60);
           var pfMins = pf.duration % 60;
-          if (pfHrs) document.getElementById('ex-hours').value = pfHrs;
-          if (pfMins) document.getElementById('ex-minutes').value = pfMins;
+          var durText = '';
+          if (pfHrs) durText += pfHrs + ' hour' + (pfHrs > 1 ? 's' : '');
+          if (pfMins) durText += (durText ? ' ' : '') + pfMins + ' min';
+          durEl.value = durText;
         }
-        if (pf.city) document.getElementById('ex-city').value = pf.city;
-        if (pf.state_field) document.getElementById('ex-state').value = pf.state_field;
         setDirection(pf.energyState || 'provided');
         showPrefillBar(pf.description || pf.category || 'Previous exchange');
         window._fabPrefill = null;
       }
-      // Inject back link + reusable acts above the form
+      // Inject back link above the form
       var formStep = document.getElementById('ex-step-form');
       var oldBack = document.getElementById('ex-form-back');
       if (oldBack) oldBack.remove();
@@ -7227,8 +7391,7 @@ function init() {
       backLink.style.cssText = 'font-size:13px; color:var(--text-faint); cursor:pointer; margin-bottom:12px;';
       backLink.textContent = '\u2190 Review their chain';
       backLink.addEventListener('click', function() { App.exBackToTexture(); });
-      var dirToggle = document.getElementById('dir-toggle');
-      if (formStep && dirToggle) formStep.insertBefore(backLink, formStep.firstChild);
+      if (formStep) formStep.insertBefore(backLink, formStep.firstChild);
       exRenderReusableActs();
     } else {
       showExStep('receiver-wait');
@@ -7300,9 +7463,20 @@ function init() {
         document.getElementById('ex-desc').value = act.description || '';
         document.getElementById('ex-value').value = act.value || '';
         document.getElementById('ex-category').value = act.category || '';
+        if (act.category) {
+          exRenderCategoryPills(act.category);
+          exRenderPricingContext(act.category);
+        }
         if (act.duration) {
-          document.getElementById('ex-hours').value = Math.floor(act.duration / 60) || '';
-          document.getElementById('ex-minutes').value = act.duration % 60 || '';
+          var durEl = document.getElementById('ex-duration');
+          if (durEl) {
+            var dh = Math.floor(act.duration / 60);
+            var dm = act.duration % 60;
+            var dt = '';
+            if (dh) dt += dh + ' hour' + (dh > 1 ? 's' : '');
+            if (dm) dt += (dt ? ' ' : '') + dm + ' min';
+            durEl.value = dt;
+          }
         }
         showPrefillBar(act.description || 'Previous act');
         // Remove the reusable acts section
@@ -7321,7 +7495,7 @@ function init() {
   }
 
   function exSelectRole(role) {
-    // Legacy — kept for backward compatibility
+    // Legacy -- kept for backward compatibility
     if (role === 'provider') {
       sessionRole = 'proposer';
       showExStep('form');
@@ -7329,11 +7503,13 @@ function init() {
       document.getElementById('ex-desc').value = '';
       document.getElementById('ex-value').value = '';
       document.getElementById('ex-category').value = '';
+      var durEl = document.getElementById('ex-duration');
+      if (durEl) durEl.value = '';
       document.getElementById('ex-hours').value = '';
       document.getElementById('ex-minutes').value = '';
       document.getElementById('ex-city').value = '';
       document.getElementById('ex-state').value = '';
-      renderSkillPicker();
+      exRenderCategoryPills('');
     } else {
       sessionRole = 'confirmer';
       showExStep('receiver-wait');
@@ -7375,53 +7551,17 @@ function init() {
     if (banner) banner.style.display = 'none';
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
-    var name = (ts && ts._name) || 'This person';
-    var services = (ts && ts._services) || {};
-    var svcKeys = Object.keys(services);
+    var name = (ts && ts._name) || 'the other person';
 
-    var html = '';
-
-    if (!svcKeys.length) {
-      // No service history — show minimal waiting state
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; margin-bottom:16px;">';
-      html += esc(name) + ' has no service history yet. Their proposal will appear here when ready.';
-      html += '</div>';
-    } else {
-      // Group by category
-      var byCat = {};
-      var uncategorized = [];
-      svcKeys.forEach(function(key) {
-        var s = services[key];
-        var cat = (s.cat || '').trim();
-        if (!cat) {
-          uncategorized.push(s);
-        } else {
-          if (!byCat[cat]) byCat[cat] = [];
-          byCat[cat].push(s);
-        }
-      });
-      var catNames = Object.keys(byCat).sort();
-
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">';
-      html += esc(name) + '\u2019s services \u00b7 ' + svcKeys.length + ' offered';
-      html += '</div>';
-
-      // Render each category as expandable
-      catNames.forEach(function(cat) {
-        var items = byCat[cat];
-        var totalInCat = items.reduce(function(sum, s) { return sum + s.n; }, 0);
-        html += exRenderServiceCategory(cat, items, totalInCat);
-      });
-
-      // Uncategorized
-      if (uncategorized.length) {
-        var totalUncat = uncategorized.reduce(function(sum, s) { return sum + s.n; }, 0);
-        html += exRenderServiceCategory('Uncategorized', uncategorized, totalUncat);
-      }
-    }
+    var html = '<div style="text-align:center; padding-top:40px;">';
+    html += '<div style="width:48px; height:48px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; margin:0 auto 20px; animation:exSpin 1s linear infinite;"></div>';
+    html += '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:8px;">Waiting for ' + esc(name) + '\'s proposal</div>';
+    html += '<div style="font-size:14px; color:var(--text-dim); line-height:1.5;">They\'re filling out the exchange details.<br>This screen will update automatically.</div>';
+    html += '<style>@keyframes exSpin { to { transform: rotate(360deg); } }</style>';
+    html += '</div>';
 
     // Cancel exchange button
-    html += '<button class="btn btn-secondary" style="width:100%; margin-top:20px; color:var(--text-faint);" onclick="App.closeExchange()">Cancel exchange</button>';
+    html += '<button class="btn btn-secondary" style="width:100%; margin-top:32px; color:var(--text-faint);" onclick="App.closeExchange()">Cancel exchange</button>';
 
     container.innerHTML = html;
   }
@@ -7488,7 +7628,6 @@ function init() {
 
     document.getElementById('exchange-header').textContent = 'Review proposal';
 
-    // Update step header
     var stepTitle = document.getElementById('ex-receiver-wait-title');
     if (stepTitle) stepTitle.textContent = 'Review their proposal';
 
@@ -7507,166 +7646,76 @@ function init() {
       provSvc = providerSnap._services[serviceKey];
     }
 
-    // Get receiver's own payment history from local chain
-    var myHistory = [];
-    state.chain.forEach(function(r) {
-      if ((r.description || '').trim().toLowerCase() === serviceKey) {
-        myHistory.push({ v: r.value, d: r.energyState, w: r.timestamp });
-      }
-    });
-    var myAvg = myHistory.length ? Math.round(myHistory.reduce(function(s, h) { return s + h.v; }, 0) / myHistory.length) : null;
-    var myLow = myHistory.length ? Math.min.apply(null, myHistory.map(function(h) { return h.v; })) : null;
-    var myHigh = myHistory.length ? Math.max.apply(null, myHistory.map(function(h) { return h.v; })) : null;
-
-    // Compute assessment
-    var assessment;
-    if (!provSvc || !provSvc.n) {
-      var rangeNote = '';
-      if (providerSnap && providerSnap.range && providerSnap.range.dailyVal) {
-        rangeNote = ' Their scale exercise puts a full day of work at ' + providerSnap.range.dailyVal + ' units.';
-      }
-      assessment = { color: 'var(--blue)', icon: '&#9679;', text: 'First time ' + esc(providerName) + ' is offering this service. No pricing history yet.' + rangeNote };
-    } else if (proposedValue > provSvc.avg * 1.5) {
-      assessment = { color: 'var(--red)', icon: '&#9888;', text: esc(providerName) + ' typically offers ' + esc(serviceDesc) + ' between ' + provSvc.low + ' and ' + provSvc.high + ' units. Today\'s proposal of ' + proposedValue + ' is well above that range. There may be a good reason \u2014 ask about it.' };
-    } else if (proposedValue > provSvc.high) {
-      assessment = { color: 'var(--accent)', icon: '&#9679;', text: esc(providerName) + '\'s typical range for ' + esc(serviceDesc) + ' is ' + provSvc.low + ' to ' + provSvc.high + '. This proposal is a bit higher. Could reflect complexity, scarcity, or an adjustment.' };
-    } else {
-      assessment = { color: 'var(--green)', icon: '&#10003;', text: esc(providerName) + ' typically offers ' + esc(serviceDesc) + ' between ' + provSvc.low + ' and ' + provSvc.high + ' units. This price is within that range.' };
-    }
-
-    var borderColor = assessment.color === 'var(--red)' ? 'rgba(204,68,68,0.15)' : assessment.color === 'var(--accent)' ? 'rgba(42,90,143,0.15)' : assessment.color === 'var(--blue)' ? 'rgba(42,90,143,0.15)' : 'rgba(43,140,62,0.15)';
-    var bgColor = borderColor.replace('0.15', '0.04');
-
     var html = '';
+    html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:16px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
 
-    // Assessment card
-    html += '<div style="background:' + bgColor + '; border:1px solid ' + borderColor + '; border-radius:var(--radius); overflow:hidden;">';
-    html += '<div style="padding:16px;">';
+    // Proposal card
+    html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:16px;">';
 
-    // Service + flow
-    var hasGenesis = providerSnap && providerSnap._genesisPhoto;
-    var hasCurrent = p.proposer_photo;
-    if (hasGenesis || hasCurrent) {
-      html += '<div style="display:flex; justify-content:center; align-items:flex-end; gap:16px; margin-bottom:12px;">';
-      if (hasGenesis) {
-        html += '<div style="text-align:center;">' +
-          '<img src="' + providerSnap._genesisPhoto + '" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:2px solid var(--border);">' +
-          '<div style="font-size:11px; color:var(--text-faint); margin-top:4px;">Genesis</div></div>';
-      }
-      if (hasCurrent) {
-        html += '<div style="text-align:center;">' +
-          '<img src="' + p.proposer_photo + '" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-dim);">' +
-          '<div style="font-size:11px; color:var(--text-faint); margin-top:4px;">' + (hasGenesis ? 'Current' : 'Current') + '</div></div>';
-      }
-      html += '</div>';
-    }
-    html += '<div style="font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px;">' + esc(serviceDesc) + '</div>';
-    html += '<div style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-dim); margin-bottom:14px;">';
-    html += '<span>' + esc(providerName) + '</span><span style="color:var(--text-faint);">\u2192</span><span>You</span>';
-    html += '</div>';
-
-    // Price
-    html += '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:14px;">';
-    html += '<span style="font-size:28px; font-weight:700; font-family:var(--font-mono); color:var(--accent);">' + proposedValue + '</span>';
-    html += '<span style="font-size:12px; color:var(--text-faint);">units proposed</span>';
-    html += '</div>';
-
-    // Assessment verdict
-    html += '<div style="display:flex; align-items:flex-start; gap:8px;">';
-    html += '<span style="color:' + assessment.color + '; font-size:14px; flex-shrink:0; margin-top:1px;">' + assessment.icon + '</span>';
-    html += '<div style="font-size:12px; color:var(--text-dim); line-height:1.6;">' + assessment.text + '</div>';
-    html += '</div>';
-
-    // Range bar
-    if (provSvc && provSvc.low != null) {
-      html += '<div style="margin-top:14px;">' + exRenderRangeBar(provSvc.low, provSvc.high, provSvc.avg, proposedValue) + '</div>';
+    // Direction badges
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+    if (p.direction === 'provided') {
+      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
+      html += '<span style="font-size:12px; color:var(--text-faint);">You received</span>';
+    } else {
+      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
+      html += '<span style="font-size:12px; color:var(--text-faint);">You provided</span>';
     }
     html += '</div>';
 
-    // Expandable sections
-    html += '<div style="border-top:1px solid var(--border); padding:0 16px;">';
+    // Description
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">What was done</div>';
+    html += '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
+    html += '</div>';
 
-    // Provider's history
-    if (provSvc && provSvc.n > 0) {
-      html += '<div class="ex-expand-row" onclick="this.classList.toggle(\'open\');">';
-      html += '<div class="ex-expand-header"><span style="font-size:14px; color:var(--text-faint);">\u25F7</span><span style="font-size:13px; color:var(--text); flex:1;">' + esc(providerName) + '\'s pricing history for ' + esc(serviceDesc) + '</span><span class="ex-expand-chev">\u25B8</span></div>';
-      html += '<div class="ex-expand-body">';
-      html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
-      html += '<div><div style="font-size:18px; font-weight:700; font-family:var(--font-mono); color:var(--accent);">' + provSvc.n + '</div><div style="font-size:10px; color:var(--text-faint);">times</div></div>';
-      html += '<div><div style="font-size:18px; font-weight:700; font-family:var(--font-mono); color:var(--accent);">' + provSvc.people + '</div><div style="font-size:10px; color:var(--text-faint);">people</div></div>';
-      html += '<div><div style="font-size:18px; font-weight:700; font-family:var(--font-mono); color:var(--accent);">' + provSvc.avg + '</div><div style="font-size:10px; color:var(--text-faint);">avg</div></div>';
-      html += '</div>';
+    // Category + Duration row
+    html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
+    if (serviceCat) {
+      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Category</div>';
+      html += '<div style="font-size:14px; color:var(--text);">' + esc(serviceCat) + '</div></div>';
+    }
+    if (p.duration) {
+      var dHrs = Math.floor(p.duration / 60);
+      var dMin = p.duration % 60;
+      var durStr = '';
+      if (dHrs) durStr += dHrs + ' hour' + (dHrs > 1 ? 's' : '');
+      if (dMin) durStr += (durStr ? ' ' : '') + dMin + ' min';
+      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Duration</div>';
+      html += '<div style="font-size:14px; color:var(--text);">' + esc(durStr) + '</div></div>';
+    }
+    html += '</div>';
+
+    // Proposed value
+    html += '<div style="border-top:1px solid var(--border); padding-top:12px;">';
+    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
+    html += '<div style="font-size:28px; font-weight:700; color:var(--accent); font-family:var(--font-mono,monospace);">' + Number(proposedValue).toLocaleString() + '</div>';
+    html += '</div>';
+
+    // Pricing context
+    if (provSvc && provSvc.n > 0 && provSvc.low != null) {
+      html += '<div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">';
+      html += '<div style="font-size:11px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">';
+      html += esc(providerName) + '\'s ' + (serviceCat ? esc(serviceCat.toLowerCase()) : 'service') + ' range</div>';
       html += exRenderRangeBar(provSvc.low, provSvc.high, provSvc.avg, proposedValue);
-      if (provSvc.prices) {
-        provSvc.prices.forEach(function(pr) {
-          var when = pr.w ? exTimeAgo(pr.w) : '';
-          html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
-          html += '<span style="font-size:12px; color:var(--text-faint);">' + when + '</span>';
-          html += '<span style="font-size:14px; font-family:var(--font-mono); color:var(--accent); font-weight:600;">' + pr.v + '</span>';
-          html += '</div>';
-        });
+      // Context note
+      var diff = proposedValue - provSvc.avg;
+      var pctDiff = provSvc.avg > 0 ? Math.abs(Math.round((diff / provSvc.avg) * 100)) : 0;
+      if (pctDiff <= 10) {
+        html += '<div style="font-size:11px; color:var(--text-faint);">This value is near their average for this category</div>';
+      } else if (proposedValue > provSvc.high) {
+        html += '<div style="font-size:11px; color:var(--warning,#e67e22);">This value is above their usual range</div>';
+      } else if (proposedValue < provSvc.low) {
+        html += '<div style="font-size:11px; color:var(--accent);">This value is below their usual range</div>';
       }
-      html += '</div></div>';
-    }
-
-    // Receiver's own history
-    if (myHistory.length > 0) {
-      html += '<div class="ex-expand-row" onclick="this.classList.toggle(\'open\');">';
-      html += '<div class="ex-expand-header"><span style="font-size:14px; color:var(--text-faint);">\u25F7</span><span style="font-size:13px; color:var(--text); flex:1;">Your payment history for ' + esc(serviceDesc) + '</span><span class="ex-expand-chev">\u25B8</span></div>';
-      html += '<div class="ex-expand-body">';
-      html += '<div style="font-size:12px; color:var(--text-dim); line-height:1.6; margin-bottom:12px;">You have paid for ' + esc(serviceDesc) + ' ' + myHistory.length + ' times. Your range: ' + myLow + ' to ' + myHigh + ' units.</div>';
-      html += exRenderRangeBar(myLow, myHigh, myAvg, proposedValue);
-      myHistory.slice(-10).forEach(function(h) {
-        var when = h.w ? exTimeAgo(h.w) : '';
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
-        html += '<span style="font-size:12px; color:var(--text-faint);">' + when + '</span>';
-        html += '<span style="font-size:14px; font-family:var(--font-mono); color:var(--accent); font-weight:600;">' + h.v + '</span>';
-        html += '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    // Reality signals
-    if (providerSnap && providerSnap.integrity) {
-      var ig = providerSnap.integrity;
-      html += '<div class="ex-expand-row" onclick="this.classList.toggle(\'open\');">';
-      html += '<div class="ex-expand-header"><span style="font-size:14px; color:var(--text-faint);">\u25C9</span><span style="font-size:13px; color:var(--text); flex:1;">Reality signals</span><span class="ex-expand-chev">\u25B8</span></div>';
-      html += '<div class="ex-expand-body">';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.8;">';
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Genesis photo anchored</span><span style="font-weight:500;">' + (ig.genesisPhoto ? '\u2713 Yes' + (ig.genesisPhotoSource ? ' (' + ig.genesisPhotoSource + ')' : '') : '\u2014 No') + '</span></div>';
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Sensor coverage</span><span style="font-weight:500;">' + ig.sensorCoverage + '%</span></div>';
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Platforms</span><span style="font-weight:500;">' + (ig.platforms && ig.platforms.length ? ig.platforms.join(', ') : '\u2014') + '</span></div>';
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Distinct devices</span><span style="font-weight:500;">' + ig.distinctDevices + '</span></div>';
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Distinct counterparties</span><span style="font-weight:500;">' + ig.distinctCounterparties + '</span></div>';
-      if (ig.distinctCounterpartyDevices > 0) {
-        var cpRatio2 = ig.distinctCounterparties > 0 ? (ig.distinctCounterparties / ig.distinctCounterpartyDevices) : 0;
-        var cpDevStyle2 = cpRatio2 > 2 ? ' color:var(--warning,#e67e22);' : '';
-        html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Counterparty devices</span><span style="font-weight:500;' + cpDevStyle2 + '">' + ig.distinctCounterpartyDevices + '</span></div>';
-      }
-      var ps = ig.photoSources || {};
-      if (ps.camera || ps.file) {
-        html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);"><span>Photos</span><span style="font-weight:500;">' + (ps.camera || 0) + ' camera, ' + (ps.file || 0) + ' uploaded</span></div>';
-      }
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span>Pings</span><span style="font-weight:500;">' + (providerSnap.pings || 0) + (ig.avgPingGapDays != null ? ' (avg ' + ig.avgPingGapDays + ' day gap)' : '') + '</span></div>';
       html += '</div>';
-      html += '<p style="font-size:12px; color:var(--text-faint); line-height:1.5; margin-top:10px;">These signals come from the device data embedded in their chain. Camera photos, consistent device fingerprints, and regular pings suggest a real person using a real phone.</p>';
-      html += '</div></div>';
     }
 
-    // How to think about this price
-    html += '<div class="ex-expand-row" onclick="this.classList.toggle(\'open\');">';
-    html += '<div class="ex-expand-header"><span style="font-size:14px; color:var(--text-faint);">?</span><span style="font-size:13px; color:var(--text); flex:1;">How to think about this price</span><span class="ex-expand-chev">\u25B8</span></div>';
-    html += '<div class="ex-expand-body">';
-    html += '<p style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:12px;">The person offering this service sets the price. That is how it works \u2014 the provider declares what they believe their work is worth. You decide whether that value makes sense to you.</p>';
-    html += '<p style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:12px;">The pricing history gives you context. If this person has offered the same service many times at a consistent price, and multiple different people have agreed to pay it, that is a strong signal the price reflects real value.</p>';
-    html += '<p style="font-size:13px; color:var(--text-dim); line-height:1.7;">Your own payment history tells you what you have typically valued this type of work at. If the gap between what you usually pay and what they propose is large, that is worth understanding before you agree.</p>';
-    html += '</div></div>';
+    html += '</div>'; // end proposal card
 
-    html += '</div></div>';
-
-    // Confirm/reject
-    html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%; margin-top:16px; margin-bottom:8px;" onclick="App.sessionConfirm()">Accept</button>';
-    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.sessionReject()">Not right</button>';
+    // Confirm / discuss
+    html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%; margin-top:16px; margin-bottom:8px;" onclick="App.sessionConfirm()">Confirm exchange</button>';
+    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.sessionReject()">This doesn\'t look right</button>';
 
     container.innerHTML = html;
   }

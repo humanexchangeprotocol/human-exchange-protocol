@@ -433,6 +433,32 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .direction-toggle button.active.providing { background: var(--green); }
 .direction-toggle button.active.receiving { background: var(--accent); }
 
+/* === Exchange form v2 === */
+.exf-seg { display:flex; gap:0; margin-bottom:18px; background:var(--border); border-radius:10px; padding:3px; }
+.exf-seg-btn { flex:1; padding:12px; border-radius:8px; border:none; cursor:pointer; font-size:15px; font-weight:600; transition:all 0.15s; background:transparent; color:var(--text-faint); box-shadow:none; }
+.exf-seg-btn.active { background:var(--bg-raised,#fff); box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.exf-seg-btn.active[id="dir-providing"] { color:var(--green); }
+.exf-seg-btn.active[id="dir-receiving"] { color:var(--accent); }
+.exf-section-label { font-size:12px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+.exf-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.exf-pill { padding:8px 14px; border-radius:20px; font-size:13px; font-weight:500; border:none; cursor:pointer; background:var(--bg-raised,#fff); color:var(--text-dim); box-shadow:inset 0 0 0 1px var(--border); transition:all 0.15s; }
+.exf-pill.sel { background:var(--accent); color:#fff; box-shadow:none; }
+.exf-input { width:100%; padding:12px 14px; font-size:15px; border:1.5px solid var(--border); border-radius:10px; background:var(--bg-raised,#fff); color:var(--text); margin-bottom:18px; box-sizing:border-box; outline:none; font-family:inherit; }
+.exf-input:focus { border-color:var(--accent); }
+.exf-value-card { background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:18px; }
+.exf-value-input { width:100%; font-size:28px; font-weight:700; color:var(--accent); text-align:center; border:none; background:transparent; outline:none; box-sizing:border-box; padding:8px 0; border-bottom:2px solid rgba(42,90,143,0.12); font-family:var(--font-mono,monospace); }
+.exf-value-input::placeholder { color:var(--text-faint); font-weight:400; font-size:16px; }
+.exf-value-anchors { display:flex; justify-content:space-between; font-size:11px; color:var(--text-faint); margin-top:8px; }
+.exf-pricing-ctx { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.exf-pricing-label { font-size:11px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+.exf-pricing-yours { font-size:11px; color:var(--text-faint); margin-top:4px; }
+.exf-done-check { width:72px; height:72px; border-radius:50%; background:rgba(43,140,62,0.08); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; animation:exfPopIn 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes exfPopIn { 0% { transform:scale(0); opacity:0; } 100% { transform:scale(1); opacity:1; } }
+.exf-done-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.exf-done-row:last-child { border-bottom:none; }
+.exf-done-label { color:var(--text-dim); }
+.exf-done-val { font-weight:500; color:var(--text); }
+
 /* === BUTTONS === */
 .btn { width: 100%; padding: 16px; border-radius: var(--radius); font-weight: 600; font-size: 17px; transition: opacity 0.1s; }
 .btn:active { opacity: 0.8; }
@@ -1480,50 +1506,45 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="pf-text"><span class="pf-label">Pre-filled:</span> <span id="ex-prefill-desc"></span></div>
           <button class="pf-clear" onclick="App.clearPrefill()" aria-label="Clear">&#10005;</button>
         </div>
-        <button class="btn btn-secondary" onclick="App.shareChain('exchange')" style="margin-bottom:20px;">Share My Thread</button>
 
-        <div class="direction-toggle" id="dir-toggle">
-          <button class="active providing" onclick="App.setDirection('provided')" id="dir-providing">I'm providing</button>
-          <button onclick="App.setDirection('received')" id="dir-receiving">I'm receiving</button>
+        <div id="ex-form-partner-label" style="font-size:15px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;"></div>
+
+        <!-- Direction toggle (segmented control) -->
+        <div class="exf-seg" id="dir-toggle">
+          <button class="exf-seg-btn active" onclick="App.setDirection('provided')" id="dir-providing">I provided</button>
+          <button class="exf-seg-btn" onclick="App.setDirection('received')" id="dir-receiving">I received</button>
         </div>
 
-        <div class="field">
-          <label>Description</label>
-          <input type="text" id="ex-desc" placeholder="What happened or what's being offered">
-        </div>
-        <div class="field">
-          <label>Declared Value</label>
-          <input type="number" id="ex-value" placeholder="Value" min="0" step="1" inputmode="numeric">
-        </div>
-        <div class="field">
-          <label>Category</label>
-          <input type="text" id="ex-category" placeholder="Broad strokes — e.g. plumbing, tutoring, design">
-        </div>
-        <div class="field">
-          <label>Duration (optional)</label>
-          <div class="duration-row">
-            <div class="field" style="margin-bottom:0">
-              <input type="number" id="ex-hours" placeholder="Hrs" min="0" inputmode="numeric">
-            </div>
-            <div class="field" style="margin-bottom:0">
-              <input type="number" id="ex-minutes" placeholder="Min" min="0" max="59" inputmode="numeric">
-            </div>
+        <!-- Category pills -->
+        <div class="exf-section-label">Category</div>
+        <div class="exf-pills" id="ex-cat-pills"></div>
+        <input type="hidden" id="ex-category" value="">
+
+        <!-- Description -->
+        <div class="exf-section-label">What was done</div>
+        <input type="text" id="ex-desc" class="exf-input" placeholder="e.g., Fixed kitchen faucet and under-sink plumbing">
+
+        <!-- Duration -->
+        <div class="exf-section-label">Duration (optional)</div>
+        <input type="text" id="ex-duration" class="exf-input" placeholder="e.g., 2 hours">
+
+        <!-- Value with pricing context -->
+        <div class="exf-section-label">Value</div>
+        <div class="exf-value-card">
+          <input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="Enter value" class="exf-value-input">
+          <div class="exf-value-anchors">
+            <span>Small favor: ~50</span><span>Full day: ~5,000</span><span>Best work: ~50,000+</span>
           </div>
+          <div id="ex-pricing-context"></div>
         </div>
-        <div class="field">
-          <label>City (optional)</label>
-          <input type="text" id="ex-city" placeholder="City">
-        </div>
-        <div class="field">
-          <label>State (optional)</label>
-          <input type="text" id="ex-state" placeholder="State / Region">
-        </div>
-        <div class="skill-picker" id="ex-skill-picker" style="display:none;">
-          <label>Declared skills</label>
-          <div class="skill-picker-chips" id="ex-skill-chips"></div>
-        </div>
-        <button class="btn btn-secondary" id="ex-skill-toggle" onclick="App.toggleSkillPicker()" style="margin-bottom:12px; display:none;">Attach skills</button>
-        <button class="btn btn-primary" onclick="App.generateProposal()">Ready</button>
+
+        <!-- Hidden compat fields -->
+        <input type="hidden" id="ex-hours" value="">
+        <input type="hidden" id="ex-minutes" value="">
+        <input type="hidden" id="ex-city" value="">
+        <input type="hidden" id="ex-state" value="">
+
+        <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="App.generateProposal()">Send proposal</button>
       </div>
 
       <!-- STEP 2: Transport selection -->
@@ -1669,14 +1690,18 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP 6: Success -->
       <div class="hs-step" id="ex-step-done">
-        <div class="hs-success">
-          <div class="hs-check">&#10003;</div>
-          <h3>Exchange Complete</h3>
-          <p id="ex-done-summary" style="color:var(--text-dim); margin-bottom:20px;"></p>
-          <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="App.closeExchange()">Return to Standing</button>
-          <div style="text-align:center;">
-            <span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.closeExchange(); setTimeout(function(){ App.exStartProviding(); }, 400);">Start another exchange</span>
+        <div style="text-align:center; padding-top:24px;">
+          <div class="exf-done-check">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
+          <div style="font-size:20px; font-weight:600; color:var(--text); margin-bottom:8px;">Exchange recorded</div>
+          <div style="font-size:14px; color:var(--text-dim); margin-bottom:24px;">Both chains have grown by one record</div>
+        </div>
+        <div id="ex-done-card" style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:24px;"></div>
+        <p id="ex-done-summary" style="display:none;"></p>
+        <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="App.closeExchange()">Return to Standing</button>
+        <div style="text-align:center;">
+          <span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.closeExchange(); setTimeout(function(){ App.fabNew(); }, 400);">Start another exchange</span>
         </div>
       </div>
 
