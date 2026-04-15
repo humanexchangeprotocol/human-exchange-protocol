@@ -332,8 +332,20 @@ const PAIR_CODE_LENGTH = 4;
     reader.onload = e => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); const max = 400; let w = img.width, h = img.height; if (w > h) { if (w > max) { h = h * max / w; w = max; } } else { if (h > max) { w = w * max / h; h = max; } } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); const du = c.toDataURL('image/jpeg', 0.8); state.declarations.photo = du; state.declarations.photoDate = new Date().toISOString(); state.declarations.photoSource = isCamera ? 'camera' : 'file'; const p = document.getElementById('setup-photo-preview'); p.innerHTML = '<img src="' + du + '">'; p.classList.add('has-photo'); }; img.src = e.target.result; };
     reader.readAsDataURL(file); event.target.value = '';
   }
-  function submitDeclarations() { state.declarations.about = document.getElementById('setup-about').value.trim(); setupStep('range'); }
-  function skipDeclarations() { setupStep('range'); }
+  function submitDeclarations() {
+    state.declarations.about = document.getElementById('setup-about').value.trim();
+    // Save name from the name step
+    state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
+    // Skip range exercise (now available in Learn tab as "Find Your Unit")
+    setupStep('generating');
+    generateIdentity(state.pin);
+  }
+  function skipDeclarations() {
+    // Save name from the name step
+    state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
+    setupStep('generating');
+    generateIdentity(state.pin);
+  }
 
   // --- Range sub-step navigation ---
   let rangeStep = 0;
