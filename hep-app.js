@@ -5286,6 +5286,7 @@ const PAIR_CODE_LENGTH = 4;
       state.settings.sensorMotion = false;
       save();
       renderSettingsTab();
+      refreshHome();
       return;
     }
     var granted = await requestMotionPermission();
@@ -5295,23 +5296,26 @@ const PAIR_CODE_LENGTH = 4;
       toast('Motion permission denied by browser');
     }
     renderSettingsTab();
+    refreshHome();
   }
 
   function toggleLocationTab() {
     state.settings.locationAuto = !state.settings.locationAuto;
     save();
     renderSettingsTab();
+    refreshHome();
     if (state.settings.locationAuto) {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           function() { toast('Location enabled'); },
-          function() { state.settings.locationAuto = false; save(); renderSettingsTab(); toast('Location denied'); },
+          function() { state.settings.locationAuto = false; save(); renderSettingsTab(); refreshHome(); toast('Location denied'); },
           { timeout: 10000 }
         );
       } else {
         state.settings.locationAuto = false;
         save();
         renderSettingsTab();
+        refreshHome();
         toast('Location not available on this device');
       }
     }
@@ -8249,6 +8253,35 @@ function init() {
     }
     html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
     html += '</div></div>';
+
+    // Chain health nudges — only show when POH signals are off (auto-hides when all on)
+    var offSensors = [];
+    if (!state.settings.locationAuto) offSensors.push('location');
+    if (!state.settings.sensorMotion) offSensors.push('motion');
+    if (offSensors.length > 0) {
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Strengthen your chain</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.5; margin-bottom:6px;">Enable more proof-of-human signals. Each one is hashed on your device before storage.</div>';
+      if (offSensors.indexOf('location') !== -1) {
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 10px; border-top:1px solid var(--border); margin-top:10px;">';
+        html += '<div style="flex:1; margin-right:12px;">';
+        html += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">Enable location</div>';
+        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.4; margin-top:2px;">Proves your chain spans real places over time</div>';
+        html += '</div>';
+        html += '<div class="switch" onclick="App.toggleLocationTab()"></div>';
+        html += '</div>';
+      }
+      if (offSensors.indexOf('motion') !== -1) {
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 10px; border-top:1px solid var(--border);">';
+        html += '<div style="flex:1; margin-right:12px;">';
+        html += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">Enable motion sensors</div>';
+        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.4; margin-top:2px;">Proves a real hand holds a real phone</div>';
+        html += '</div>';
+        html += '<div class="switch" onclick="App.toggleMotionTab()"></div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
 
     // Participation card (no position/balance shown - person can check via wallet)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
