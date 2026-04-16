@@ -1988,6 +1988,24 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       </div>
       <p class="privacy-info">These settings control what others see when you share your thread for negotiation. Your own thread view always shows full detail. Counterparty names are never shared by default.</p>
 
+      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Proof of Human</h3>
+      <p class="privacy-info" style="margin-bottom:12px;">These sensors help prove your chain belongs to a real person. Your phone captures a snapshot of physical reality during each exchange. Only hashes are stored -- raw sensor data never leaves your device.</p>
+      <div class="setting-row">
+        <div>
+          <div class="label">Motion sensors</div>
+          <div class="desc">Accelerometer and gyroscope prove a real hand holds a real phone</div>
+        </div>
+        <button class="switch" id="switch-motion" onclick="App.toggleMotion()"></button>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="label">Location</div>
+          <div class="desc">GPS proves your chain exists across real places over time</div>
+        </div>
+        <button class="switch" id="switch-location" onclick="App.toggleLocation()"></button>
+      </div>
+      <div id="sensor-status" style="font-size:12px; color:var(--text-faint); padding:8px 0; line-height:1.6;"></div>
+
       <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Network</h3>
       <div style="padding: 0 0 12px;">
         <div class="label" style="margin-bottom: 6px;">Witness Server</div>
@@ -2011,13 +2029,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="setting-action" onclick="App.changePIN()">
         <div class="label">Change PIN</div>
         <div class="desc">Update your encryption PIN</div>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="label">Location Auto-fill</div>
-          <div class="desc">Auto-populate city and state from GPS</div>
-        </div>
-        <button class="switch" id="switch-location" onclick="App.toggleLocation()"></button>
       </div>
       <div class="setting-action" onclick="App.installFromSettings()">
         <div class="label">Add to Home Screen</div>

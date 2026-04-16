@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.4
+// APPLICATION LAYER v2.39.5
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -33,19 +33,10 @@ const PAIR_CODE_LENGTH = 4;
   var _sensorReady = false;
 
   function initSensors() {
-    // Accelerometer
-    window.addEventListener('devicemotion', function(e) {
-      var a = e.accelerationIncludingGravity;
-      if (a && (a.x !== null || a.y !== null || a.z !== null)) {
-        _sensor.accel = { x: a.x, y: a.y, z: a.z };
-      }
-    });
-    // Gyroscope
-    window.addEventListener('deviceorientation', function(e) {
-      if (e.alpha !== null || e.beta !== null || e.gamma !== null) {
-        _sensor.gyro = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
-      }
-    });
+    // Accelerometer -- on iOS 13+, requires requestPermission() first
+    if (state.settings.sensorMotionGranted || !needsMotionPermission()) {
+      attachMotionListeners();
+    }
     // Battery
     if ('getBattery' in navigator) {
       navigator.getBattery().then(function(bat) {
@@ -87,6 +78,51 @@ const PAIR_CODE_LENGTH = 4;
       } catch(e) {}
     }
     _sensorReady = true;
+  }
+
+  function attachMotionListeners() {
+    window.addEventListener('devicemotion', function(e) {
+      var a = e.accelerationIncludingGravity;
+      if (a && (a.x !== null || a.y !== null || a.z !== null)) {
+        _sensor.accel = { x: a.x, y: a.y, z: a.z };
+      }
+    });
+    window.addEventListener('deviceorientation', function(e) {
+      if (e.alpha !== null || e.beta !== null || e.gamma !== null) {
+        _sensor.gyro = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
+      }
+    });
+  }
+
+  function needsMotionPermission() {
+    return typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function';
+  }
+
+  async function requestMotionPermission() {
+    // iOS 13+ requires explicit permission for motion sensors
+    if (!needsMotionPermission()) {
+      // Android or older iOS -- just attach listeners, no permission needed
+      attachMotionListeners();
+      state.settings.sensorMotion = true;
+      state.settings.sensorMotionGranted = true;
+      save();
+      return true;
+    }
+    try {
+      var motionResult = await DeviceMotionEvent.requestPermission();
+      var orientResult = await DeviceOrientationEvent.requestPermission();
+      if (motionResult === 'granted' || orientResult === 'granted') {
+        attachMotionListeners();
+        state.settings.sensorMotion = true;
+        state.settings.sensorMotionGranted = true;
+        save();
+        return true;
+      }
+      return false;
+    } catch(e) {
+      console.log('[sensor] Motion permission request failed:', e.message);
+      return false;
+    }
   }
 
   function getWebGLRenderer() {
@@ -189,7 +225,7 @@ const PAIR_CODE_LENGTH = 4;
     fingerprint: '',
     pin: '',
     declarations: { name: '', about: '', photo: null, photoDate: null, skills: [] },
-    settings: { locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL },
+    settings: { locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
     direction: 'provided',
     pendingHandshake: null,
     proposalPath: 'inperson',
@@ -221,7 +257,7 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = Object.assign({ name: '', about: '', photo: null, photoDate: null, skills: [], rangeSimpleVal: 0, rangeComplexVal: 0, rangeDailyVal: 0, valTagsSimple: [], valTagsComplex: [], valTagsDaily: [] }, d.declarations || {});
     if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
     if (!state.declarations.skills) state.declarations.skills = [];
-    state.settings = Object.assign({ locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL }, d.settings || {});
+    state.settings = Object.assign({ locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
     if (!state.settings.witnessUrl) state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     return true;
   }
@@ -5140,12 +5176,15 @@ const PAIR_CODE_LENGTH = 4;
   // --- Settings ---
   function openSettings() {
     showModal('settings');
-     document.getElementById('settings-fp').textContent = state.fingerprint;
+    document.getElementById('settings-fp').textContent = state.fingerprint;
     var sv = document.getElementById('settings-version');
     if (sv) sv.textContent = 'v' + APP_VERSION + ' \u00b7 The value trust creates';
     document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
     document.getElementById('switch-hide-names').classList.toggle('on', state.settings.hideNames);
     document.getElementById('switch-hide-location').classList.toggle('on', state.settings.hideLocations);
+    var motionSwitch = document.getElementById('switch-motion');
+    if (motionSwitch) motionSwitch.classList.toggle('on', state.settings.sensorMotion);
+    updateSensorStatus();
     testWitnessConnection();
   }
 
@@ -5166,7 +5205,51 @@ const PAIR_CODE_LENGTH = 4;
     state.settings.locationAuto = !state.settings.locationAuto;
     document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
     save();
-    if (state.settings.locationAuto) navigator.geolocation?.getCurrentPosition(() => toast('Location enabled'), () => { state.settings.locationAuto = false; document.getElementById('switch-location').classList.remove('on'); save(); toast('Location denied'); });
+    if (state.settings.locationAuto) navigator.geolocation?.getCurrentPosition(function() { toast('Location enabled'); updateSensorStatus(); }, function() { state.settings.locationAuto = false; document.getElementById('switch-location').classList.remove('on'); save(); toast('Location denied'); });
+    else updateSensorStatus();
+  }
+
+  async function toggleMotion() {
+    if (state.settings.sensorMotion) {
+      // Turning off -- just update preference (can't revoke browser permission)
+      state.settings.sensorMotion = false;
+      document.getElementById('switch-motion').classList.remove('on');
+      save();
+      updateSensorStatus();
+      return;
+    }
+    // Turning on
+    var granted = await requestMotionPermission();
+    if (granted) {
+      document.getElementById('switch-motion').classList.add('on');
+      toast('Motion sensors enabled');
+    } else {
+      toast('Motion permission denied by browser');
+    }
+    updateSensorStatus();
+  }
+
+  function updateSensorStatus() {
+    var el = document.getElementById('sensor-status');
+    if (!el) return;
+    var parts = [];
+    // Passive sensors that are always on
+    if (_sensor.battery) parts.push('Battery: active');
+    if (_sensor.network) parts.push('Network: active');
+    if (_sensor.light !== null) parts.push('Light sensor: active');
+    if (_sensor.pressure !== null) parts.push('Pressure sensor: active');
+    // Active sensors
+    if (state.settings.sensorMotion && (_sensor.accel || state.settings.sensorMotionGranted)) {
+      parts.push('Motion: active');
+    } else if (needsMotionPermission()) {
+      parts.push('Motion: requires permission');
+    }
+    if (state.settings.locationAuto) parts.push('Location: active');
+    if (!parts.length) {
+      el.textContent = 'Passive sensors (battery, network) are captured automatically when available.';
+    } else {
+      el.textContent = 'Active: ' + parts.join(', ') + '. Battery and network are captured automatically.';
+    }
   }
 
   async function exportBackupAction() {
@@ -8487,7 +8570,7 @@ function init() {
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
-    openSettings, togglePrivacy, toggleLocation,
+    openSettings, togglePrivacy, toggleLocation, toggleMotion,
     testWitnessConnection,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
