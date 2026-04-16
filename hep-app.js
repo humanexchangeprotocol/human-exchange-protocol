@@ -7784,6 +7784,25 @@ function init() {
 
     // Build proposal card
     var html = '';
+
+    // Counterparty context block — chain shape + POH verdict. While the
+    // user was waiting for the proposal, this block lived in ex-rw-tiles
+    // above the spinner. Now that the proposal has arrived, re-render it
+    // at the TOP of the proposal region so the full decision surface
+    // reads in natural order: context \u2192 proposal \u2192 pricing \u2192 buttons.
+    // We also hide ex-rw-tiles below to prevent the wait-screen copy
+    // from ending up positioned below the Confirm button (the DOM order
+    // in index.html places tiles after proposal).
+    var rwTiles = document.getElementById('ex-rw-tiles');
+    if (rwTiles) rwTiles.style.display = 'none';
+    try {
+      if (providerSnap) {
+        html += renderCounterpartyContextBlock(providerSnap);
+      }
+    } catch(cpe) {
+      console.log('[ex-flow] Counterparty context render failed on proposal:', cpe.message);
+    }
+
     html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:12px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
 
     html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:12px;">';
