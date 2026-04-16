@@ -8273,7 +8273,13 @@ function init() {
           if (vSpec) {
             h += '<div style="margin-bottom:12px;">';
             h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Visualization</div>';
-            h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-style:italic; line-height:1.5;">[' + esc(vSpec.type) + ' chart: value ' + esc(String(vSpec.value)) + ' ' + esc(vSpec.unit || '') + ', normal range ' + esc(JSON.stringify(vSpec.normalRange)) + ']</div>';
+            if (vSpec.type === 'range') {
+              h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-style:italic; line-height:1.5;">[range chart: value ' + esc(String(vSpec.value)) + ' ' + esc(vSpec.unit || '') + ', normal range ' + esc(JSON.stringify(vSpec.normalRange)) + ']</div>';
+            } else if (vSpec.type === 'breakdown') {
+              h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-style:italic; line-height:1.5;">[breakdown chart: ' + vSpec.parts.map(function(p) { return esc(p.label) + ' ' + p.value; }).join(' · ') + ' of ' + vSpec.total + ']</div>';
+            } else {
+              h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-style:italic; line-height:1.5;">[' + esc(vSpec.type) + ' chart]</div>';
+            }
             h += '</div>';
           }
         } catch(e) {}
@@ -8296,13 +8302,27 @@ function init() {
       if (!s.expected) return 'This signal is not expected on your device class. Not applicable.';
       return 'No data captured for this signal yet.';
     }
-    // Signal-specific data rendering
-    if (s.id === 'clockSkew' && typeof s.raw.skewMs === 'number') {
-      var ms = s.raw.skewMs;
-      var sign = ms >= 0 ? '+' : '';
-      var seconds = (ms / 1000).toFixed(2);
-      return '<div><strong>Your device:</strong> ' + sign + seconds + ' s from witness time</div>' +
-             '<div style="margin-top:4px; color:var(--text-dim);"><strong>Normal range:</strong> under 2.00 s</div>';
+    // Clock agreement: aggregated skew across exchanges
+    if (s.id === 'clockSkew' && typeof s.raw.meanAbsMs === 'number') {
+      var meanSec = (s.raw.meanAbsMs / 1000).toFixed(2);
+      var maxSec = (s.raw.maxAbsMs / 1000).toFixed(2);
+      var h = '';
+      h += '<div><strong>Samples measured:</strong> ' + s.raw.count + ' exchange' + (s.raw.count === 1 ? '' : 's') + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Mean drift:</strong> ' + meanSec + ' s</div>';
+      h += '<div style="margin-top:4px;"><strong>Largest drift:</strong> ' + maxSec + ' s</div>';
+      h += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Normal range:</strong> mean under 3.00 s</div>';
+      return h;
+    }
+    // Exchange method mix: path counts
+    if (s.id === 'exchangePath' && typeof s.raw.total === 'number') {
+      var ratio = Math.round(s.raw.coPresentRatio * 100);
+      var h2 = '';
+      h2 += '<div><strong>Total exchanges:</strong> ' + s.raw.total + '</div>';
+      h2 += '<div style="margin-top:4px;"><strong>Live sessions:</strong> ' + s.raw.session + '</div>';
+      h2 += '<div style="margin-top:4px;"><strong>In-person QR:</strong> ' + s.raw.qr + '</div>';
+      h2 += '<div style="margin-top:4px;"><strong>Deferred (offline):</strong> ' + s.raw.offline + '</div>';
+      h2 += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Co-present ratio:</strong> ' + ratio + '%</div>';
+      return h2;
     }
     // Generic fallback — show whatever's in raw
     try { return '<pre style="white-space:pre-wrap; margin:0; font-size:var(--fs-sm); font-family:var(--font-mono);">' + esc(JSON.stringify(s.raw, null, 2)) + '</pre>'; }

@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.43.0';
+const APP_VERSION='2.44.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -539,66 +539,82 @@ const SIGNALS = {
 
   clockSkew: {
     id: 'clockSkew',
-    humanName: 'Clock drift',
+    humanName: 'Clock agreement',
     tier: WEIGHT.CRITICAL,
     expectedOn: ['ios', 'android', 'pc'], // universal
-    // Extracts raw skew value (ms) from exchange/chain context.
-    // Stub for now — actual capture already happens via witness ping.
+    // Reads clockSkew from every exchange record in the chain.
+    // Each record stores (this device's time) minus (counterparty's time)
+    // at the moment they exchanged. Aggregate shape over many exchanges
+    // with many counterparties is the real signal.
     capture: function(ctx) {
-      // ctx shape: { chain, exchange, device }
-      // Placeholder: look for clockSkewMs on most recent ping or exchange
-      if (ctx && ctx.exchange && typeof ctx.exchange.clockSkewMs === 'number') {
-        return { skewMs: ctx.exchange.clockSkewMs };
+      if (!ctx || !ctx.chain) return null;
+      var samples = [];
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.type === 'ping' || r.type === 'genesis') continue;
+        if (typeof r.clockSkew === 'number') samples.push(r.clockSkew);
       }
-      return null;
+      if (samples.length === 0) return null;
+      var sum = 0, sumAbs = 0, maxAbs = 0;
+      for (var j = 0; j < samples.length; j++) {
+        sum += samples[j];
+        var abs = Math.abs(samples[j]);
+        sumAbs += abs;
+        if (abs > maxAbs) maxAbs = abs;
+      }
+      return {
+        count: samples.length,
+        meanMs: Math.round(sum / samples.length),
+        meanAbsMs: Math.round(sumAbs / samples.length),
+        maxAbsMs: maxAbs
+      };
     },
-    // Takes raw → returns interpretation object
     interpret: function(raw, deviceClassStr) {
-      var expected = true; // universal signal
-      if (!raw) {
+      if (!raw || raw.count === 0) {
         return {
           presence: 'absent',
-          expected: expected,
-          behavior: 'worth-noting',
+          expected: true,
+          behavior: 'n/a',
           contribution: 0,
-          summary: 'No recent clock comparison with the witness'
+          summary: 'No exchanges yet — clock agreement cannot be measured'
         };
       }
-      var skew = Math.abs(raw.skewMs || 0);
-      // Thresholds: <2s normal, 2-30s worth-noting, >30s alarming
-      if (skew < 2000) {
+      // Thresholds on mean absolute skew:
+      //   < 3s  = normal (human clocks drift this much)
+      //   < 30s = worth-noting (unusually large drift)
+      //   > 30s = alarming (clock manipulation or severe misconfiguration)
+      if (raw.meanAbsMs < 3000) {
         return {
-          presence: 'present', expected: expected, behavior: 'normal',
+          presence: 'present', expected: true, behavior: 'normal',
           contribution: WEIGHT.CRITICAL,
-          summary: 'Device clock matches the witness within expected range'
+          summary: 'Your clock agrees with counterparties across ' + raw.count + ' exchange' + (raw.count === 1 ? '' : 's')
         };
-      } else if (skew < 30000) {
+      } else if (raw.meanAbsMs < 30000) {
         return {
-          presence: 'present', expected: expected, behavior: 'worth-noting',
+          presence: 'present', expected: true, behavior: 'worth-noting',
           contribution: Math.floor(WEIGHT.CRITICAL / 2),
-          summary: 'Device clock drifts slightly from the witness'
+          summary: 'Clock drifts somewhat from counterparties across ' + raw.count + ' exchange' + (raw.count === 1 ? '' : 's')
         };
       } else {
         return {
-          presence: 'present', expected: expected, behavior: 'alarming',
+          presence: 'present', expected: true, behavior: 'alarming',
           contribution: -WEIGHT.CRITICAL,
-          summary: 'Device clock is far off from the witness'
+          summary: 'Clock is far off from counterparties — possible time fabrication'
         };
       }
     },
     copy: {
-      whatItMeans: 'Every device has a clock. When your phone records an exchange, it stamps the moment. The witness server also has a clock. A real device used by a real person will have a clock that is close to the witness — within a few seconds. A small drift is normal. A large drift, or sudden jumps, can mean the device clock has been deliberately set to a fake time.',
-      whyItMatters: 'Time is the cheapest thing to fabricate in isolation, but the hardest to fabricate across a network. A chain that matches witness time across hundreds of exchanges is anchored in real time. Fabrication attempts show up as impossible drift patterns.'
+      whatItMeans: 'Every device has a clock. When you record an exchange, your phone stamps the moment. So does theirs. A real device used by a real person has a clock that agrees with the people they meet — within seconds. Small drift is normal, two real clocks rarely match exactly. But if many people you exchange with show wildly different times, something is wrong.',
+      whyItMatters: 'Time is cheap to fabricate alone, hard to fabricate across a network. A chain of exchanges where your clock consistently agrees with many counterparties is anchored in real time shared with real people. Fabrication attempts produce impossible drift patterns — too perfect, too random, or systematically shifted.'
     },
-    // Optional visualization — returns a spec the UI can render
     visualize: function(raw, chainHistory) {
       if (!raw) return null;
       return {
         type: 'range',
-        value: raw.skewMs,
-        unit: 'ms',
-        normalRange: [-2000, 2000],
-        observedRange: [-60000, 60000]
+        value: raw.meanAbsMs,
+        unit: 'ms mean drift',
+        normalRange: [0, 3000],
+        observedRange: [0, Math.max(10000, raw.maxAbsMs)]
       };
     }
   },
@@ -657,15 +673,85 @@ const SIGNALS = {
 
   exchangePath: {
     id: 'exchangePath',
-    humanName: 'Exchange method',
+    humanName: 'Exchange method mix',
     tier: WEIGHT.SUPPORTING,
     expectedOn: ['ios', 'android', 'pc'],
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    // Reads exchangePath from every exchange record and counts the mix.
+    // Values: 'session' (live co-present), 'qr' (scan code, usually in-person),
+    // 'offline' (deferred/indirect).
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var counts = { session: 0, qr: 0, offline: 0, unknown: 0 };
+      var total = 0;
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.type === 'ping' || r.type === 'genesis') continue;
+        total++;
+        var p = r.exchangePath;
+        if (p === 'session') counts.session++;
+        else if (p === 'qr') counts.qr++;
+        else if (p === 'offline') counts.offline++;
+        else counts.unknown++;
+      }
+      if (total === 0) return null;
+      return {
+        total: total,
+        session: counts.session,
+        qr: counts.qr,
+        offline: counts.offline,
+        unknown: counts.unknown,
+        coPresentCount: counts.session + counts.qr, // both methods require real co-presence
+        coPresentRatio: (counts.session + counts.qr) / total
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.total === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No exchanges yet to measure method mix'
+        };
+      }
+      // Co-present exchanges (session + qr) are strongest signal of real meeting.
+      // A healthy chain has some co-present exchanges. All-offline is worth noting.
+      if (raw.coPresentRatio >= 0.5) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.SUPPORTING,
+          summary: 'Most exchanges happened in-person or in live sessions'
+        };
+      } else if (raw.coPresentCount > 0) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.SUPPORTING / 2),
+          summary: 'Some exchanges in-person, some deferred through the network'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'worth-noting',
+          contribution: 0,
+          summary: 'All exchanges happened offline or through deferred relay'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'Exchanges can happen three ways. Two people can meet live on a session (both phones connected at once). They can scan each other\'s QR codes in-person. Or one can leave a record for the other to pick up later through the network, without ever meeting. The first two require co-presence in time, and usually in place. The third does not.',
+      whyItMatters: 'Co-present exchanges are the strongest proof of cooperation because two real people had to be together. A chain made entirely of deferred exchanges is possible to fabricate with one person operating two accounts. A mix of methods is normal — some of your cooperation happens in person, some does not. A chain with zero co-present exchanges is worth looking at.'
+    },
+    visualize: function(raw, chainHistory) {
+      if (!raw) return null;
+      return {
+        type: 'breakdown',
+        parts: [
+          { label: 'Live session', value: raw.session, color: 'green' },
+          { label: 'In-person QR', value: raw.qr, color: 'green' },
+          { label: 'Deferred', value: raw.offline, color: 'amber' }
+        ],
+        total: raw.total
+      };
+    }
   },
 
   batteryDetails: {
