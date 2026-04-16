@@ -6759,6 +6759,14 @@ function init() {
 
     var html = '';
 
+    // DIAGNOSTIC SENTINEL v2.52.0 — this banner ALWAYS renders when the
+    // new code path is executing. If the user doesn't see this banner,
+    // the old hep-app.js is still loading from cache (force a service
+    // worker update) or a different render function is being hit.
+    // This sentinel will be removed once deployment is verified.
+    console.log('[ex-flow v2.52.0] exConfirmSAS called. sessionPartner:', !!sessionPartner, 'thread_snapshot present:', !!(sessionPartner && sessionPartner.thread_snapshot), 'ts.n:', ts ? ts.n : 'no ts', 'ts.pohVerdict present:', !!(ts && ts.pohVerdict), 'ts.catsTimeline present:', !!(ts && ts.catsTimeline), 'ts.integrity present:', !!(ts && ts.integrity));
+    html += '<div style="background:linear-gradient(135deg, var(--accent), #6aa84f); color:#fff; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:13px; font-weight:600; text-align:center; letter-spacing:0.5px;">NEW SURFACES v2.52.0 \u2014 LOADED</div>';
+
     // Partner identity + SAS (compact)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:10px; box-shadow:var(--shadow);">';
     html += '<div style="display:flex; gap:14px; align-items:center;">';
@@ -6771,6 +6779,30 @@ function init() {
     html += '<div style="font-size:9px; color:var(--text-dim); font-weight:500; letter-spacing:0.5px;">CODE</div>';
     html += '<div style="font-size:24px; font-weight:700; color:var(--accent); font-family:var(--font-mono); letter-spacing:4px;">' + esc(sasCode) + '</div>';
     html += '</div></div></div>';
+
+    // Counterparty context block — MOVED ABOVE the Confirm button and the
+    // Overall assessment bar in v2.52.0 so it's visible without scrolling.
+    // Previously this lived below the Confirm button, which meant users
+    // tapped Confirm and moved to the next screen without ever seeing it.
+    // Always renders a visible marker, even when ts is absent or thin,
+    // so the presence of THIS card confirms the new code is executing.
+    try {
+      console.log('[ex-flow v2.52.0] About to render counterparty context. ts:', ts);
+      if (ts) {
+        var ctxHtml = renderCounterpartyContextBlock(ts);
+        console.log('[ex-flow v2.52.0] Context block length:', ctxHtml.length);
+        if (ctxHtml && ctxHtml.length > 0) {
+          html += ctxHtml;
+        } else {
+          html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Counterparty context block ran but produced no visible content. ts.n = ' + (ts.n || 0) + ', pohVerdict = ' + (ts.pohVerdict ? 'yes' : 'no') + ', integrity = ' + (ts.integrity ? 'yes' : 'no') + '</div>';
+        }
+      } else {
+        html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Waiting for their chain data to arrive... (no thread_snapshot yet)</div>';
+      }
+    } catch(cpe) {
+      console.log('[ex-flow v2.52.0] Counterparty context render THREW:', cpe.message, cpe.stack);
+      html += '<div style="background:rgba(214,107,107,0.08); border:1px solid rgba(214,107,107,0.3); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--red);">Render error: ' + esc(cpe.message) + '</div>';
+    }
 
     // Overall assessment bar
     html += '<div style="background:' + assessBg + '; border:1px solid ' + assessColor + '22; border-radius:var(--radius); padding:12px 14px; margin-bottom:10px; display:flex; align-items:center; gap:12px;">';
@@ -6785,24 +6817,6 @@ function init() {
     // Divider
     html += '<div style="height:1px; background:var(--border); margin:4px 0 12px;"></div>';
     html += '<div style="font-size:12px; color:var(--text-faint); text-align:center; margin-bottom:10px;">More about this person</div>';
-
-    // Counterparty context block — new registry-backed surfaces that
-    // REPLACE the legacy Chain Health + Proof of Human tiles that used
-    // to live here (ad-hoc exClassifyChain + exIsEmulator logic,
-    // predating the POH registry). Chain shape card uses uplifting
-    // framing (shape not score). POH card uses the full 17-source
-    // registry, rendering the counterparty's own broadcast pohVerdict
-    // on v2.47.0+ senders and falling back to an integrity-derived
-    // verdict for older senders. Both cards render through the same
-    // helper used on the session-based flow's proposal review, so
-    // UX is consistent across exchange paths.
-    try {
-      if (ts) {
-        html += renderCounterpartyContextBlock(ts);
-      }
-    } catch(cpe) {
-      console.log('[ex-flow] Counterparty context render failed:', cpe.message);
-    }
 
     // Render into the verify step container (replacing the SAS-only view)
     var verifyStep = document.getElementById('ex-step-verify');
