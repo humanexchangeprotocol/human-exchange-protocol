@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="110" fill="#1a1a1a"/>
-  <text x="262" y="230" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="186" font-weight="600" fill="#e0b48a" letter-spacing="12">HEP</text>
-  <circle cx="128" cy="340" r="40" fill="none" stroke="#e0b48a" stroke-width="8" opacity="0.2"/>
-  <circle cx="204" cy="340" r="40" fill="none" stroke="#e0b48a" stroke-width="11" opacity="0.45"/>
-  <circle cx="280" cy="340" r="40" fill="none" stroke="#e0b48a" stroke-width="14.5" opacity="0.72"/>
-  <circle cx="356" cy="340" r="40" fill="none" stroke="#e0b48a" stroke-width="18" opacity="1"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <circle cx="256" cy="256" r="256" fill="#2563EB"/>
+  <g font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="#FFFFFF" text-anchor="middle">
+    <text x="256" y="187" font-size="130">H</text>
+    <text x="256" y="302" font-size="130">E</text>
+    <text x="256" y="417" font-size="130">P</text>
+  </g>
 </svg>

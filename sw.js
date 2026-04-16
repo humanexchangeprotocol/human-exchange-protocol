@@ -1,6 +1,6 @@
 // HEP Service Worker
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.59.0';
+const CACHE_VERSION = '2.60.0';
 const CACHE_NAME = 'hep-v' + CACHE_VERSION;
 
 // Files to cache on install
@@ -12,7 +12,13 @@ const CORE_ASSETS = [
   './vendor/qrcode.js',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './icon-192-maskable.png',
+  './icon-512-maskable.png',
+  './apple-touch-icon.png',
+  './favicon.ico',
+  './favicon-32.png',
+  './favicon-16.png'
 ];
 
 // Install: cache core assets
