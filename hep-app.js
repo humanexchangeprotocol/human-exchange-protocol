@@ -2558,6 +2558,18 @@ const PAIR_CODE_LENGTH = 4;
       '<div class="sp-fp">' + esc((sessionPartner.fingerprint || '').substring(0, 16) + '...') + '</div>' +
       '</div>';
 
+    // Counterparty context block — chain shape + proof-of-human verdict.
+    // Visible to BOTH sides from the moment the session connects, so the
+    // proposer sees the same "about them" surface the confirmer will see
+    // during proposal review. Only renders if their snapshot has arrived.
+    try {
+      if (sessionPartner.thread_snapshot && sessionPartner.thread_snapshot.n) {
+        html += renderCounterpartyContextBlock(sessionPartner.thread_snapshot);
+      }
+    } catch(cpe) {
+      console.log('[session] Counterparty context render failed on connect:', cpe.message);
+    }
+
     // Interactive thread viewer tabs
     const ts = sessionPartner.thread_snapshot;
     if (ts && ts.n) {
@@ -2883,27 +2895,15 @@ const PAIR_CODE_LENGTH = 4;
     }
     html += '</div>';
 
-    // Counterparty proof-of-human verdict. v2.47.0+ snapshots carry
-    // pohVerdict directly; older snapshots fall back to a minimal verdict
-    // derived from the integrity block. If neither path yields anything,
-    // the card is omitted.
+    // Counterparty context block — chain shape + proof-of-human verdict.
+    // Shared helper used on both the connected screen and this proposal
+    // review screen so the surfaces are consistent regardless of role.
     try {
-      var cpVerdict = null;
-      var cpVerdictLegacy = false;
       if (sessionPartner && sessionPartner.thread_snapshot) {
-        var ts = sessionPartner.thread_snapshot;
-        if (ts.pohVerdict) {
-          cpVerdict = ts.pohVerdict;
-        } else if (ts.integrity) {
-          cpVerdict = deriveCounterpartyVerdictFromLegacySnap(ts);
-          cpVerdictLegacy = true;
-        }
-      }
-      if (cpVerdict) {
-        html += renderCounterpartyPOH(cpVerdict, { isLegacyDerived: cpVerdictLegacy });
+        html += renderCounterpartyContextBlock(sessionPartner.thread_snapshot);
       }
     } catch(cpe) {
-      console.log('[session] Counterparty POH render failed:', cpe.message);
+      console.log('[session] Counterparty context render failed:', cpe.message);
     }
 
     // Confirm / reject buttons
@@ -8963,6 +8963,141 @@ function init() {
       },
       signals: signals
     };
+  }
+
+  // --- Counterparty chain shape card (relational density, uplifting framing) ---
+  // Shows the *shape* of a chain: its rhythm of giving and receiving, age,
+  // reach, and category breadth. This is not a score. Heavy-receive is a
+  // valid rhythm (student, patient, caregiver-receiver, someone rebuilding).
+  // Heavy-give is a valid rhythm (service provider, structural-giver).
+  // Language is neutral. The card describes what this chain looks like,
+  // not whether it's "good." Every chain has its own pattern of
+  // participation. Different shapes are all valid.
+  function renderCounterpartyChainShape(ts) {
+    if (!ts || !ts.n) return '';
+
+    var total = ts.n;
+    var gave = ts.g || 0;
+    var received = ts.r || 0;
+    var cats = ts.cats || {};
+    var catKeys = Object.keys(cats).filter(function(k) { return k !== 'other'; });
+    var catCount = catKeys.length;
+    var ig = ts.integrity || {};
+    var distinctCp = ig.distinctCounterparties || 0;
+
+    // Thread age in human language
+    var ageText = '';
+    if (ts.t0 && ts.t1) {
+      var t0 = new Date(ts.t0).getTime();
+      var t1 = new Date(ts.t1).getTime();
+      var days = Math.max(1, Math.round((t1 - t0) / 86400000));
+      if (days < 30) ageText = days + ' day' + (days === 1 ? '' : 's');
+      else if (days < 365) { var mo = Math.round(days / 30); ageText = mo + ' month' + (mo === 1 ? '' : 's'); }
+      else ageText = (days / 365).toFixed(1) + ' years';
+    }
+
+    // Balance position — a continuum, not a value judgment.
+    // 0 = all received, 0.5 = balanced, 1 = all provided.
+    var balanceRatio = total > 0 ? gave / total : 0.5;
+    var balancePct = Math.round(balanceRatio * 100);
+
+    // Neutral shape description — language intentionally non-judgmental.
+    var shapeDesc;
+    if (total < 3) shapeDesc = 'Chain just starting';
+    else if (balanceRatio >= 0.7) shapeDesc = 'Provides more than receives';
+    else if (balanceRatio <= 0.3) shapeDesc = 'Receives more than provides';
+    else shapeDesc = 'Balanced giving and receiving';
+
+    var h = '';
+    h += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+
+    // Label
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Their chain shape</div>';
+
+    // Summary line — the facts, composed as one readable sentence
+    h += '<div style="font-size:var(--fs-md); color:var(--text); line-height:1.5; margin-bottom:14px;">';
+    h += '<strong>' + total + '</strong> exchange' + (total === 1 ? '' : 's');
+    if (ageText) h += ' over ' + ageText;
+    if (distinctCp > 0) h += ' with <strong>' + distinctCp + '</strong> counterpart' + (distinctCp === 1 ? 'y' : 'ies');
+    if (catCount > 0) h += ' across ' + catCount + ' categor' + (catCount === 1 ? 'y' : 'ies');
+    h += '.</div>';
+
+    // Balance strip — shows position on a continuum, not a rating.
+    // Left end labeled with count provided; right end labeled with count received.
+    // Mid-strip label summarizes the shape in neutral language.
+    h += '<div style="margin-bottom:14px;">';
+    h += '<div style="display:flex; justify-content:space-between; align-items:baseline; font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:6px;">';
+    h += '<span>Provided <strong style="color:var(--text-dim);">' + gave + '</strong></span>';
+    h += '<span style="color:var(--text-dim); font-weight:500;">' + shapeDesc + '</span>';
+    h += '<span>Received <strong style="color:var(--text-dim);">' + received + '</strong></span>';
+    h += '</div>';
+    // Horizontal balance bar — two halves in different accents, with a centerline.
+    // The accent side grows with provided share; green side with received share.
+    // No value judgment in color choice — both are present on every chain.
+    h += '<div style="position:relative; height:10px; background:var(--bg-input); border-radius:5px; overflow:hidden;">';
+    h += '<div style="position:absolute; left:0; top:0; height:100%; width:' + balancePct + '%; background:var(--accent); opacity:0.55;"></div>';
+    h += '<div style="position:absolute; right:0; top:0; height:100%; width:' + (100 - balancePct) + '%; background:var(--green); opacity:0.55;"></div>';
+    // Midpoint reference tick
+    h += '<div style="position:absolute; left:50%; top:-2px; width:1px; height:14px; background:var(--text-faint); opacity:0.5;"></div>';
+    h += '</div>';
+    h += '</div>';
+
+    // Top categories — a quick read of what this chain does
+    if (catCount > 0) {
+      var sortedCats = catKeys.map(function(k) { return { k: k, n: cats[k].n, avg: cats[k].avg }; })
+        .sort(function(a, b) { return b.n - a.n; }).slice(0, 3);
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Most active categories</div>';
+      h += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;">';
+      sortedCats.forEach(function(c) {
+        h += '<span style="background:var(--bg-input); padding:4px 10px; border-radius:12px; font-size:var(--fs-sm); color:var(--text-dim);">' + esc(c.k) + ' <span style="color:var(--text-faint);">\u00b7 ' + c.n + '</span></span>';
+      });
+      h += '</div>';
+    }
+
+    // Uplifting framing — Every chain has its own rhythm.
+    // This text is load-bearing against the anti-caste principle and must
+    // stay. Do not replace with language that implies balance is better
+    // than heavy-receive or heavy-give. All three are participation.
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.5; font-style:italic; border-top:1px solid var(--border); padding-top:10px;">Every chain has its own rhythm. Some provide more, some receive more. Both are participation.</div>';
+
+    h += '</div>';
+    return h;
+  }
+
+  // Shared helper — renders the counterparty context cards used on both the
+  // pre-proposal connected screen and the proposal review screen. This is
+  // chain shape + proof-of-human verdict, preceded by a distinguishing
+  // section header so the surfaces read as a coherent "about them" block.
+  function renderCounterpartyContextBlock(ts) {
+    if (!ts) return '';
+    var h = '';
+
+    // Section header — makes the new surfaces visibly distinct from the
+    // legacy thread tabs and proposal block.
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1.5px; margin:4px 0 10px; font-weight:600;">About this counterparty</div>';
+
+    // Chain shape card
+    h += renderCounterpartyChainShape(ts);
+
+    // Proof-of-human verdict — pohVerdict for v2.47.0+ senders, integrity-
+    // derived fallback for older. Card omitted if neither is available.
+    try {
+      var cpVerdict = null;
+      var cpVerdictLegacy = false;
+      if (ts.pohVerdict) {
+        cpVerdict = ts.pohVerdict;
+      } else if (ts.integrity) {
+        cpVerdict = deriveCounterpartyVerdictFromLegacySnap(ts);
+        cpVerdictLegacy = true;
+      }
+      if (cpVerdict) {
+        h += renderCounterpartyPOH(cpVerdict, { isLegacyDerived: cpVerdictLegacy });
+      }
+    } catch(e) {
+      console.log('[session] Counterparty POH render failed:', e.message);
+    }
+
+    return h;
   }
 
   function renderStandingTab() {
