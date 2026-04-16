@@ -7775,6 +7775,8 @@ function init() {
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     var name = (ts && ts._name) || 'the other person';
 
+    console.log('[ex-flow v2.53.0] exRenderReceiverWait called. ts.n:', ts ? ts.n : 'no ts', 'pohVerdict:', !!(ts && ts.pohVerdict), 'catsTimeline:', !!(ts && ts.catsTimeline), 'integrity:', !!(ts && ts.integrity));
+
     // Update spinner label
     var spinLabel = document.getElementById('ex-rw-spinner-label');
     if (spinLabel) spinLabel.textContent = 'Waiting for ' + name + '\'s proposal';
@@ -7784,77 +7786,32 @@ function init() {
 
     var html = '';
 
-    // --- Their Pricing tile (most relevant while waiting) ---
-    var services = (ts && ts._services) || {};
-    var svcKeys = Object.keys(services);
-    if (svcKeys.length > 0) {
-      // Group by category
-      var byCat = {};
-      svcKeys.forEach(function(key) {
-        var s = services[key];
-        var cat = (s.cat || '').trim() || 'Uncategorized';
-        if (!byCat[cat]) byCat[cat] = { items: [], totalN: 0 };
-        byCat[cat].items.push(s);
-        byCat[cat].totalN += s.n;
-      });
-      var catNames = Object.keys(byCat).sort();
+    // DIAGNOSTIC SENTINEL v2.53.0 — this banner confirms the new code
+    // is executing on the EXCHANGE-step wait screen (step 3 of 4).
+    // Will be stripped once deployment is verified.
+    html += '<div style="background:linear-gradient(135deg, var(--accent), #6aa84f); color:#fff; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:13px; font-weight:600; text-align:center; letter-spacing:0.5px;">NEW SURFACES v2.53.0 \u2014 STEP 3 LOADED</div>';
 
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
-      html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-rw-pricing-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-      html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Their Pricing</span>';
-      html += '<div style="display:flex; align-items:center; gap:8px;">';
-      html += '<span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:var(--accent-light); color:var(--accent);">' + catNames.length + ' categories</span>';
-      html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-      html += '</div></button>';
-      html += '<div id="ex-rw-pricing-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px;">';
-      catNames.forEach(function(cat) {
-        var catData = byCat[cat];
-        // Aggregate across items in this category
-        var allVals = [];
-        catData.items.forEach(function(s) {
-          if (s.low != null) allVals.push(s.low);
-          if (s.high != null) allVals.push(s.high);
-        });
-        var catLow = allVals.length ? Math.min.apply(null, allVals) : 0;
-        var catHigh = allVals.length ? Math.max.apply(null, allVals) : 0;
-        var catAvg = catData.items.reduce(function(sum, s) { return sum + (s.avg || 0); }, 0) / catData.items.length;
-        catAvg = Math.round(catAvg);
-        html += '<div style="margin-bottom:12px;" id="ex-rw-cat-' + cat.replace(/[^a-zA-Z0-9]/g, '_') + '">';
-        html += '<div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">';
-        html += '<span style="font-weight:500; color:var(--text);">' + esc(cat) + '</span>';
-        html += '<span style="color:var(--text-faint);">' + catData.totalN + ' exchanges</span>';
-        html += '</div>';
-        if (catLow !== catHigh) {
-          html += exRenderRangeBar(catLow, catHigh, catAvg, null);
+    // Counterparty context block REPLACES the legacy "Their Pricing" +
+    // "Chain Health" tiles that used to live here. Renders the new
+    // chain shape card (uplifting framing, shape not score) and the
+    // proof-of-human verdict card (registry-backed) in a single
+    // coherent "About this counterparty" block. Same helper used on
+    // the post-SAS Review screen (exConfirmSAS) for continuity.
+    try {
+      if (ts) {
+        var ctxHtml = renderCounterpartyContextBlock(ts);
+        console.log('[ex-flow v2.53.0] Context block length on wait screen:', ctxHtml.length);
+        if (ctxHtml && ctxHtml.length > 0) {
+          html += ctxHtml;
         } else {
-          html += '<div style="font-size:12px; color:var(--text-faint);">Consistent at ' + catAvg + '</div>';
+          html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Counterparty context block ran but produced no visible content. ts.n = ' + (ts.n || 0) + ', pohVerdict = ' + (ts.pohVerdict ? 'yes' : 'no') + ', integrity = ' + (ts.integrity ? 'yes' : 'no') + '</div>';
         }
-        html += '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    // --- Chain Health tile (collapsed recap) ---
-    if (ts && ts.n) {
-      var n = ts.n || 0;
-      var g = ts.give || 0;
-      var r = ts.receive || 0;
-      var people = ts.counterparties ? Object.keys(ts.counterparties).length : 0;
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
-      html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-rw-health-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-      html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Chain Health</span>';
-      html += '<div style="display:flex; align-items:center; gap:8px;">';
-      html += '<span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:var(--green-light,rgba(43,140,62,0.08)); color:var(--green);">' + n + ' exchanges</span>';
-      html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-      html += '</div></button>';
-      html += '<div id="ex-rw-health-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px;">';
-      html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">';
-      html += '<div style="background:var(--green-light,rgba(43,140,62,0.08)); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--green);">' + g + '</div><div style="font-size:11px; color:var(--text-dim);">Provided</div></div>';
-      html += '<div style="background:var(--accent-light,rgba(42,90,143,0.08)); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--accent);">' + r + '</div><div style="font-size:11px; color:var(--text-dim);">Received</div></div>';
-      html += '</div>';
-      html += '<div style="font-size:13px;">';
-      html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--text-dim);">People</span><span style="font-weight:600; color:var(--text);">' + people + '</span></div>';
-      html += '</div></div></div>';
+      } else {
+        html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Waiting for their chain data to arrive... (no thread_snapshot on wait screen)</div>';
+      }
+    } catch(cpe) {
+      console.log('[ex-flow v2.53.0] Counterparty context render threw on wait:', cpe.message, cpe.stack);
+      html += '<div style="background:rgba(214,107,107,0.08); border:1px solid rgba(214,107,107,0.3); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--red);">Render error: ' + esc(cpe.message) + '</div>';
     }
 
     tilesEl.innerHTML = html;
@@ -7956,6 +7913,35 @@ function init() {
     }
 
     html += '</div>'; // end card
+
+    // Counterparty context block — chain shape + POH verdict, rendered
+    // again on the proposal review surface so the decision has the full
+    // context visible at the moment of choosing.
+    try {
+      if (providerSnap) {
+        html += renderCounterpartyContextBlock(providerSnap);
+      }
+    } catch(cpe) {
+      console.log('[ex-flow v2.53.0] Counterparty context render failed on proposal:', cpe.message);
+    }
+
+    // Pricing context time-scatter chart — category-locked, shows my +
+    // their + shared history over time with today's proposed value
+    // pinned. Complements (does not replace) the service-description
+    // range bar above, which matches the exact service description.
+    // This chart matches category broadly and adds temporal + relational
+    // dimensions.
+    try {
+      if (providerSnap && sessionPartner) {
+        html += renderPricingContextChart(
+          providerSnap,
+          p,
+          sessionPartner.fingerprint
+        );
+      }
+    } catch(pce) {
+      console.log('[ex-flow v2.53.0] Pricing chart render failed:', pce.message);
+    }
 
     // Confirm / reject
     html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%; margin-bottom:8px;" onclick="App.sessionConfirm()">Confirm exchange</button>';
