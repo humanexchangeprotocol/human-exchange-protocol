@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.41.0';
+const APP_VERSION='2.42.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -487,6 +487,325 @@ async function drp(b64,sharedKey){
 }
 
 return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp}
+})();
+
+// ============================================================
+// POH SIGNAL REGISTRY
+// Self-contained signal definitions for Proof of Human display layer.
+// Each signal declares its own capture, device expectation, interpretation,
+// and copy. The aggregate rollup iterates the registry and produces a
+// verdict object the UI consumes without knowing anything specific.
+//
+// This module intentionally knows nothing about the DOM. It takes raw
+// state (chain, current exchange, device capabilities) and returns data.
+// Display logic lives in hep-app.js.
+// ============================================================
+const POH=(()=>{'use strict';
+
+// --- Device class detection ---
+// Returns one of: 'ios', 'android', 'pc', 'unknown'
+// Used to resolve expectation for each signal.
+function deviceClass() {
+  try {
+    var ua = (navigator.userAgent || '').toLowerCase();
+    var touch = navigator.maxTouchPoints || 0;
+    if (/iphone|ipad|ipod/.test(ua)) return 'ios';
+    if (/android/.test(ua)) return 'android';
+    // Treat zero-touch desktops and laptops as PC
+    if (touch === 0 && /windows|mac|linux|cros/.test(ua)) return 'pc';
+    // Touchscreen laptops still count as PC unless mobile keywords present
+    if (/windows|mac|linux|cros/.test(ua)) return 'pc';
+    return 'unknown';
+  } catch(e) { return 'unknown'; }
+}
+
+// --- Weight tiers ---
+// critical    = signal materially affects verdict (clock drift, sensor hash)
+// supporting  = signal strengthens verdict if present but absence is tolerable
+// enrichment  = signal adds texture, minor positive contribution
+const WEIGHT = { CRITICAL: 3, SUPPORTING: 2, ENRICHMENT: 1 };
+
+// --- Status codes for interpret() return ---
+// presence:  'present' | 'absent'
+// expected:  true | false              (given current device class)
+// behavior:  'normal' | 'worth-noting' | 'alarming' | 'n/a'
+// contribution: number (positive = strengthens chain, negative = weakens,
+//                       zero = neutral, bonus = device went above baseline)
+
+// --- Signal registry ---
+// Each entry is self-contained. To add a new signal: add an entry.
+// To retire: remove an entry. No other code changes required.
+const SIGNALS = {
+
+  clockSkew: {
+    id: 'clockSkew',
+    humanName: 'Clock drift',
+    tier: WEIGHT.CRITICAL,
+    expectedOn: ['ios', 'android', 'pc'], // universal
+    // Extracts raw skew value (ms) from exchange/chain context.
+    // Stub for now — actual capture already happens via witness ping.
+    capture: function(ctx) {
+      // ctx shape: { chain, exchange, device }
+      // Placeholder: look for clockSkewMs on most recent ping or exchange
+      if (ctx && ctx.exchange && typeof ctx.exchange.clockSkewMs === 'number') {
+        return { skewMs: ctx.exchange.clockSkewMs };
+      }
+      return null;
+    },
+    // Takes raw → returns interpretation object
+    interpret: function(raw, deviceClassStr) {
+      var expected = true; // universal signal
+      if (!raw) {
+        return {
+          presence: 'absent',
+          expected: expected,
+          behavior: 'worth-noting',
+          contribution: 0,
+          summary: 'No recent clock comparison with the witness'
+        };
+      }
+      var skew = Math.abs(raw.skewMs || 0);
+      // Thresholds: <2s normal, 2-30s worth-noting, >30s alarming
+      if (skew < 2000) {
+        return {
+          presence: 'present', expected: expected, behavior: 'normal',
+          contribution: WEIGHT.CRITICAL,
+          summary: 'Device clock matches the witness within expected range'
+        };
+      } else if (skew < 30000) {
+        return {
+          presence: 'present', expected: expected, behavior: 'worth-noting',
+          contribution: Math.floor(WEIGHT.CRITICAL / 2),
+          summary: 'Device clock drifts slightly from the witness'
+        };
+      } else {
+        return {
+          presence: 'present', expected: expected, behavior: 'alarming',
+          contribution: -WEIGHT.CRITICAL,
+          summary: 'Device clock is far off from the witness'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'Every device has a clock. When your phone records an exchange, it stamps the moment. The witness server also has a clock. A real device used by a real person will have a clock that is close to the witness — within a few seconds. A small drift is normal. A large drift, or sudden jumps, can mean the device clock has been deliberately set to a fake time.',
+      whyItMatters: 'Time is the cheapest thing to fabricate in isolation, but the hardest to fabricate across a network. A chain that matches witness time across hundreds of exchanges is anchored in real time. Fabrication attempts show up as impossible drift patterns.'
+    },
+    // Optional visualization — returns a spec the UI can render
+    visualize: function(raw, chainHistory) {
+      if (!raw) return null;
+      return {
+        type: 'range',
+        value: raw.skewMs,
+        unit: 'ms',
+        normalRange: [-2000, 2000],
+        observedRange: [-60000, 60000]
+      };
+    }
+  },
+
+  witnessRTT: {
+    id: 'witnessRTT',
+    humanName: 'Witness response time',
+    tier: WEIGHT.SUPPORTING,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  sensorHashMatch: {
+    id: 'sensorHashMatch',
+    humanName: 'Device consistency',
+    tier: WEIGHT.CRITICAL,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  counterpartyGeo: {
+    id: 'counterpartyGeo',
+    humanName: 'Counterparty location',
+    tier: WEIGHT.SUPPORTING,
+    expectedOn: ['ios', 'android'], // phones have GPS; PC location is weaker
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: (deviceClassStr !== 'pc'), behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  connectivity: {
+    id: 'connectivity',
+    humanName: 'Network state',
+    tier: WEIGHT.ENRICHMENT,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  exchangePath: {
+    id: 'exchangePath',
+    humanName: 'Exchange method',
+    tier: WEIGHT.SUPPORTING,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  batteryDetails: {
+    id: 'batteryDetails',
+    humanName: 'Battery signature',
+    tier: WEIGHT.ENRICHMENT,
+    expectedOn: ['ios', 'android'], // PCs typically don't expose battery in same way
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: (deviceClassStr !== 'pc'), behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  merkleRoot: {
+    id: 'merkleRoot',
+    humanName: 'Chain integrity root',
+    tier: WEIGHT.CRITICAL,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  },
+
+  entropyChain: {
+    id: 'entropyChain',
+    humanName: 'Entropy continuity',
+    tier: WEIGHT.SUPPORTING,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) { return null; /* TODO */ },
+    interpret: function(raw, deviceClassStr) {
+      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    },
+    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
+    visualize: function() { return null; }
+  }
+
+};
+
+// --- Aggregate rollup ---
+// Given chain + optional specific exchange + device class, runs every
+// signal and produces a verdict object the UI consumes.
+function rollup(ctx) {
+  ctx = ctx || {};
+  var dClass = ctx.deviceClass || deviceClass();
+  var signalResults = [];
+  var countStrong = 0;       // normal + present + expected
+  var countWorthNoting = 0;
+  var countAlarming = 0;
+  var countExpected = 0;     // how many signals should fire on this device
+  var countPresentExpected = 0;
+  var countBonus = 0;        // present AND not-expected (device went above baseline)
+  var totalContribution = 0;
+  var maxContribution = 0;   // theoretical max if every expected signal were normal
+
+  var ids = Object.keys(SIGNALS);
+  for (var i = 0; i < ids.length; i++) {
+    var sig = SIGNALS[ids[i]];
+    var expected = sig.expectedOn.indexOf(dClass) !== -1;
+    var raw = null;
+    try { raw = sig.capture(ctx); } catch(e) { raw = null; }
+    var interp = sig.interpret(raw, dClass);
+
+    // Track counts
+    if (expected) {
+      countExpected++;
+      maxContribution += sig.tier;
+      if (interp.presence === 'present') countPresentExpected++;
+    } else if (interp.presence === 'present') {
+      countBonus++;
+      // Bonus signals add positive contribution but don't subtract from max
+      totalContribution += sig.tier;
+    }
+
+    if (interp.behavior === 'normal' && interp.presence === 'present') countStrong++;
+    else if (interp.behavior === 'worth-noting') countWorthNoting++;
+    else if (interp.behavior === 'alarming') countAlarming++;
+
+    totalContribution += (interp.contribution || 0);
+
+    signalResults.push({
+      id: sig.id,
+      humanName: sig.humanName,
+      tier: sig.tier,
+      expected: expected,
+      presence: interp.presence,
+      behavior: interp.behavior,
+      contribution: interp.contribution,
+      summary: interp.summary,
+      raw: raw,
+      copy: sig.copy,
+      visualize: sig.visualize
+    });
+  }
+
+  // Build a verdict statement based on the overall picture.
+  // Keep this deliberately simple to start — tune later.
+  var statement;
+  var statementTone;
+  if (countAlarming > 0) {
+    statement = 'Some signals look wrong on this chain';
+    statementTone = 'alarming';
+  } else if (countStrong >= countExpected) {
+    statement = 'Critical proof-of-human validated';
+    statementTone = 'strong';
+  } else if (countStrong >= Math.ceil(countExpected / 2)) {
+    statement = 'Partial proof-of-human — more signals would strengthen this chain';
+    statementTone = 'partial';
+  } else {
+    statement = 'Limited proof-of-human signals so far';
+    statementTone = 'weak';
+  }
+
+  return {
+    deviceClass: dClass,
+    statement: statement,
+    tone: statementTone,
+    countStrong: countStrong,
+    countWorthNoting: countWorthNoting,
+    countAlarming: countAlarming,
+    countExpected: countExpected,
+    countPresentExpected: countPresentExpected,
+    countBonus: countBonus,
+    totalContribution: totalContribution,
+    maxContribution: maxContribution,
+    signals: signalResults
+  };
+}
+
+return {
+  deviceClass: deviceClass,
+  WEIGHT: WEIGHT,
+  SIGNALS: SIGNALS,
+  rollup: rollup
+};
+
 })();
 
 // ============================================================
