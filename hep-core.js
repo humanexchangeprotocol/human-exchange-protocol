@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.44.0';
+const APP_VERSION='2.45.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -624,12 +624,71 @@ const SIGNALS = {
     humanName: 'Witness response time',
     tier: WEIGHT.SUPPORTING,
     expectedOn: ['ios', 'android', 'pc'],
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    // Reads rtt_ms from witnessAttestation on records that were attested.
+    // Witness attestation is optional — offline-first design means absence
+    // is a sovereignty choice, not a failure.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var samples = [];
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.witnessAttestation && typeof r.witnessAttestation.rtt_ms === 'number') {
+          samples.push(r.witnessAttestation.rtt_ms);
+        }
+      }
+      if (samples.length === 0) return null;
+      var sum = 0, max = 0, min = Infinity;
+      for (var j = 0; j < samples.length; j++) {
+        sum += samples[j];
+        if (samples[j] > max) max = samples[j];
+        if (samples[j] < min) min = samples[j];
+      }
+      return {
+        count: samples.length,
+        meanMs: Math.round(sum / samples.length),
+        minMs: min,
+        maxMs: max
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.count === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No witness-attested records yet — this is optional'
+        };
+      }
+      // Thresholds: <1500ms normal (reasonable network), <5000ms worth-noting (slow), >5000ms unusual
+      if (raw.meanMs < 1500) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.SUPPORTING,
+          summary: raw.count + ' witness attestation' + (raw.count === 1 ? '' : 's') + ' with healthy response times'
+        };
+      } else if (raw.meanMs < 5000) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.SUPPORTING / 2),
+          summary: 'Witness server responds, network is slow from your device'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'worth-noting',
+          contribution: 0,
+          summary: 'Witness response times are unusually long'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'When you send a record to the witness server, it responds with a signed attestation. The time that takes — from your phone to the server and back — is the round-trip time. A real network over real infrastructure has a predictable range. Very fast or perfectly uniform times can suggest a local loopback rather than a real distant server.',
+      whyItMatters: 'The witness is optional in HEP — you can exchange entirely offline and never contact a server. But when you do, the network timing becomes another strand of evidence. A chain with attested records whose response times look realistic has been anchored to real internet infrastructure. A chain where every attestation took exactly the same 1ms suggests a controlled environment.'
+    },
+    visualize: function(raw) {
+      if (!raw) return null;
+      return { type: 'range', value: raw.meanMs, unit: 'ms', normalRange: [0, 1500], observedRange: [0, Math.max(3000, raw.maxMs)] };
+    }
   },
 
   sensorHashMatch: {
@@ -637,38 +696,217 @@ const SIGNALS = {
     humanName: 'Device consistency',
     tier: WEIGHT.CRITICAL,
     expectedOn: ['ios', 'android', 'pc'],
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    // Reads sensorHash from every record and counts distinct values.
+    // A chain from one device produces a small number of distinct hashes
+    // over time as the device's sensor readings shift slightly. A chain
+    // with every record showing a unique hash suggests fabrication across
+    // many different devices or sessions.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var hashes = {};
+      var total = 0;
+      var firstSeen = {};
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (typeof r.sensorHash === 'string' && r.sensorHash.length > 0) {
+          total++;
+          if (!hashes[r.sensorHash]) {
+            hashes[r.sensorHash] = 1;
+            firstSeen[r.sensorHash] = i;
+          } else {
+            hashes[r.sensorHash]++;
+          }
+        }
+      }
+      if (total === 0) return null;
+      var distinct = Object.keys(hashes).length;
+      // Find most common hash (the "primary" device fingerprint)
+      var primaryCount = 0;
+      for (var h in hashes) if (hashes[h] > primaryCount) primaryCount = hashes[h];
+      return {
+        total: total,
+        distinct: distinct,
+        primaryCount: primaryCount,
+        primaryRatio: primaryCount / total
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.total === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No sensor fingerprints captured yet'
+        };
+      }
+      // If one hash covers >80% of records, strong consistent device signal.
+      // Many distinct hashes with no dominant one suggests device-hopping.
+      if (raw.primaryRatio >= 0.8) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.CRITICAL,
+          summary: 'Consistent device fingerprint across ' + raw.total + ' record' + (raw.total === 1 ? '' : 's')
+        };
+      } else if (raw.primaryRatio >= 0.5) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.CRITICAL / 2),
+          summary: 'Primary device recognizable but with some variation'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'worth-noting',
+          contribution: 0,
+          summary: 'Many distinct device fingerprints across this chain — unusual for one person'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'Every time you record an exchange, your phone captures a snapshot of its hardware and software characteristics — screen size, graphics renderer, installed fonts, available sensors — and hashes them together. That hash is a fingerprint of the device. A real person using one phone produces nearly the same hash for every exchange. Small shifts are normal over time as the device updates. Many wildly different hashes on one chain suggest the records came from many different devices.',
+      whyItMatters: 'A single human body holds one phone most of the time. That physical constraint should show up as a consistent device fingerprint across a real chain. A chain made by one person pretending to be many will show a different fingerprint for each pretend identity — the same attacker cannot simultaneously simulate different device profiles across hundreds of exchanges without the inconsistency being visible. The chain reveals.'
+    },
+    visualize: function(raw) {
+      if (!raw) return null;
+      return { type: 'range', value: Math.round(raw.primaryRatio * 100), unit: '% primary device', normalRange: [80, 100], observedRange: [0, 100] };
+    }
   },
 
   counterpartyGeo: {
     id: 'counterpartyGeo',
-    humanName: 'Counterparty location',
+    humanName: 'Counterparty locations',
     tier: WEIGHT.SUPPORTING,
-    expectedOn: ['ios', 'android'], // phones have GPS; PC location is weaker
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: (deviceClassStr !== 'pc'), behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    expectedOn: ['ios', 'android', 'pc'], // measures others' devices, not yours
+    // Counts exchanges where the counterparty shared a location.
+    // This is about the counterparty's contribution to the exchange,
+    // not your own location.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var withGeo = 0, totalExchanges = 0;
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.type === 'ping' || r.type === 'genesis') continue;
+        totalExchanges++;
+        if (r.counterpartyGeo) withGeo++;
+      }
+      if (totalExchanges === 0) return null;
+      return {
+        total: totalExchanges,
+        withGeo: withGeo,
+        ratio: withGeo / totalExchanges
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.total === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No exchanges yet'
+        };
+      }
+      if (raw.withGeo === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'None of your counterparties shared their location'
+        };
+      }
+      if (raw.ratio >= 0.5) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.SUPPORTING,
+          summary: raw.withGeo + ' of ' + raw.total + ' counterparties shared location — anchored in real places'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.SUPPORTING / 2),
+          summary: 'Some counterparties shared location'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'When you exchange with another person, their phone may share its approximate location along with the record. This is separate from your own location. If half the people you meet have shared where they were, your chain is populated with real places and real people who were willing to anchor their presence.',
+      whyItMatters: 'Your chain is a story about cooperation between real people at real times in real places. When counterparties share their location, that story becomes verifiable from multiple sides. A fabricator controlling both ends of exchanges has to simulate realistic counterparty locations distinct from their own, which is much harder than faking just one location.'
+    },
+    visualize: function(raw) {
+      if (!raw) return null;
+      return { type: 'range', value: Math.round(raw.ratio * 100), unit: '% with location', normalRange: [50, 100], observedRange: [0, 100] };
+    }
   },
 
   connectivity: {
     id: 'connectivity',
-    humanName: 'Network state',
+    humanName: 'Online/offline mix',
     tier: WEIGHT.ENRICHMENT,
     expectedOn: ['ios', 'android', 'pc'],
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    // Counts how many exchanges happened while online vs offline.
+    // Real phones go through both states. All-online or all-offline
+    // both tell a story, but mix is most natural.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var online = 0, offline = 0, total = 0;
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.type === 'genesis') continue;
+        if (typeof r.connectivityAvailable !== 'boolean') continue;
+        total++;
+        if (r.connectivityAvailable) online++;
+        else offline++;
+      }
+      if (total === 0) return null;
+      return {
+        total: total,
+        online: online,
+        offline: offline,
+        onlineRatio: online / total
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.total === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No records with connectivity data yet'
+        };
+      }
+      if (raw.online > 0 && raw.offline > 0) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.ENRICHMENT,
+          summary: 'Mix of online and offline exchanges — natural phone usage'
+        };
+      } else if (raw.online > 0) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.ENRICHMENT,
+          summary: 'All exchanges happened while online'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.ENRICHMENT,
+          summary: 'All exchanges happened while offline — offline-first usage'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'Your phone records whether it had a network connection at the moment of each exchange. A phone used through a normal day passes through both states — connected at home, offline in a basement, connected on the train. A chain made by a simulator running in a data center will typically show one constant state.',
+      whyItMatters: 'Offline-first usage is not weaker than online usage in HEP. Both are real and intentional. What matters is that the pattern reflects a phone moving through real conditions. An all-one-state chain is a minor signal on its own, but combined with other constants it can point to an artificial environment.'
+    },
+    visualize: function(raw) {
+      if (!raw) return null;
+      return { type: 'breakdown', parts: [
+        { label: 'Online', value: raw.online, color: 'green' },
+        { label: 'Offline', value: raw.offline, color: 'amber' }
+      ], total: raw.total };
+    }
   },
 
   exchangePath: {
@@ -758,26 +996,143 @@ const SIGNALS = {
     id: 'batteryDetails',
     humanName: 'Battery signature',
     tier: WEIGHT.ENRICHMENT,
-    expectedOn: ['ios', 'android'], // PCs typically don't expose battery in same way
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: (deviceClassStr !== 'pc'), behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    expectedOn: ['ios', 'android'], // Battery Status API limited/absent on PC
+    // Reads batteryState from pohSnapshot on records that captured it.
+    // Real devices show realistic battery variation over time —
+    // levels drift down during use, jump up on charging, etc.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var levels = [];
+      var chargingSeen = false, notChargingSeen = false;
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        var b = null;
+        if (r.pohSnapshot && r.pohSnapshot.batteryState) b = r.pohSnapshot.batteryState;
+        else if (r.batteryState) b = r.batteryState;
+        if (!b) continue;
+        if (typeof b.level === 'number') levels.push(b.level);
+        if (b.charging === true) chargingSeen = true;
+        if (b.charging === false) notChargingSeen = true;
+      }
+      if (levels.length === 0 && !chargingSeen && !notChargingSeen) return null;
+      var min = levels.length ? Math.min.apply(null, levels) : null;
+      var max = levels.length ? Math.max.apply(null, levels) : null;
+      return {
+        samples: levels.length,
+        minLevel: min,
+        maxLevel: max,
+        rangeLevel: (min !== null && max !== null) ? max - min : null,
+        chargingSeen: chargingSeen,
+        notChargingSeen: notChargingSeen
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw) {
+        return {
+          presence: 'absent',
+          expected: (deviceClassStr !== 'pc'),
+          behavior: 'n/a',
+          contribution: 0,
+          summary: deviceClassStr === 'pc' ? 'Desktop devices rarely expose battery data' : 'No battery data captured yet'
+        };
+      }
+      // Expect battery level variation over many samples. A range > 0.1 (10%)
+      // shows realistic use. Both charging and not-charging states are positive.
+      var stateVariety = (raw.chargingSeen && raw.notChargingSeen);
+      if (raw.samples >= 3 && (raw.rangeLevel === null || raw.rangeLevel > 0.1) && stateVariety) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.ENRICHMENT,
+          summary: 'Battery varies across charging states — natural phone usage'
+        };
+      } else if (raw.samples >= 1) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.ENRICHMENT / 2),
+          summary: 'Battery data present but limited variation so far'
+        };
+      }
+      return {
+        presence: 'absent',
+        expected: true,
+        behavior: 'n/a',
+        contribution: 0,
+        summary: 'Battery data not available'
+      };
+    },
+    copy: {
+      whatItMeans: 'Your phone knows whether it is plugged in and how much charge it has left. When you record an exchange, the app captures that state. Over many exchanges, a real phone shows the rhythm of daily use — draining during the day, charging overnight, sometimes plugged in, sometimes not.',
+      whyItMatters: 'A simulator running on a server has no real battery — it reports a constant value, or the same pattern on every exchange. A phone belonging to a real person shows irregular drops, occasional charging spikes, and natural randomness. The battery signature is one of the simplest signals to fabricate in a single moment but one of the hardest to fabricate plausibly over hundreds of exchanges.'
+    },
+    visualize: function(raw) {
+      if (!raw || raw.samples === 0) return null;
+      var pct = raw.rangeLevel !== null ? Math.round(raw.rangeLevel * 100) : 0;
+      return { type: 'range', value: pct, unit: '% range', normalRange: [10, 100], observedRange: [0, 100] };
+    }
   },
 
   merkleRoot: {
     id: 'merkleRoot',
-    humanName: 'Chain integrity root',
+    humanName: 'Chain integrity',
     tier: WEIGHT.CRITICAL,
     expectedOn: ['ios', 'android', 'pc'],
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    // Counts records carrying a chainMerkleRoot field. Merkle roots on
+    // each record commit to the entire chain state at that point.
+    // A record with a merkle root cannot be silently re-ordered or altered.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var total = 0, withRoot = 0;
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.type === 'genesis') continue;
+        total++;
+        if (typeof r.chainMerkleRoot === 'string' && r.chainMerkleRoot.length > 0) withRoot++;
+      }
+      if (total === 0) return null;
+      return {
+        total: total,
+        withRoot: withRoot,
+        ratio: withRoot / total
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.total === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No non-genesis records yet to anchor'
+        };
+      }
+      if (raw.ratio >= 0.99) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.CRITICAL,
+          summary: 'Every record anchored by a Merkle root — chain integrity intact'
+        };
+      } else if (raw.ratio >= 0.9) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.CRITICAL / 2),
+          summary: 'Most records anchored by Merkle root'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'worth-noting',
+          contribution: 0,
+          summary: Math.round((1 - raw.ratio) * 100) + '% of records missing their Merkle root'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'Every record on your chain carries a small hash that summarizes the entire chain up to that point — called a Merkle root. If any earlier record were quietly changed or reordered, every later record\'s Merkle root would no longer match. The chain defends itself by folding its own history into every new record.',
+      whyItMatters: 'Without Merkle roots, a chain is just a list that could be edited silently. With them, the chain becomes tamper-evident — any change anywhere shows up everywhere after that point. This is the same mechanism that anchors Bitcoin and most other chain-based systems. It is what turns "a list of records" into "a history that cannot be quietly rewritten."'
+    },
+    visualize: function(raw) {
+      if (!raw) return null;
+      return { type: 'range', value: Math.round(raw.ratio * 100), unit: '% anchored', normalRange: [99, 100], observedRange: [0, 100] };
+    }
   },
 
   entropyChain: {
@@ -785,12 +1140,62 @@ const SIGNALS = {
     humanName: 'Entropy continuity',
     tier: WEIGHT.SUPPORTING,
     expectedOn: ['ios', 'android', 'pc'],
-    capture: function(ctx) { return null; /* TODO */ },
-    interpret: function(raw, deviceClassStr) {
-      return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Not yet implemented' };
+    // Counts records carrying an entropyPrev field, which links each
+    // record to unpredictable randomness from the previous one.
+    capture: function(ctx) {
+      if (!ctx || !ctx.chain) return null;
+      var total = 0, withEntropy = 0;
+      for (var i = 0; i < ctx.chain.length; i++) {
+        var r = ctx.chain[i];
+        if (r.type === 'genesis') continue;
+        total++;
+        if (typeof r.entropyPrev === 'string' && r.entropyPrev.length > 0) withEntropy++;
+      }
+      if (total === 0) return null;
+      return {
+        total: total,
+        withEntropy: withEntropy,
+        ratio: withEntropy / total
+      };
     },
-    copy: { whatItMeans: 'TODO', whyItMatters: 'TODO' },
-    visualize: function() { return null; }
+    interpret: function(raw, deviceClassStr) {
+      if (!raw || raw.total === 0) {
+        return {
+          presence: 'absent',
+          expected: true,
+          behavior: 'n/a',
+          contribution: 0,
+          summary: 'No non-genesis records yet'
+        };
+      }
+      if (raw.ratio >= 0.99) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: WEIGHT.SUPPORTING,
+          summary: 'Entropy chain unbroken across ' + raw.total + ' record' + (raw.total === 1 ? '' : 's')
+        };
+      } else if (raw.ratio >= 0.9) {
+        return {
+          presence: 'present', expected: true, behavior: 'normal',
+          contribution: Math.floor(WEIGHT.SUPPORTING / 2),
+          summary: 'Entropy chain present on most records'
+        };
+      } else {
+        return {
+          presence: 'present', expected: true, behavior: 'worth-noting',
+          contribution: 0,
+          summary: 'Entropy chain broken on ' + Math.round((1 - raw.ratio) * 100) + '% of records'
+        };
+      }
+    },
+    copy: {
+      whatItMeans: 'Each record carries a small piece of random data pulled from the previous record. This forms an unbroken chain of entropy — one record feeds the next. Because the randomness cannot be predicted in advance, nobody can pre-compute records to insert later. Each new record has to be built with the real previous record in hand.',
+      whyItMatters: 'Entropy continuity is a defense against pre-fabrication. An attacker cannot create a chain of realistic-looking records in advance because they cannot know what entropy the next record will need until the previous one exists. This turns chain-building into a sequential process bounded by real time.'
+    },
+    visualize: function(raw) {
+      if (!raw) return null;
+      return { type: 'range', value: Math.round(raw.ratio * 100), unit: '% linked', normalRange: [99, 100], observedRange: [0, 100] };
+    }
   }
 
 };

@@ -8313,16 +8313,82 @@ function init() {
       h += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Normal range:</strong> mean under 3.00 s</div>';
       return h;
     }
-    // Exchange method mix: path counts
+    // Witness RTT
+    if (s.id === 'witnessRTT' && typeof s.raw.meanMs === 'number') {
+      var h = '';
+      h += '<div><strong>Attested records:</strong> ' + s.raw.count + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Mean response:</strong> ' + s.raw.meanMs + ' ms</div>';
+      h += '<div style="margin-top:4px;"><strong>Range:</strong> ' + s.raw.minMs + ' – ' + s.raw.maxMs + ' ms</div>';
+      h += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Healthy range:</strong> under 1500 ms</div>';
+      return h;
+    }
+    // Device consistency
+    if (s.id === 'sensorHashMatch' && typeof s.raw.total === 'number') {
+      var pct = Math.round(s.raw.primaryRatio * 100);
+      var h = '';
+      h += '<div><strong>Records with fingerprint:</strong> ' + s.raw.total + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Distinct fingerprints:</strong> ' + s.raw.distinct + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Primary device share:</strong> ' + pct + '% (' + s.raw.primaryCount + ' of ' + s.raw.total + ')</div>';
+      h += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Normal range:</strong> 80% or higher from one primary device</div>';
+      return h;
+    }
+    // Counterparty locations
+    if (s.id === 'counterpartyGeo' && typeof s.raw.total === 'number') {
+      var pct = Math.round(s.raw.ratio * 100);
+      var h = '';
+      h += '<div><strong>Total exchanges:</strong> ' + s.raw.total + '</div>';
+      h += '<div style="margin-top:4px;"><strong>With shared location:</strong> ' + s.raw.withGeo + ' (' + pct + '%)</div>';
+      return h;
+    }
+    // Connectivity mix
+    if (s.id === 'connectivity' && typeof s.raw.total === 'number') {
+      var pct = Math.round(s.raw.onlineRatio * 100);
+      var h = '';
+      h += '<div><strong>Records with connectivity data:</strong> ' + s.raw.total + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Online:</strong> ' + s.raw.online + ' (' + pct + '%)</div>';
+      h += '<div style="margin-top:4px;"><strong>Offline:</strong> ' + s.raw.offline + '</div>';
+      return h;
+    }
+    // Exchange method mix
     if (s.id === 'exchangePath' && typeof s.raw.total === 'number') {
       var ratio = Math.round(s.raw.coPresentRatio * 100);
-      var h2 = '';
-      h2 += '<div><strong>Total exchanges:</strong> ' + s.raw.total + '</div>';
-      h2 += '<div style="margin-top:4px;"><strong>Live sessions:</strong> ' + s.raw.session + '</div>';
-      h2 += '<div style="margin-top:4px;"><strong>In-person QR:</strong> ' + s.raw.qr + '</div>';
-      h2 += '<div style="margin-top:4px;"><strong>Deferred (offline):</strong> ' + s.raw.offline + '</div>';
-      h2 += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Co-present ratio:</strong> ' + ratio + '%</div>';
-      return h2;
+      var h = '';
+      h += '<div><strong>Total exchanges:</strong> ' + s.raw.total + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Live sessions:</strong> ' + s.raw.session + '</div>';
+      h += '<div style="margin-top:4px;"><strong>In-person QR:</strong> ' + s.raw.qr + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Deferred (offline):</strong> ' + s.raw.offline + '</div>';
+      h += '<div style="margin-top:8px; color:var(--text-dim);"><strong>Co-present ratio:</strong> ' + ratio + '%</div>';
+      return h;
+    }
+    // Battery signature
+    if (s.id === 'batteryDetails' && typeof s.raw.samples === 'number') {
+      var h = '';
+      h += '<div><strong>Samples captured:</strong> ' + s.raw.samples + '</div>';
+      if (s.raw.minLevel !== null && s.raw.maxLevel !== null) {
+        var minPct = Math.round(s.raw.minLevel * 100);
+        var maxPct = Math.round(s.raw.maxLevel * 100);
+        var rangePct = Math.round((s.raw.rangeLevel || 0) * 100);
+        h += '<div style="margin-top:4px;"><strong>Level range:</strong> ' + minPct + '% – ' + maxPct + '% (' + rangePct + '% span)</div>';
+      }
+      h += '<div style="margin-top:4px;"><strong>Charging state seen:</strong> ' + (s.raw.chargingSeen ? 'yes' : 'no') + '</div>';
+      h += '<div style="margin-top:4px;"><strong>Not-charging state seen:</strong> ' + (s.raw.notChargingSeen ? 'yes' : 'no') + '</div>';
+      return h;
+    }
+    // Merkle root
+    if (s.id === 'merkleRoot' && typeof s.raw.total === 'number') {
+      var pct = Math.round(s.raw.ratio * 100);
+      var h = '';
+      h += '<div><strong>Non-genesis records:</strong> ' + s.raw.total + '</div>';
+      h += '<div style="margin-top:4px;"><strong>With Merkle root:</strong> ' + s.raw.withRoot + ' (' + pct + '%)</div>';
+      return h;
+    }
+    // Entropy chain
+    if (s.id === 'entropyChain' && typeof s.raw.total === 'number') {
+      var pct = Math.round(s.raw.ratio * 100);
+      var h = '';
+      h += '<div><strong>Non-genesis records:</strong> ' + s.raw.total + '</div>';
+      h += '<div style="margin-top:4px;"><strong>With entropy link:</strong> ' + s.raw.withEntropy + ' (' + pct + '%)</div>';
+      return h;
     }
     // Generic fallback — show whatever's in raw
     try { return '<pre style="white-space:pre-wrap; margin:0; font-size:var(--fs-sm); font-family:var(--font-mono);">' + esc(JSON.stringify(s.raw, null, 2)) + '</pre>'; }
