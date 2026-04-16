@@ -8156,6 +8156,237 @@ function init() {
     else if (tab === 'settings') renderSettingsTab();
   }
 
+  // --- Proof of Human verdict card renderer ---
+  // Context shape: { chain, exchange (optional) }
+  // Used on Standing (aggregate) and chain viewer (per-exchange, later).
+  function renderPOHVerdict(ctx) {
+    var v;
+    try { v = POH.rollup(ctx); } catch(e) { console.log('[POH] rollup failed:', e.message); return ''; }
+    if (!v) return '';
+
+    // Tone → accent color + icon
+    var toneColor = 'var(--text-dim)';
+    var toneBg = 'var(--bg-raised)';
+    var toneBorder = 'var(--border)';
+    var toneIcon = '&#9679;'; // filled circle
+    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '&#10003;'; }
+    else if (v.tone === 'partial') { toneColor = '#B45309'; toneBg = 'rgba(180,83,9,0.06)'; toneBorder = 'rgba(180,83,9,0.25)'; toneIcon = '&#9679;'; }
+    else if (v.tone === 'weak') { toneColor = 'var(--text-dim)'; toneIcon = '&#9679;'; }
+    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '&#9888;'; }
+
+    var h = '';
+    h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+
+    // Level 1 — verdict header (always visible), tappable to toggle signal list
+    h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
+    h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
+    h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
+    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
+    h += '<div style="min-width:0; flex:1;">';
+    h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
+
+    // Count summary
+    var countLine = v.countStrong + ' of ' + v.countExpected + ' signals strong';
+    if (v.countBonus > 0) countLine += ' · +' + v.countBonus + ' bonus';
+    if (v.countAlarming > 0) countLine += ' · ' + v.countAlarming + ' alarming';
+    else if (v.countWorthNoting > 0) countLine += ' · ' + v.countWorthNoting + ' worth noting';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + countLine + '</div>';
+    h += '</div></div>';
+    h += '<span class="poh-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    h += '</div></div>';
+
+    // Level 2 — signal list (hidden by default)
+    h += '<div class="poh-signals" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:6px;">';
+    for (var i = 0; i < v.signals.length; i++) {
+      var s = v.signals[i];
+      h += renderPOHSignalRow(s, i);
+    }
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+  }
+
+  // One row in the signal list, expandable to show Level 3 details.
+  function renderPOHSignalRow(s, idx) {
+    // Status dot color
+    var dotColor = 'var(--text-faint)';
+    if (s.presence === 'absent' && s.expected) dotColor = '#B45309';
+    else if (s.presence === 'absent' && !s.expected) dotColor = 'var(--text-faint)';
+    else if (s.behavior === 'normal') dotColor = 'var(--green)';
+    else if (s.behavior === 'worth-noting') dotColor = '#B45309';
+    else if (s.behavior === 'alarming') dotColor = 'var(--red)';
+
+    // Expected-vs-bonus badge
+    var badge = '';
+    if (!s.expected && s.presence === 'present') {
+      badge = '<span style="font-size:10px; font-weight:600; color:var(--green); background:rgba(43,140,62,0.12); padding:2px 6px; border-radius:8px; margin-left:6px; letter-spacing:0.3px;">BONUS</span>';
+    } else if (!s.expected) {
+      badge = '<span style="font-size:10px; font-weight:500; color:var(--text-faint); background:var(--bg-input); padding:2px 6px; border-radius:8px; margin-left:6px; letter-spacing:0.3px;">N/A FOR DEVICE</span>';
+    }
+
+    var h = '';
+    h += '<div class="poh-signal-row" data-idx="' + idx + '">';
+    // Row header (tap to expand Level 3)
+    h += '<div style="display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer;" onclick="App.togglePOHSignalDetail(this)">';
+    h += '<div style="width:10px; height:10px; border-radius:50%; background:' + dotColor + '; flex-shrink:0;"></div>';
+    h += '<div style="flex:1; min-width:0;">';
+    h += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">' + esc(s.humanName) + badge + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary) + '</div>';
+    h += '</div>';
+    h += '<span class="poh-sig-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    h += '</div>';
+
+    // Level 3 — inline detail panel
+    var hasCopy = s.copy && (s.copy.whatItMeans || s.copy.whyItMatters);
+    var isStub = !hasCopy || s.copy.whatItMeans === 'TODO';
+
+    h += '<div class="poh-signal-detail" style="display:none; padding:8px 0 14px 20px; border-left:2px solid var(--border); margin:0 0 8px 5px;">';
+
+    if (isStub) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.5; font-style:italic;">Detailed explanation coming in a future update.</div>';
+    } else {
+      // What it means
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">What it means</div>';
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6;">' + esc(s.copy.whatItMeans) + '</div>';
+      h += '</div>';
+
+      // What we see here (pulled from raw capture)
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">What we see here</div>';
+      h += '<div style="font-size:var(--fs-sm); color:var(--text); line-height:1.5; background:var(--bg-input); border-radius:var(--radius-sm); padding:10px 12px;">';
+      h += renderPOHSignalData(s);
+      h += '</div>';
+      h += '</div>';
+
+      // Why it matters
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Why it matters</div>';
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6;">' + esc(s.copy.whyItMatters) + '</div>';
+      h += '</div>';
+
+      // Visualization (placeholder — descriptive only for now)
+      if (s.visualize) {
+        try {
+          var vSpec = s.visualize(s.raw, null);
+          if (vSpec) {
+            h += '<div style="margin-bottom:12px;">';
+            h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Visualization</div>';
+            h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-style:italic; line-height:1.5;">[' + esc(vSpec.type) + ' chart: value ' + esc(String(vSpec.value)) + ' ' + esc(vSpec.unit || '') + ', normal range ' + esc(JSON.stringify(vSpec.normalRange)) + ']</div>';
+            h += '</div>';
+          }
+        } catch(e) {}
+      }
+
+      // Full technical spec link
+      h += '<div>';
+      h += '<button style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); padding:6px 12px; font-size:var(--fs-sm); font-weight:500; cursor:pointer;" onclick="App.openPOHTechnical(\'' + esc(s.id) + '\')">Full technical specification &rsaquo;</button>';
+      h += '</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  // "What we see here" formatter — pulls numbers/hashes from raw signal data
+  function renderPOHSignalData(s) {
+    if (!s.raw) {
+      if (!s.expected) return 'This signal is not expected on your device class. Not applicable.';
+      return 'No data captured for this signal yet.';
+    }
+    // Signal-specific data rendering
+    if (s.id === 'clockSkew' && typeof s.raw.skewMs === 'number') {
+      var ms = s.raw.skewMs;
+      var sign = ms >= 0 ? '+' : '';
+      var seconds = (ms / 1000).toFixed(2);
+      return '<div><strong>Your device:</strong> ' + sign + seconds + ' s from witness time</div>' +
+             '<div style="margin-top:4px; color:var(--text-dim);"><strong>Normal range:</strong> under 2.00 s</div>';
+    }
+    // Generic fallback — show whatever's in raw
+    try { return '<pre style="white-space:pre-wrap; margin:0; font-size:var(--fs-sm); font-family:var(--font-mono);">' + esc(JSON.stringify(s.raw, null, 2)) + '</pre>'; }
+    catch(e) { return 'Data present but not displayable.'; }
+  }
+
+  // Level 4 — modal with full technical spec
+  function openPOHTechnical(signalId) {
+    var sig = POH.SIGNALS[signalId];
+    if (!sig) return;
+    var ctx = { chain: state.chain };
+    var v = POH.rollup(ctx);
+    var s = v.signals.find(function(x) { return x.id === signalId; });
+
+    var h = '';
+    h += '<div style="padding:4px 0 16px;">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Technical specification</div>';
+    h += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text); margin-bottom:4px;">' + esc(sig.humanName) + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-family:var(--font-mono);">signal.id: ' + esc(sig.id) + '</div>';
+    h += '</div>';
+
+    h += '<div style="background:var(--bg-input); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:12px;">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Classification</div>';
+    var tierName = sig.tier === 3 ? 'Critical' : sig.tier === 2 ? 'Supporting' : 'Enrichment';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text); line-height:1.8;">';
+    h += '<div><strong>Weight tier:</strong> ' + tierName + ' (contribution ' + sig.tier + ')</div>';
+    h += '<div><strong>Expected on:</strong> ' + sig.expectedOn.join(', ') + '</div>';
+    h += '<div><strong>Your device class:</strong> ' + v.deviceClass + '</div>';
+    h += '<div><strong>Expected for this device:</strong> ' + (s.expected ? 'yes' : 'no') + '</div>';
+    h += '</div>';
+    h += '</div>';
+
+    h += '<div style="background:var(--bg-input); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:12px;">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Observed on this device</div>';
+    if (s.raw) {
+      h += '<pre style="margin:0; font-size:var(--fs-sm); font-family:var(--font-mono); white-space:pre-wrap; color:var(--text);">' + esc(JSON.stringify(s.raw, null, 2)) + '</pre>';
+    } else {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-style:italic;">No capture data available in current context.</div>';
+    }
+    h += '</div>';
+
+    h += '<div style="background:var(--bg-input); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:12px;">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Interpretation result</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text); line-height:1.8;">';
+    h += '<div><strong>Presence:</strong> ' + s.presence + '</div>';
+    h += '<div><strong>Behavior:</strong> ' + s.behavior + '</div>';
+    h += '<div><strong>Contribution to verdict:</strong> ' + s.contribution + '</div>';
+    h += '<div><strong>Summary:</strong> ' + esc(s.summary) + '</div>';
+    h += '</div>';
+    h += '</div>';
+
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.6; padding:0 4px;">This is the raw technical readout for this signal as evaluated against your device and chain. The interpretation logic lives in the signal registry and is the same for everyone using this version of HEP.</div>';
+
+    // Reuse chain modal as a generic content viewer
+    showModal('chain');
+    var filter = document.getElementById('chain-filter');
+    if (filter) filter.style.display = 'none';
+    var tabs = document.querySelector('#chain-overlay .tabs');
+    if (tabs) tabs.style.display = 'none';
+    var body = document.getElementById('chain-body');
+    if (body) body.innerHTML = h;
+  }
+
+  // UI toggle handlers
+  function togglePOHSignals(header) {
+    var wrap = header.parentElement;
+    var list = wrap.querySelector('.poh-signals');
+    var chev = header.querySelector('.poh-chev');
+    if (!list) return;
+    var open = list.style.display === 'block';
+    list.style.display = open ? 'none' : 'block';
+    if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+  }
+
+  function togglePOHSignalDetail(rowHeader) {
+    var row = rowHeader.parentElement;
+    var detail = row.querySelector('.poh-signal-detail');
+    var chev = rowHeader.querySelector('.poh-sig-chev');
+    if (!detail) return;
+    var open = detail.style.display === 'block';
+    detail.style.display = open ? 'none' : 'block';
+    if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+  }
+
   function renderStandingTab() {
     var el = document.getElementById('tab-standing-content');
     if (!el) return;
@@ -8282,6 +8513,9 @@ function init() {
       }
       html += '</div>';
     }
+
+    // Proof of Human verdict card (aggregate for this chain)
+    html += renderPOHVerdict({ chain: state.chain });
 
     // Participation card (no position/balance shown - person can check via wallet)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -8722,6 +8956,7 @@ function init() {
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     openSettings, togglePrivacy, toggleLocation, toggleMotion, toggleMotionTab, toggleLocationTab,
+    togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     testWitnessConnection,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
