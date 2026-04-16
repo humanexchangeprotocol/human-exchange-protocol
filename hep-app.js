@@ -3126,19 +3126,27 @@ const PAIR_CODE_LENGTH = 4;
       console.log('[integrity] entropyPrev failed:', epErr.message);
     }
 
-    // 3. Clock skew: delta between counterparty's device timestamp and ours
+    // 3. Clock skew: delta between counterparty's fresh device_ts and ours.
+    // IMPORTANT: we only write clockSkew on the PROPOSER side. The confirmer's
+    // view of the proposer's device_ts is polluted by review time — the
+    // proposer sent their proposal up to minutes earlier, and at confirmation
+    // write time Date.now() - proposer_device_ts = clock_drift + review_time.
+    // Writing that would corrupt the chain-wide clock-agreement signal with
+    // fake drift any time someone takes a moment to read a proposal.
+    //
+    // The proposer's side, by contrast, receives the confirmer's device_ts in
+    // the confirmation payload with millisecond freshness — that's real clock
+    // drift, not elapsed time. So clockSkew is only written on proposer
+    // records, and the aggregate still has plenty of samples across a chain
+    // of exchanges (each exchange has one proposer).
     try {
-      var counterpartyTs = null;
-      if (role === 'confirmer') {
-        // Confirmer: the proposer's device_ts is on the proposal
-        counterpartyTs = p.device_ts || (data.proposal && data.proposal.device_ts);
-      } else {
-        // Proposer: the confirmer's device_ts comes back as confirmer_device_ts
-        counterpartyTs = (data.proposal && data.proposal.confirmer_device_ts) || p.confirmer_device_ts;
+      if (role === 'proposer') {
+        var counterpartyTs = (data.proposal && data.proposal.confirmer_device_ts) || p.confirmer_device_ts;
+        if (typeof counterpartyTs === 'number') {
+          record.clockSkew = Date.now() - counterpartyTs;
+        }
       }
-      if (typeof counterpartyTs === 'number') {
-        record.clockSkew = Date.now() - counterpartyTs;
-      }
+      // Confirmer: intentionally skipped — see comment above.
     } catch(csErr) {
       console.log('[integrity] clockSkew failed:', csErr.message);
     }
@@ -8220,11 +8228,18 @@ function init() {
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
 
-    // Main data-sources summary: "X of Y available data sources contributing"
-    var mainLine = 'Drawing from ' + v.totalContributing + ' of ' + v.totalAvailable + ' available data source' + (v.totalAvailable === 1 ? '' : 's');
-    if (v.countBonus > 0) mainLine += ' · +' + v.countBonus + ' bonus';
-    if (v.countAlarming > 0) mainLine += ' · ' + v.countAlarming + ' alarming';
-    else if (v.countWorthNoting > 0) mainLine += ' · ' + v.countWorthNoting + ' worth noting';
+    // Main data-sources summary. When bonus signals push totalContributing
+    // above totalAvailable the old "X of Y available" wording reads as
+    // broken math (e.g. "14 of 12"). Separate expected from bonus.
+    var mainLine;
+    var presentExpected = Math.min(v.countPresentExpected || 0, v.totalAvailable);
+    if (v.countBonus > 0) {
+      mainLine = 'Drawing from ' + presentExpected + ' of ' + v.totalAvailable + ' expected source' + (v.totalAvailable === 1 ? '' : 's') + ' \u00b7 plus ' + v.countBonus + ' bonus';
+    } else {
+      mainLine = 'Drawing from ' + v.totalContributing + ' of ' + v.totalAvailable + ' available data source' + (v.totalAvailable === 1 ? '' : 's');
+    }
+    if (v.countAlarming > 0) mainLine += ' \u00b7 ' + v.countAlarming + ' alarming';
+    else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
     h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
@@ -8665,8 +8680,14 @@ function init() {
     h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
-    var mainLine = 'Drawing from ' + v.totalContributing + ' of ' + v.totalAvailable + ' available data source' + (v.totalAvailable === 1 ? '' : 's');
-    if (v.countBonus > 0) mainLine += ' \u00b7 +' + v.countBonus + ' bonus';
+    // Same bonus-aware main-line logic as the owner's POH card.
+    var mainLine;
+    var presentExpected = Math.min(v.countPresentExpected || 0, v.totalAvailable);
+    if (v.countBonus > 0) {
+      mainLine = 'Drawing from ' + presentExpected + ' of ' + v.totalAvailable + ' expected source' + (v.totalAvailable === 1 ? '' : 's') + ' \u00b7 plus ' + v.countBonus + ' bonus';
+    } else {
+      mainLine = 'Drawing from ' + v.totalContributing + ' of ' + v.totalAvailable + ' available data source' + (v.totalAvailable === 1 ? '' : 's');
+    }
     if (v.countAlarming > 0) mainLine += ' \u00b7 ' + v.countAlarming + ' alarming';
     else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
@@ -9059,29 +9080,93 @@ function init() {
     return h;
   }
 
-  // --- Pricing context chart (time-scatter with relational history) ---
-  // For the proposal's category, plots three data sources on one chart so
-  // the reviewer can read where today's value sits in real distribution:
-  //   - My history in this category (across all my counterparties)
-  //   - Their history in this category (from their broadcast catsTimeline)
-  //   - Our shared history (subset of mine where counterparty is this partner)
-  //   - Today's proposed value (pinned at today, accent-colored)
-  // Plus a neutral factual deviation note below — e.g., "Today's value is
-  // 60% above their typical for this category" or "Their last haircut
-  // exchange yesterday was 80 (+125% change)." Facts only, no judgment.
+  // Module state for pricing-chart filter. Held outside the render function
+  // so pill clicks can re-render the chart in place without losing context.
+  var _pricingFilterMode = null;
+  var _pricingFilterState = null;
+
+  // Set the active pricing-filter mode and re-render the chart in place.
+  // Called from pill-button onclick handlers below.
+  function setPricingFilter(mode) {
+    _pricingFilterMode = mode;
+    if (!_pricingFilterState) return;
+    var container = document.getElementById('ex-pricing-chart');
+    if (!container) return;
+    var newHtml = renderPricingContextChart(
+      _pricingFilterState.ts,
+      _pricingFilterState.proposal,
+      _pricingFilterState.partnerFp
+    );
+    // Replace the existing container with the freshly rendered one
+    if (newHtml) {
+      var wrapper = document.createElement('div');
+      wrapper.innerHTML = newHtml;
+      var fresh = wrapper.firstElementChild;
+      if (fresh && container.parentNode) {
+        container.parentNode.replaceChild(fresh, container);
+      }
+    }
+  }
+
+  // --- Pricing context chart (time-scatter with filter pills) ---
+  // For the proposal being reviewed, plots value over time from four data
+  // sources: my chain, counterparty's chain (from broadcast), our shared
+  // history, and today's proposed value. A pill row at the top lets the
+  // reviewer pivot the view:
+  //
+  //   [Category]     — filters to proposal.category (default if present)
+  //   [Description]  — filters to proposal.description key (fallback default)
+  //   [All]          — no filter, full chain context
+  //
+  // This always renders when there's any pivot available. The proposer
+  // omitting category is information, not a block — the reviewer still
+  // has agency to inspect pricing from their own vantage point.
   function renderPricingContextChart(ts, proposal, partnerFp) {
-    if (!proposal || !proposal.category) return '';
-    var cat = proposal.category;
+    if (!proposal) return '';
     var todayVal = proposal.value || 0;
     var nowMs = Date.now();
 
-    // Collect my points from my own chain for this category.
-    // Shared history is the subset where counterparty fingerprint matches
-    // this session's partner — those are the exchanges between us two.
+    // Build available filter modes, most specific first.
+    var modes = [];
+    if (proposal.category) {
+      modes.push({ type: 'category', label: proposal.category, value: proposal.category });
+    }
+    var descRaw = (proposal.description || '').trim();
+    if (descRaw) {
+      var descLabel = descRaw.length > 24 ? descRaw.substring(0, 22) + '\u2026' : descRaw;
+      modes.push({ type: 'description', label: descLabel, value: descRaw.toLowerCase() });
+    }
+    modes.push({ type: 'all', label: 'All', value: null });
+
+    // Pick default mode: most specific available, but honor current filter
+    // selection if it's still valid.
+    var defaultMode = modes[0];
+    var active = defaultMode;
+    if (_pricingFilterMode) {
+      var found = modes.find(function(m) { return m.type === _pricingFilterMode; });
+      if (found) active = found;
+    }
+
+    // Stash state for the pill click handler to re-render
+    _pricingFilterState = { ts: ts, proposal: proposal, partnerFp: partnerFp };
+
+    // --- Collect data points according to active pivot ---
+    // myPoints: my chain records matching the pivot
+    // sharedPoints: subset of mine where counterparty fingerprint matches
+    // theirPoints: their chain records matching the pivot (from broadcast)
     var myPoints = [];
     var sharedPoints = [];
     state.chain.forEach(function(rec) {
-      if (!HCP.isAct(rec) || rec.category !== cat) return;
+      if (!HCP.isAct(rec)) return;
+      var matches = false;
+      if (active.type === 'all') {
+        matches = true;
+      } else if (active.type === 'category') {
+        matches = rec.category === active.value;
+      } else if (active.type === 'description') {
+        matches = (rec.description || '').trim().toLowerCase() === active.value;
+      }
+      if (!matches) return;
       var ms = new Date(rec.timestamp).getTime();
       if (isNaN(ms)) return;
       myPoints.push([ms, rec.value]);
@@ -9090,27 +9175,80 @@ function init() {
       }
     });
 
-    // Collect their points from their broadcast catsTimeline (v2.47.0+).
-    // Older snapshots don't ship this; in that case we'll fall back to
-    // their stab[cat] aggregate range drawn as a band.
+    // theirPoints come from different sources depending on pivot:
+    // - category → ts.catsTimeline[category] (v2.47.0+ broadcast)
+    // - description → ts._services[descKey].prices (ex-flow service extras)
+    // - all → every catsTimeline entry across all categories
     var theirPoints = [];
-    if (ts && ts.catsTimeline && ts.catsTimeline[cat]) {
-      ts.catsTimeline[cat].forEach(function(entry) {
+    if (active.type === 'category' && ts && ts.catsTimeline && ts.catsTimeline[active.value]) {
+      ts.catsTimeline[active.value].forEach(function(entry) {
         if (entry && entry.length >= 2 && typeof entry[0] === 'number' && typeof entry[1] === 'number') {
           theirPoints.push([entry[0], entry[1]]);
         }
       });
+    } else if (active.type === 'description' && ts && ts._services) {
+      var svc = ts._services[active.value];
+      if (svc && svc.prices) {
+        svc.prices.forEach(function(pr) {
+          if (pr && typeof pr.v === 'number' && typeof pr.w === 'number') {
+            theirPoints.push([pr.w, pr.v]);
+          }
+        });
+      }
+    } else if (active.type === 'all' && ts && ts.catsTimeline) {
+      Object.keys(ts.catsTimeline).forEach(function(k) {
+        ts.catsTimeline[k].forEach(function(entry) {
+          if (entry && entry.length >= 2 && typeof entry[0] === 'number' && typeof entry[1] === 'number') {
+            theirPoints.push([entry[0], entry[1]]);
+          }
+        });
+      });
     }
 
-    // Aggregate fallback from older snapshots
-    var theirAvg = (ts && ts.cats && ts.cats[cat]) ? ts.cats[cat].avg : null;
-    var theirMin = (ts && ts.stab && ts.stab[cat]) ? ts.stab[cat][0] : null;
-    var theirMax = (ts && ts.stab && ts.stab[cat]) ? ts.stab[cat][1] : null;
+    // Aggregate fallback from older snapshots (only meaningful for category pivot)
+    var theirAvg = null, theirMin = null, theirMax = null;
+    if (active.type === 'category' && ts && ts.cats && ts.cats[active.value]) {
+      theirAvg = ts.cats[active.value].avg;
+      if (ts.stab && ts.stab[active.value]) {
+        theirMin = ts.stab[active.value][0];
+        theirMax = ts.stab[active.value][1];
+      }
+    }
 
-    // Nothing to plot? Skip entire surface.
-    if (myPoints.length === 0 && theirPoints.length === 0 && theirAvg === null) return '';
+    // --- Card shell + pill bar — always rendered ---
+    var h = '';
+    h += '<div id="ex-pricing-chart" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
 
-    // Compute value extents
+    // Title
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Pricing context</div>';
+
+    // Pill bar — only show if more than one mode available
+    if (modes.length > 1) {
+      h += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">';
+      modes.forEach(function(m) {
+        var isActive = m.type === active.type;
+        var bg = isActive ? 'var(--accent)' : 'var(--bg-input)';
+        var col = isActive ? '#fff' : 'var(--text-dim)';
+        h += '<button onclick="App.setPricingFilter(\'' + m.type + '\')" style="background:' + bg + '; color:' + col + '; border:none; border-radius:14px; padding:5px 12px; font-size:var(--fs-xs); font-weight:500; cursor:pointer; font-family:var(--font);">' + esc(m.label) + '</button>';
+      });
+      h += '</div>';
+    }
+
+    // --- If nothing to plot on the active pivot, show a gentle empty state ---
+    if (myPoints.length === 0 && theirPoints.length === 0 && theirAvg === null) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); padding:8px 0; line-height:1.5;">';
+      if (active.type === 'category') {
+        h += 'No history yet in <strong>' + esc(active.value) + '</strong>. Today\'s proposal of <strong>' + todayVal + '</strong> would be the first data point in this category.';
+      } else if (active.type === 'description') {
+        h += 'No prior exchanges match this exact description. Switch to All to see broader context.';
+      } else {
+        h += 'No chain data to plot yet.';
+      }
+      h += '</div></div>';
+      return h;
+    }
+
+    // --- Compute extents ---
     var allVals = [todayVal];
     myPoints.forEach(function(p) { allVals.push(p[1]); });
     theirPoints.forEach(function(p) { allVals.push(p[1]); });
@@ -9123,20 +9261,18 @@ function init() {
     var yMax = maxVal + yPad;
     if (yMax === yMin) yMax = yMin + 1;
 
-    // Compute time extents — always include today on the right edge
     var allTimes = [nowMs];
     myPoints.forEach(function(p) { allTimes.push(p[0]); });
     theirPoints.forEach(function(p) { allTimes.push(p[0]); });
     var tMin = Math.min.apply(null, allTimes);
     var tMax = Math.max(nowMs, Math.max.apply(null, allTimes));
-    var tSpan = Math.max(86400000, tMax - tMin);
-    // Pad time window by 3% on either side so dots aren't glued to edges
+    var tSpan = Math.max(86400000 * 7, tMax - tMin); // minimum 7-day window so single-point charts don't collapse
     var tPad = tSpan * 0.03;
     tMin -= tPad;
     tMax += tPad;
     tSpan = tMax - tMin;
 
-    // Chart dimensions — viewBox scales to container width
+    // Chart dimensions
     var W = 360, H = 200;
     var PX = 42, PR = 14, PT = 16, PB = 28;
     var CW = W - PX - PR, CH = H - PT - PB;
@@ -9144,7 +9280,7 @@ function init() {
     function xOf(t) { return PX + ((t - tMin) / tSpan) * CW; }
     function yOf(v) { return PT + CH - ((v - yMin) / (yMax - yMin)) * CH; }
 
-    // Build SVG
+    // --- Build SVG ---
     var s = '';
     s += '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; height:auto; display:block; color:var(--text);" xmlns="http://www.w3.org/2000/svg">';
 
@@ -9156,7 +9292,6 @@ function init() {
       s += '<text x="' + (PX - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end" fill="currentColor" opacity="0.5" font-size="10">' + Math.round(v) + '</text>';
     });
 
-    // X-axis labels
     function fmtDate(ms) {
       var d = new Date(ms);
       return (d.getMonth() + 1) + '/' + d.getDate();
@@ -9167,7 +9302,6 @@ function init() {
       s += '<text x="' + xx.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" fill="currentColor" opacity="0.5" font-size="10">' + fmtDate(t) + '</text>';
     });
 
-    // If we have a range band but no timeline points, draw the band
     if (theirMin !== null && theirMax !== null && theirPoints.length === 0) {
       var bandTop = yOf(theirMax);
       var bandBottom = yOf(theirMin);
@@ -9178,12 +9312,10 @@ function init() {
       }
     }
 
-    // Their points (amber)
     theirPoints.forEach(function(p) {
       s += '<circle cx="' + xOf(p[0]).toFixed(1) + '" cy="' + yOf(p[1]).toFixed(1) + '" r="3.5" fill="#B45309" opacity="0.75"/>';
     });
 
-    // My points (accent). Shared points (with this partner) get a ring.
     myPoints.forEach(function(p) {
       var isShared = sharedPoints.some(function(sp) { return sp[0] === p[0] && sp[1] === p[1]; });
       var cx = xOf(p[0]).toFixed(1);
@@ -9196,7 +9328,6 @@ function init() {
       }
     });
 
-    // Today's proposed value — accent pin with dashed vertical reference line
     var tx = xOf(nowMs);
     var ty = yOf(todayVal);
     s += '<line x1="' + tx.toFixed(1) + '" y1="' + PT + '" x2="' + tx.toFixed(1) + '" y2="' + (H - PB) + '" stroke="var(--accent)" stroke-width="1" opacity="0.3" stroke-dasharray="2,3"/>';
@@ -9204,45 +9335,6 @@ function init() {
     s += '<text x="' + tx.toFixed(1) + '" y="' + (ty - 11).toFixed(1) + '" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="600">' + todayVal + '</text>';
 
     s += '</svg>';
-
-    // Deviation note — factual, neutral. Compare today's value to their
-    // typical for this category, and flag recent-deviation pattern.
-    var note = '';
-    var referenceAvg = null;
-    if (theirPoints.length > 0) {
-      var sum = 0;
-      theirPoints.forEach(function(p) { sum += p[1]; });
-      referenceAvg = sum / theirPoints.length;
-    } else if (theirAvg !== null) {
-      referenceAvg = theirAvg;
-    }
-    if (referenceAvg !== null && referenceAvg > 0) {
-      var deviation = ((todayVal - referenceAvg) / referenceAvg) * 100;
-      if (Math.abs(deviation) < 15) {
-        note = 'Close to their typical for this category.';
-      } else if (deviation > 0) {
-        note = 'Today\'s value is ' + Math.round(deviation) + '% above their typical for this category.';
-      } else {
-        note = 'Today\'s value is ' + Math.round(-deviation) + '% below their typical for this category.';
-      }
-    }
-
-    // Recent-deviation pattern — "yesterday was X, today is Y"
-    if (theirPoints.length > 0) {
-      var sortedTheirs = theirPoints.slice().sort(function(a, b) { return b[0] - a[0]; });
-      var mostRecent = sortedTheirs[0];
-      var daysAgo = Math.round((nowMs - mostRecent[0]) / 86400000);
-      if (daysAgo >= 0 && daysAgo <= 7 && mostRecent[1] !== todayVal && mostRecent[1] > 0) {
-        var diffPct = Math.round(((todayVal - mostRecent[1]) / mostRecent[1]) * 100);
-        var whenStr = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : daysAgo + ' days ago';
-        note += (note ? ' ' : '') + 'Their last ' + cat + ' exchange ' + whenStr + ' was ' + mostRecent[1] + ' (' + (diffPct > 0 ? '+' : '') + diffPct + '% change).';
-      }
-    }
-
-    // Compose card
-    var h = '';
-    h += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Pricing context \u2014 ' + esc(cat) + '</div>';
 
     // Legend
     h += '<div style="display:flex; flex-wrap:wrap; gap:12px 14px; font-size:var(--fs-xs); color:var(--text-dim); margin-bottom:10px; line-height:1.6;">';
@@ -9259,6 +9351,42 @@ function init() {
     h += '</div>';
 
     h += s;
+
+    // Deviation note — neutral factual comparison
+    var referenceAvg = null;
+    if (theirPoints.length > 0) {
+      var sum = 0;
+      theirPoints.forEach(function(p) { sum += p[1]; });
+      referenceAvg = sum / theirPoints.length;
+    } else if (theirAvg !== null) {
+      referenceAvg = theirAvg;
+    }
+
+    var note = '';
+    if (referenceAvg !== null && referenceAvg > 0) {
+      var deviation = ((todayVal - referenceAvg) / referenceAvg) * 100;
+      if (Math.abs(deviation) < 15) {
+        note = 'Close to their typical';
+      } else if (deviation > 0) {
+        note = 'Today\'s value is ' + Math.round(deviation) + '% above their typical';
+      } else {
+        note = 'Today\'s value is ' + Math.round(-deviation) + '% below their typical';
+      }
+      if (active.type === 'category') note += ' for this category.';
+      else if (active.type === 'description') note += ' for this exact service.';
+      else note += '.';
+    }
+
+    if (theirPoints.length > 0) {
+      var sortedTheirs = theirPoints.slice().sort(function(a, b) { return b[0] - a[0]; });
+      var mostRecent = sortedTheirs[0];
+      var daysAgo = Math.round((nowMs - mostRecent[0]) / 86400000);
+      if (daysAgo >= 0 && daysAgo <= 7 && mostRecent[1] !== todayVal && mostRecent[1] > 0) {
+        var diffPct = Math.round(((todayVal - mostRecent[1]) / mostRecent[1]) * 100);
+        var whenStr = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : daysAgo + ' days ago';
+        note += (note ? ' ' : '') + 'Their last ' + whenStr + ' was ' + mostRecent[1] + ' (' + (diffPct > 0 ? '+' : '') + diffPct + '% change).';
+      }
+    }
 
     // Counts summary
     var countParts = [];
@@ -9823,6 +9951,7 @@ function init() {
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     openSettings, togglePrivacy, toggleLocation, toggleMotion, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
+    setPricingFilter,
     testWitnessConnection,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
