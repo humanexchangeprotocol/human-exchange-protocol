@@ -1167,6 +1167,10 @@ const PAIR_CODE_LENGTH = 4;
     var hour = new Date().getHours();
     var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     document.getElementById('home-greeting').textContent = name ? greeting + ', ' + name : 'Your Thread';
+    // Re-render Home tab (primary landing) so totals + recent list reflect
+    // the latest chain state after any change. renderStandingTab still
+    // gets called here so an open wallet modal also refreshes in place.
+    renderHomeTab();
     renderStandingTab();
   }
 
@@ -8217,7 +8221,7 @@ function init() {
   // The Standing tab was removed in v2.58.0 — its content moved into the
   // wallet modal (top-right icon), freeing the primary nav slot for Share.
   // Default here must match the tab marked active in index.html's tab bar.
-  var activeTab = 'share';
+  var activeTab = 'home';
 
   function switchTab(tab) {
     activeTab = tab;
@@ -8229,10 +8233,139 @@ function init() {
     document.querySelectorAll('.tab-content').forEach(function(el) {
       el.classList.toggle('active', el.id === 'tab-' + tab);
     });
-    if (tab === 'share') renderShareTab();
+    if (tab === 'home') renderHomeTab();
+    else if (tab === 'share') renderShareTab();
     else if (tab === 'history') renderHistoryTab();
     else if (tab === 'learn') renderLearnTab();
     else if (tab === 'settings') renderSettingsTab();
+  }
+
+  // --- Home tab (default landing surface, v2.59.0) ---
+  // Restores a proper landing after the Standing tab was retired and its
+  // detail surfaces moved into the wallet modal. The Home tab is
+  // intentionally thin: a totals card (provided / received / acts /
+  // participation ratio) and the user's recent exchanges with the same
+  // filter pills that the full History tab uses. Tapping a row expands
+  // it inline, same pattern as History. Anything deeper — identity
+  // panel, POH verdict, categories — lives behind the wallet icon at
+  // the top of the device.
+  function renderHomeTab() {
+    var el = document.getElementById('tab-home-content');
+    if (!el) return;
+
+    var ex = state.chain.filter(HCP.isAct);
+    var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
+    ex.forEach(function(r) {
+      if (r.energyState === 'provided') { totalP += r.value; actsP++; }
+      else if (r.energyState === 'received') { totalR += r.value; actsR++; }
+    });
+    var totalActs = actsP + actsR;
+    var ratioStr;
+    if (actsR > 0) ratioStr = (Math.round(actsP / actsR * 10) / 10) + ' : 1';
+    else if (actsP > 0) ratioStr = actsP + ' : 0';
+    else ratioStr = '\u2014';
+    var pPct = totalActs > 0 ? Math.round((actsP / totalActs) * 100) : 0;
+    var rPct = totalActs > 0 ? (100 - pPct) : 0;
+
+    var html = '';
+
+    // Totals card — the basic standing numbers Michael asked to keep visible
+    // on the landing screen without forcing users into the wallet every time.
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:14px;">';
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">+' + totalP + '</div><div style="font-size:var(--fs-xs); color:var(--text-faint);">' + actsP + ' act' + (actsP === 1 ? '' : 's') + '</div></div>';
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">\u2212' + totalR + '</div><div style="font-size:var(--fs-xs); color:var(--text-faint);">' + actsR + ' act' + (actsR === 1 ? '' : 's') + '</div></div>';
+    html += '</div>';
+
+    // Participation ratio bar — same visual as the wallet's ratio bar so
+    // the two read consistently.
+    if (totalActs > 0) {
+      html += '<div style="display:flex; justify-content:space-between; font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:4px;"><span>participation ratio</span><span style="color:var(--text-dim); font-weight:500;">' + ratioStr + '</span></div>';
+      html += '<div style="height:10px; border-radius:5px; overflow:hidden; display:flex; background:var(--bg-input);">';
+      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--accent); border-radius:5px 0 0 5px;"></div>';
+      if (rPct > 0) html += '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 5px 5px 0;"></div>';
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-align:center; padding:4px 0;">No exchanges yet. Tap the + button below to start one.</div>';
+    }
+    html += '</div>';
+
+    // Recent transactions with filter — only if the chain has any
+    if (ex.length > 0) {
+      var recent = ex.slice().reverse().slice(0, 8);
+
+      html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">';
+      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent exchanges</div>';
+      if (ex.length > 8) {
+        html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.switchTab(\'history\')">View all</span>';
+      }
+      html += '</div>';
+
+      // Filter pills — same data-attribute pattern as History so the filter
+      // handler can stay the same. Uses home-specific class so the two
+      // filters don't collide visually.
+      html += '<div style="display:flex; gap:8px; margin-bottom:12px;">';
+      html += '<button class="home-pill hist-pill active" data-home-filter="all" onclick="App.homeFilter(\'all\')">All</button>';
+      html += '<button class="home-pill hist-pill" data-home-filter="provided" onclick="App.homeFilter(\'provided\')">Provided</button>';
+      html += '<button class="home-pill hist-pill" data-home-filter="received" onclick="App.homeFilter(\'received\')">Received</button>';
+      html += '</div>';
+
+      html += '<div id="home-list" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow);">';
+      recent.forEach(function(r, idx) {
+        var desc = r.description || r.category || 'Exchange';
+        var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
+        var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        var isProv = r.energyState === 'provided';
+        var valColor = isProv ? 'var(--green)' : 'var(--red)';
+        var valSign = isProv ? '+' : '\u2212';
+        var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+        var arrowIcon = isProv
+          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+        var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+        var border = idx < recent.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
+        html += '<div class="home-row" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+        html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
+        html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
+        html += '<div style="flex:1; min-width:0;">';
+        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
+        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + '</div>';
+        html += '</div>';
+        html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
+        html += '</div>';
+        // Expandable detail
+        html += '<div class="home-detail" style="display:none; padding:0 0 14px 56px; font-size:var(--fs-sm); color:var(--text-dim); line-height:1.8;">';
+        if (r.category) html += '<div><span style="color:var(--text-faint);">Category:</span> ' + esc(r.category) + '</div>';
+        if (r.duration) html += '<div><span style="color:var(--text-faint);">Duration:</span> ' + formatDuration(r.duration) + '</div>';
+        var fullName = r.counterpartyName || '';
+        var fpShort = (r.counterparty || '').substring(0, 16);
+        if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
+        html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
+        if (r.witnessAttestation) html += '<div style="color:var(--green);">&#10003; Witness attested</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:30px 20px; text-align:center; box-shadow:var(--shadow);">';
+      html += '<div style="font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">When you record your first cooperative exchange, it will appear here.</div>';
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  // Home-tab filter — matches the History-tab pattern but scoped to
+  // the home rows only (separate data-attribute so the two filters
+  // don't clobber each other).
+  function homeFilter(dir) {
+    document.querySelectorAll('.home-pill').forEach(function(p) {
+      p.classList.toggle('active', p.getAttribute('data-home-filter') === dir);
+    });
+    document.querySelectorAll('.home-row').forEach(function(row) {
+      if (dir === 'all') row.style.display = '';
+      else row.style.display = row.getAttribute('data-dir') === dir ? '' : 'none';
+    });
   }
 
   // --- Share tab (replaces the old Standing tab in the bottom bar) ---
@@ -10085,7 +10218,7 @@ function init() {
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     openSettings, togglePrivacy, toggleLocation, toggleMotion, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
-    setPricingFilter,
+    setPricingFilter, homeFilter,
     testWitnessConnection,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
