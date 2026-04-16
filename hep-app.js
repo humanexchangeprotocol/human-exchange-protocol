@@ -2036,6 +2036,24 @@ const PAIR_CODE_LENGTH = 4;
     if (extras && threadSnap) {
       Object.keys(extras).forEach(function(k) { threadSnap[k] = extras[k]; });
     }
+    // Attach counterparty-visible POH verdict. Computed on this device using
+    // this device's capabilities and this chain's records — the same POH.rollup
+    // the Standing tab renders for the owner. Broadcast-safe (no raw capture
+    // data, no function refs). Receiver renders through renderPOHVerdict with
+    // the verdict inlined, looks up copy/visualize from their own registry.
+    try {
+      if (state.chain && state.chain.length > 0 && typeof POH !== 'undefined' && POH.rollupForBroadcast) {
+        var caps = null;
+        try { caps = pohDeviceCapabilities(); } catch(ce) {}
+        var broadcastVerdict = POH.rollupForBroadcast({
+          chain: state.chain,
+          deviceCapabilities: caps
+        });
+        if (broadcastVerdict) threadSnap.pohVerdict = broadcastVerdict;
+      }
+    } catch(pe) {
+      console.log('[session] POH verdict build for broadcast failed:', pe.message);
+    }
     return threadSnap;
   }
 

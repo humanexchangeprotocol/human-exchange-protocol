@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.46.2';
+const APP_VERSION='2.47.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -359,12 +359,19 @@ function cs(c){
   const cats={};
   ex.forEach(function(rec){
     const k=rec.category||'uncategorized';
-    if(!cats[k])cats[k]={n:0,tv:0,g:0,r:0,vals:[]};
+    if(!cats[k])cats[k]={n:0,tv:0,g:0,r:0,vals:[],tl:[]};
     cats[k].n++;cats[k].tv+=rec.value;cats[k].vals.push(rec.value);
     if(rec.energyState==='provided')cats[k].g++;else if(rec.energyState==='received')cats[k].r++;
+    // Per-category timeline entry: [timestamp_ms, value, role_char]. Role is
+    // 'g' (gave/provided) or 'r' (received). Counterparty identity NOT captured —
+    // this is the receiver's own chain's pricing-over-time signal, nothing more.
+    var tms=new Date(rec.timestamp).getTime();
+    if(!isNaN(tms)){
+      cats[k].tl.push([tms,rec.value,rec.energyState==='provided'?'g':(rec.energyState==='received'?'r':'o')]);
+    }
   });
   const catEntries=Object.entries(cats).sort(function(a,b){return b[1].n-a[1].n;});
-  const catOut={},stabOut={};
+  const catOut={},stabOut={},catsTimelineOut={};
   var otherCount=0,otherTotal=0,otherG=0,otherR=0;
   catEntries.forEach(function(e,i){
     const k=e[0],ct=e[1];
@@ -375,6 +382,14 @@ function cs(c){
       const mn=Math.min.apply(null,ct.vals),mx=Math.max.apply(null,ct.vals);
       const variance=ct.vals.reduce(function(s,v){return s+(v-avg)*(v-avg);},0)/ct.vals.length;
       stabOut[k]=[mn,mx,Math.round(avg),Math.round(Math.sqrt(variance)*10)/10];
+    }
+    // Emit timelines for top 10 most-active categories only.
+    // Sort chronologically (oldest first), cap at 30 most recent entries.
+    // This keeps snapshot size bounded: 10 cats * 30 entries * ~30 bytes ≈ 9KB max.
+    if(i<10 && ct.tl.length>0){
+      var sorted=ct.tl.slice().sort(function(a,b){return a[0]-b[0];});
+      if(sorted.length>30)sorted=sorted.slice(-30);
+      catsTimelineOut[k]=sorted;
     }
   });
   if(otherCount>0)catOut['other']={n:otherCount,avg:otherTotal>0?Math.round(otherTotal/otherCount):0,g:otherG,r:otherR};
@@ -445,7 +460,7 @@ function cs(c){
     distinctCounterpartyDevices:Object.keys(cpDeviceSet).length,
     avgPingGapDays:avgPingGapDays
   };
-  return{n:ex.length,d:+cd(c).toFixed(1),g:gr.provided,r:gr.received,cats:catOut,words:wordsOut,time:timeOut,stab:stabOut,t0:c[0].timestamp,t1:c[c.length-1].timestamp,pings:pc,integrity:integrity};
+  return{n:ex.length,d:+cd(c).toFixed(1),g:gr.provided,r:gr.received,cats:catOut,catsTimeline:catsTimelineOut,words:wordsOut,time:timeOut,stab:stabOut,t0:c[0].timestamp,t1:c[c.length-1].timestamp,pings:pc,integrity:integrity};
 }
 
 // --- Confirmation / Settlement payloads ---
@@ -1654,8 +1669,50 @@ return {
   WEIGHT: WEIGHT,
   ORIGIN: ORIGIN,
   SIGNALS: SIGNALS,
-  rollup: rollup
+  rollup: rollup,
+  rollupForBroadcast: rollupForBroadcast
 };
+
+// --- Broadcast-safe rollup ---
+// Runs rollup() and returns a JSON-safe subset for transmission in
+// thread_snapshot. Strips non-serializable fields (capture/interpret/visualize
+// are functions), strips raw device data (device-private, varies per device),
+// strips copy (lookup-able from receiver's own registry by signal.id).
+// Receiver reconstructs rendering by looking up copy/visualize in their own
+// POH.SIGNALS registry keyed by id. If an id isn't present in the receiver's
+// registry (counterparty on newer version), the row degrades gracefully to
+// just the shipped humanName + summary.
+function rollupForBroadcast(ctx) {
+  var v = rollup(ctx);
+  if (!v) return null;
+  return {
+    deviceClass: v.deviceClass,
+    statement: v.statement,
+    tone: v.tone,
+    countStrong: v.countStrong,
+    countWorthNoting: v.countWorthNoting,
+    countAlarming: v.countAlarming,
+    countExpected: v.countExpected,
+    countPresentExpected: v.countPresentExpected,
+    countBonus: v.countBonus,
+    totalContributing: v.totalContributing,
+    totalAvailable: v.totalAvailable,
+    byOrigin: v.byOrigin,
+    signals: (v.signals || []).map(function(s) {
+      return {
+        id: s.id,
+        humanName: s.humanName,
+        tier: s.tier,
+        origin: s.origin,
+        expected: s.expected,
+        presence: s.presence,
+        behavior: s.behavior,
+        contribution: s.contribution,
+        summary: s.summary
+      };
+    })
+  };
+}
 
 })();
 
