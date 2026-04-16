@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <circle cx="256" cy="256" r="256" fill="#2563EB"/>
+  <g font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="#FFFFFF" text-anchor="middle">
+    <text x="256" y="187" font-size="130">H</text>
+    <text x="256" y="302" font-size="130">E</text>
+    <text x="256" y="417" font-size="130">P</text>
+  </g>
+</svg>
