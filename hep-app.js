@@ -2906,6 +2906,22 @@ const PAIR_CODE_LENGTH = 4;
       console.log('[session] Counterparty context render failed:', cpe.message);
     }
 
+    // Pricing context chart — time-scatter showing my + their + shared
+    // history in this category, with today's proposed value pinned.
+    // Locked to the proposal's category. Only shown when we have a
+    // category on the proposal and either side has any history in it.
+    try {
+      if (sessionPartner && sessionPartner.thread_snapshot) {
+        html += renderPricingContextChart(
+          sessionPartner.thread_snapshot,
+          p,
+          sessionPartner.fingerprint
+        );
+      }
+    } catch(pce) {
+      console.log('[session] Pricing context render failed:', pce.message);
+    }
+
     // Confirm / reject buttons
     html += '<div class="session-actions">' +
       '<button class="btn btn-secondary" onclick="App.sessionReject()">Not right</button>' +
@@ -9097,6 +9113,226 @@ function init() {
       console.log('[session] Counterparty POH render failed:', e.message);
     }
 
+    return h;
+  }
+
+  // --- Pricing context chart (time-scatter with relational history) ---
+  // For the proposal's category, plots three data sources on one chart so
+  // the reviewer can read where today's value sits in real distribution:
+  //   - My history in this category (across all my counterparties)
+  //   - Their history in this category (from their broadcast catsTimeline)
+  //   - Our shared history (subset of mine where counterparty is this partner)
+  //   - Today's proposed value (pinned at today, accent-colored)
+  // Plus a neutral factual deviation note below — e.g., "Today's value is
+  // 60% above their typical for this category" or "Their last haircut
+  // exchange yesterday was 80 (+125% change)." Facts only, no judgment.
+  function renderPricingContextChart(ts, proposal, partnerFp) {
+    if (!proposal || !proposal.category) return '';
+    var cat = proposal.category;
+    var todayVal = proposal.value || 0;
+    var nowMs = Date.now();
+
+    // Collect my points from my own chain for this category.
+    // Shared history is the subset where counterparty fingerprint matches
+    // this session's partner — those are the exchanges between us two.
+    var myPoints = [];
+    var sharedPoints = [];
+    state.chain.forEach(function(rec) {
+      if (!HCP.isAct(rec) || rec.category !== cat) return;
+      var ms = new Date(rec.timestamp).getTime();
+      if (isNaN(ms)) return;
+      myPoints.push([ms, rec.value]);
+      if (partnerFp && rec.counterparty === partnerFp) {
+        sharedPoints.push([ms, rec.value]);
+      }
+    });
+
+    // Collect their points from their broadcast catsTimeline (v2.47.0+).
+    // Older snapshots don't ship this; in that case we'll fall back to
+    // their stab[cat] aggregate range drawn as a band.
+    var theirPoints = [];
+    if (ts && ts.catsTimeline && ts.catsTimeline[cat]) {
+      ts.catsTimeline[cat].forEach(function(entry) {
+        if (entry && entry.length >= 2 && typeof entry[0] === 'number' && typeof entry[1] === 'number') {
+          theirPoints.push([entry[0], entry[1]]);
+        }
+      });
+    }
+
+    // Aggregate fallback from older snapshots
+    var theirAvg = (ts && ts.cats && ts.cats[cat]) ? ts.cats[cat].avg : null;
+    var theirMin = (ts && ts.stab && ts.stab[cat]) ? ts.stab[cat][0] : null;
+    var theirMax = (ts && ts.stab && ts.stab[cat]) ? ts.stab[cat][1] : null;
+
+    // Nothing to plot? Skip entire surface.
+    if (myPoints.length === 0 && theirPoints.length === 0 && theirAvg === null) return '';
+
+    // Compute value extents
+    var allVals = [todayVal];
+    myPoints.forEach(function(p) { allVals.push(p[1]); });
+    theirPoints.forEach(function(p) { allVals.push(p[1]); });
+    if (theirMin !== null) allVals.push(theirMin);
+    if (theirMax !== null) allVals.push(theirMax);
+    var minVal = Math.min.apply(null, allVals);
+    var maxVal = Math.max.apply(null, allVals);
+    var yPad = Math.max(1, (maxVal - minVal) * 0.1);
+    var yMin = Math.max(0, minVal - yPad);
+    var yMax = maxVal + yPad;
+    if (yMax === yMin) yMax = yMin + 1;
+
+    // Compute time extents — always include today on the right edge
+    var allTimes = [nowMs];
+    myPoints.forEach(function(p) { allTimes.push(p[0]); });
+    theirPoints.forEach(function(p) { allTimes.push(p[0]); });
+    var tMin = Math.min.apply(null, allTimes);
+    var tMax = Math.max(nowMs, Math.max.apply(null, allTimes));
+    var tSpan = Math.max(86400000, tMax - tMin);
+    // Pad time window by 3% on either side so dots aren't glued to edges
+    var tPad = tSpan * 0.03;
+    tMin -= tPad;
+    tMax += tPad;
+    tSpan = tMax - tMin;
+
+    // Chart dimensions — viewBox scales to container width
+    var W = 360, H = 200;
+    var PX = 42, PR = 14, PT = 16, PB = 28;
+    var CW = W - PX - PR, CH = H - PT - PB;
+
+    function xOf(t) { return PX + ((t - tMin) / tSpan) * CW; }
+    function yOf(v) { return PT + CH - ((v - yMin) / (yMax - yMin)) * CH; }
+
+    // Build SVG
+    var s = '';
+    s += '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; height:auto; display:block; color:var(--text);" xmlns="http://www.w3.org/2000/svg">';
+
+    // Horizontal gridlines + Y labels
+    var yTicks = [yMin, (yMin + yMax) / 2, yMax];
+    yTicks.forEach(function(v) {
+      var yy = yOf(v);
+      s += '<line x1="' + PX + '" y1="' + yy.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + yy.toFixed(1) + '" stroke="currentColor" opacity="0.1"/>';
+      s += '<text x="' + (PX - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end" fill="currentColor" opacity="0.5" font-size="10">' + Math.round(v) + '</text>';
+    });
+
+    // X-axis labels
+    function fmtDate(ms) {
+      var d = new Date(ms);
+      return (d.getMonth() + 1) + '/' + d.getDate();
+    }
+    var xTicks = [tMin, tMin + tSpan / 2, tMax];
+    xTicks.forEach(function(t) {
+      var xx = xOf(t);
+      s += '<text x="' + xx.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" fill="currentColor" opacity="0.5" font-size="10">' + fmtDate(t) + '</text>';
+    });
+
+    // If we have a range band but no timeline points, draw the band
+    if (theirMin !== null && theirMax !== null && theirPoints.length === 0) {
+      var bandTop = yOf(theirMax);
+      var bandBottom = yOf(theirMin);
+      s += '<rect x="' + PX + '" y="' + bandTop.toFixed(1) + '" width="' + CW + '" height="' + (bandBottom - bandTop).toFixed(1) + '" fill="#B45309" opacity="0.08"/>';
+      if (theirAvg !== null) {
+        var avgY = yOf(theirAvg);
+        s += '<line x1="' + PX + '" y1="' + avgY.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + avgY.toFixed(1) + '" stroke="#B45309" opacity="0.35" stroke-dasharray="3,3"/>';
+      }
+    }
+
+    // Their points (amber)
+    theirPoints.forEach(function(p) {
+      s += '<circle cx="' + xOf(p[0]).toFixed(1) + '" cy="' + yOf(p[1]).toFixed(1) + '" r="3.5" fill="#B45309" opacity="0.75"/>';
+    });
+
+    // My points (accent). Shared points (with this partner) get a ring.
+    myPoints.forEach(function(p) {
+      var isShared = sharedPoints.some(function(sp) { return sp[0] === p[0] && sp[1] === p[1]; });
+      var cx = xOf(p[0]).toFixed(1);
+      var cy = yOf(p[1]).toFixed(1);
+      if (isShared) {
+        s += '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="none" stroke="var(--accent)" stroke-width="2" opacity="0.9"/>';
+        s += '<circle cx="' + cx + '" cy="' + cy + '" r="3" fill="var(--accent)" opacity="0.95"/>';
+      } else {
+        s += '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="var(--accent)" opacity="0.6"/>';
+      }
+    });
+
+    // Today's proposed value — accent pin with dashed vertical reference line
+    var tx = xOf(nowMs);
+    var ty = yOf(todayVal);
+    s += '<line x1="' + tx.toFixed(1) + '" y1="' + PT + '" x2="' + tx.toFixed(1) + '" y2="' + (H - PB) + '" stroke="var(--accent)" stroke-width="1" opacity="0.3" stroke-dasharray="2,3"/>';
+    s += '<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="6.5" fill="var(--accent)" stroke="var(--bg)" stroke-width="2.5"/>';
+    s += '<text x="' + tx.toFixed(1) + '" y="' + (ty - 11).toFixed(1) + '" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="600">' + todayVal + '</text>';
+
+    s += '</svg>';
+
+    // Deviation note — factual, neutral. Compare today's value to their
+    // typical for this category, and flag recent-deviation pattern.
+    var note = '';
+    var referenceAvg = null;
+    if (theirPoints.length > 0) {
+      var sum = 0;
+      theirPoints.forEach(function(p) { sum += p[1]; });
+      referenceAvg = sum / theirPoints.length;
+    } else if (theirAvg !== null) {
+      referenceAvg = theirAvg;
+    }
+    if (referenceAvg !== null && referenceAvg > 0) {
+      var deviation = ((todayVal - referenceAvg) / referenceAvg) * 100;
+      if (Math.abs(deviation) < 15) {
+        note = 'Close to their typical for this category.';
+      } else if (deviation > 0) {
+        note = 'Today\'s value is ' + Math.round(deviation) + '% above their typical for this category.';
+      } else {
+        note = 'Today\'s value is ' + Math.round(-deviation) + '% below their typical for this category.';
+      }
+    }
+
+    // Recent-deviation pattern — "yesterday was X, today is Y"
+    if (theirPoints.length > 0) {
+      var sortedTheirs = theirPoints.slice().sort(function(a, b) { return b[0] - a[0]; });
+      var mostRecent = sortedTheirs[0];
+      var daysAgo = Math.round((nowMs - mostRecent[0]) / 86400000);
+      if (daysAgo >= 0 && daysAgo <= 7 && mostRecent[1] !== todayVal && mostRecent[1] > 0) {
+        var diffPct = Math.round(((todayVal - mostRecent[1]) / mostRecent[1]) * 100);
+        var whenStr = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : daysAgo + ' days ago';
+        note += (note ? ' ' : '') + 'Their last ' + cat + ' exchange ' + whenStr + ' was ' + mostRecent[1] + ' (' + (diffPct > 0 ? '+' : '') + diffPct + '% change).';
+      }
+    }
+
+    // Compose card
+    var h = '';
+    h += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Pricing context \u2014 ' + esc(cat) + '</div>';
+
+    // Legend
+    h += '<div style="display:flex; flex-wrap:wrap; gap:12px 14px; font-size:var(--fs-xs); color:var(--text-dim); margin-bottom:10px; line-height:1.6;">';
+    if (theirPoints.length > 0 || (theirMin !== null && theirMax !== null)) {
+      h += '<span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#B45309; opacity:0.75; margin-right:5px; vertical-align:middle;"></span>Their history</span>';
+    }
+    if (myPoints.length > 0) {
+      h += '<span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent); opacity:0.6; margin-right:5px; vertical-align:middle;"></span>Your history</span>';
+    }
+    if (sharedPoints.length > 0) {
+      h += '<span><span style="display:inline-block; width:10px; height:10px; border-radius:50%; border:2px solid var(--accent); background:var(--accent); margin-right:5px; vertical-align:middle;"></span>Between you two</span>';
+    }
+    h += '<span><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--accent); border:2px solid var(--bg-raised); box-shadow:0 0 0 1.5px var(--accent); margin-right:5px; vertical-align:middle;"></span>Today\'s proposal</span>';
+    h += '</div>';
+
+    h += s;
+
+    // Counts summary
+    var countParts = [];
+    if (myPoints.length > 0) countParts.push(myPoints.length + ' in your chain');
+    if (theirPoints.length > 0) countParts.push(theirPoints.length + ' in theirs');
+    if (sharedPoints.length > 0) countParts.push(sharedPoints.length + ' between you');
+    if (countParts.length > 0) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:12px; line-height:1.5;">';
+      h += countParts.join(' \u00b7 ') + '.';
+      h += '</div>';
+    }
+
+    if (note) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text); margin-top:8px; line-height:1.5;">' + esc(note) + '</div>';
+    }
+
+    h += '</div>';
     return h;
   }
 
