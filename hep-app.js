@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.3
+// APPLICATION LAYER v2.39.4
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -735,6 +735,7 @@ const PAIR_CODE_LENGTH = 4;
         showScreen('home');
         refreshHome();
         showPendingUpdateBanner();
+        checkForUpdates();
         handleIncomingPayload();
         resumePendingPair();
         checkPingOnOpen();
@@ -5103,6 +5104,11 @@ const PAIR_CODE_LENGTH = 4;
             if (reg) reg.update();
           });
         }
+      } else {
+        // Versions match -- dismiss any stale banner
+        var banner = document.getElementById('update-banner');
+        if (banner) banner.classList.remove('show');
+        _pendingUpdateMsg = null;
       }
     } catch(e) { /* silent -- version check is optional */ }
   }
@@ -6018,26 +6024,11 @@ const PAIR_CODE_LENGTH = 4;
 function init() {
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function(reg) {
-        // Listen for new SW versions
-        reg.addEventListener('updatefound', function() {
-          var newSW = reg.installing;
-          if (newSW) {
-            newSW.addEventListener('statechange', function() {
-              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                // New version installed, waiting to activate
-                showUpdateBanner('Update ready. Tap to reload.');
-              }
-            });
-          }
-        });
+        // SW lifecycle events no longer trigger user banners.
+        // Network-first strategy means files are already fresh on load.
+        // Version check (checkForUpdates) handles the rare edge case.
       }).catch(function(e) {
         console.log('[SW] Registration failed:', e.message);
-      });
-
-      // Detect when a new SW takes control (after skipWaiting)
-      navigator.serviceWorker.addEventListener('controllerchange', function() {
-        // New SW is active -- if we haven't reloaded yet, prompt
-        showUpdateBanner('Updated. Tap to reload.');
       });
     }
 
