@@ -8227,7 +8227,7 @@ function init() {
     else if (v.countWorthNoting > 0) mainLine += ' · ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
-    h += '<span class="poh-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
     h += '</div></div>';
 
     // Per-origin breakdown strip (compact, just below header)
@@ -8256,11 +8256,21 @@ function init() {
     // Level 2 — full list (hidden by default)
     h += '<div class="poh-signals" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:6px;">';
 
-    // Origin explainer at top of expanded section
-    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); line-height:1.5; padding:8px 0 4px; border-bottom:1px solid var(--border); margin-bottom:4px;">';
-    h += renderOriginIcon('device') + ' <strong style="color:var(--text-dim);">Device</strong> — hardware on your phone contributes to each record. ';
-    h += renderOriginIcon('external') + ' <strong style="color:var(--text-dim);">External</strong> — data that reaches you from others or from the witness. ';
-    h += renderOriginIcon('chain') + ' <strong style="color:var(--text-dim);">Chain</strong> — patterns we observe as your chain grows over time.';
+    // Origin explainer at top of expanded section — each origin on its own line
+    h += '<div style="padding:10px 0; border-bottom:1px solid var(--border); margin-bottom:6px;">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">How to read these</div>';
+    h += '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;">';
+    h += '<div style="flex-shrink:0; margin-top:1px;">' + renderOriginIcon('device') + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4;"><strong style="color:var(--text);">Device</strong> — hardware on your phone contributes to each record.</div>';
+    h += '</div>';
+    h += '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;">';
+    h += '<div style="flex-shrink:0; margin-top:1px;">' + renderOriginIcon('external') + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4;"><strong style="color:var(--text);">External</strong> — data that reaches you from others or from the witness.</div>';
+    h += '</div>';
+    h += '<div style="display:flex; align-items:flex-start; gap:8px;">';
+    h += '<div style="flex-shrink:0; margin-top:1px;">' + renderOriginIcon('chain') + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4;"><strong style="color:var(--text);">Chain</strong> — patterns we observe as your chain grows over time.</div>';
+    h += '</div>';
     h += '</div>';
 
     // Sort signals: by origin group (device → external → chain), then by tier within each group
@@ -8331,7 +8341,7 @@ function init() {
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary) + '</div>';
     h += '</div>';
     if (enableCtrl) h += '<div style="flex-shrink:0; margin-right:4px;">' + enableCtrl + '</div>';
-    h += '<span class="poh-sig-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
     h += '</div>';
 
     // Level 3 — inline detail panel
