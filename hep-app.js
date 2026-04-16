@@ -2883,6 +2883,29 @@ const PAIR_CODE_LENGTH = 4;
     }
     html += '</div>';
 
+    // Counterparty proof-of-human verdict. v2.47.0+ snapshots carry
+    // pohVerdict directly; older snapshots fall back to a minimal verdict
+    // derived from the integrity block. If neither path yields anything,
+    // the card is omitted.
+    try {
+      var cpVerdict = null;
+      var cpVerdictLegacy = false;
+      if (sessionPartner && sessionPartner.thread_snapshot) {
+        var ts = sessionPartner.thread_snapshot;
+        if (ts.pohVerdict) {
+          cpVerdict = ts.pohVerdict;
+        } else if (ts.integrity) {
+          cpVerdict = deriveCounterpartyVerdictFromLegacySnap(ts);
+          cpVerdictLegacy = true;
+        }
+      }
+      if (cpVerdict) {
+        html += renderCounterpartyPOH(cpVerdict, { isLegacyDerived: cpVerdictLegacy });
+      }
+    } catch(cpe) {
+      console.log('[session] Counterparty POH render failed:', cpe.message);
+    }
+
     // Confirm / reject buttons
     html += '<div class="session-actions">' +
       '<button class="btn btn-secondary" onclick="App.sessionReject()">Not right</button>' +
@@ -8645,6 +8668,301 @@ function init() {
     var open = detail.style.display === 'block';
     detail.style.display = open ? 'none' : 'block';
     if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+  }
+
+  // --- Counterparty POH verdict renderer ---
+  // Renders a pre-computed verdict broadcast by a counterparty (v2.47.0+) or
+  // a minimal verdict synthesized from an older thread_snapshot's integrity
+  // block. Distinguished from the owner's POH card by label and by the
+  // absence of sensor toggles and raw-data detail — those belong to the
+  // owner of the chain. The receiver sees the counterparty's read of their
+  // own chain, rendered through the receiver's local registry for copy.
+  function renderCounterpartyPOH(verdict, options) {
+    if (!verdict) return '';
+    options = options || {};
+    var v = verdict;
+
+    var toneColor = 'var(--text-dim)';
+    var toneBg = 'var(--bg-raised)';
+    var toneBorder = 'var(--border)';
+    var toneIcon = '&#9679;';
+    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '&#10003;'; }
+    else if (v.tone === 'partial') { toneColor = '#B45309'; toneBg = 'rgba(180,83,9,0.06)'; toneBorder = 'rgba(180,83,9,0.25)'; toneIcon = '&#9679;'; }
+    else if (v.tone === 'weak') { toneColor = 'var(--text-dim)'; toneIcon = '&#9679;'; }
+    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '&#9888;'; }
+
+    var h = '';
+    h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+
+    // Distinguishing label
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">';
+    h += options.isLegacyDerived ? 'Their proof-of-human (older version)' : 'Their proof-of-human';
+    h += '</div>';
+
+    // Level 1 — verdict header
+    h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
+    h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
+    h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
+    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
+    h += '<div style="min-width:0; flex:1;">';
+    h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
+    var mainLine = 'Drawing from ' + v.totalContributing + ' of ' + v.totalAvailable + ' available data source' + (v.totalAvailable === 1 ? '' : 's');
+    if (v.countBonus > 0) mainLine += ' \u00b7 +' + v.countBonus + ' bonus';
+    if (v.countAlarming > 0) mainLine += ' \u00b7 ' + v.countAlarming + ' alarming';
+    else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
+    h += '</div></div>';
+    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '</div></div>';
+
+    // Per-origin breakdown strip
+    if (v.byOrigin) {
+      var showStrip = (v.byOrigin.device && v.byOrigin.device.expected > 0) ||
+                      (v.byOrigin.external && v.byOrigin.external.expected > 0) ||
+                      (v.byOrigin.chain && v.byOrigin.chain.expected > 0);
+      if (showStrip) {
+        h += '<div style="display:flex; gap:8px; margin-top:12px; font-size:var(--fs-xs);">';
+        var bo = v.byOrigin;
+        if (bo.device && bo.device.expected > 0) {
+          h += '<div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:8px 10px; text-align:center;">';
+          h += '<div style="color:var(--text-faint); letter-spacing:0.5px; margin-bottom:2px;">' + renderOriginIcon('device') + ' Device</div>';
+          h += '<div style="color:var(--text); font-weight:600;">' + bo.device.contributing + ' / ' + bo.device.expected + '</div>';
+          h += '</div>';
+        }
+        if (bo.external && bo.external.expected > 0) {
+          h += '<div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:8px 10px; text-align:center;">';
+          h += '<div style="color:var(--text-faint); letter-spacing:0.5px; margin-bottom:2px;">' + renderOriginIcon('external') + ' External</div>';
+          h += '<div style="color:var(--text); font-weight:600;">' + bo.external.contributing + ' / ' + bo.external.expected + '</div>';
+          h += '</div>';
+        }
+        if (bo.chain && bo.chain.expected > 0) {
+          h += '<div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:8px 10px; text-align:center;">';
+          h += '<div style="color:var(--text-faint); letter-spacing:0.5px; margin-bottom:2px;">' + renderOriginIcon('chain') + ' Chain</div>';
+          h += '<div style="color:var(--text); font-weight:600;">' + bo.chain.contributing + ' / ' + bo.chain.expected + '</div>';
+          h += '</div>';
+        }
+        h += '</div>';
+      }
+    }
+
+    // Level 2 — full signal list
+    h += '<div class="poh-signals" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:6px;">';
+
+    // Origin explainer — reads "their phone" not "your phone"
+    h += '<div style="padding:10px 0; border-bottom:1px solid var(--border); margin-bottom:6px;">';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">How to read these</div>';
+    h += '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;">';
+    h += '<div style="flex-shrink:0; margin-top:1px;">' + renderOriginIcon('device') + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4;"><strong style="color:var(--text);">Device</strong> \u2014 hardware on their phone contributes to each record.</div>';
+    h += '</div>';
+    h += '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;">';
+    h += '<div style="flex-shrink:0; margin-top:1px;">' + renderOriginIcon('external') + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4;"><strong style="color:var(--text);">External</strong> \u2014 data reaching their chain from others or from a witness.</div>';
+    h += '</div>';
+    h += '<div style="display:flex; align-items:flex-start; gap:8px;">';
+    h += '<div style="flex-shrink:0; margin-top:1px;">' + renderOriginIcon('chain') + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.4;"><strong style="color:var(--text);">Chain</strong> \u2014 patterns observed across their chain over time.</div>';
+    h += '</div>';
+    h += '</div>';
+
+    // Sort and render signal rows
+    var sorted = (v.signals || []).slice().sort(function(a, b) {
+      var originOrder = { device: 0, external: 1, chain: 2 };
+      var ao = originOrder[a.origin] !== undefined ? originOrder[a.origin] : 9;
+      var bo2 = originOrder[b.origin] !== undefined ? originOrder[b.origin] : 9;
+      if (ao !== bo2) return ao - bo2;
+      return (b.tier || 0) - (a.tier || 0);
+    });
+    for (var i = 0; i < sorted.length; i++) {
+      h += renderCounterpartyPOHSignalRow(sorted[i], i);
+    }
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Signal row for counterparty verdict. No enable toggles (not our device).
+  // No raw-data formatter ("What we see here" — we don't have raw capture
+  // data for their device). Copy is looked up from our local POH.SIGNALS by
+  // id; if the signal id is unknown (counterparty on newer version) the row
+  // degrades to the shipped humanName + summary only.
+  function renderCounterpartyPOHSignalRow(s, idx) {
+    var dotColor = 'var(--text-faint)';
+    if (s.presence === 'absent' && s.expected) dotColor = '#B45309';
+    else if (s.presence === 'absent' && !s.expected) dotColor = 'var(--text-faint)';
+    else if (s.behavior === 'normal') dotColor = 'var(--green)';
+    else if (s.behavior === 'worth-noting') dotColor = '#B45309';
+    else if (s.behavior === 'alarming') dotColor = 'var(--red)';
+
+    var badge = '';
+    if (!s.expected && s.presence === 'present') {
+      badge = '<span style="font-size:10px; font-weight:600; color:var(--green); background:rgba(43,140,62,0.12); padding:2px 6px; border-radius:8px; margin-left:6px; letter-spacing:0.3px;">BONUS</span>';
+    } else if (!s.expected) {
+      badge = '<span style="font-size:10px; font-weight:500; color:var(--text-faint); background:var(--bg-input); padding:2px 6px; border-radius:8px; margin-left:6px; letter-spacing:0.3px;">N/A FOR DEVICE</span>';
+    }
+
+    var h = '';
+    h += '<div class="poh-signal-row" data-idx="' + idx + '">';
+    h += '<div style="display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer;" onclick="App.togglePOHSignalDetail(this)">';
+    h += '<div style="width:10px; height:10px; border-radius:50%; background:' + dotColor + '; flex-shrink:0;"></div>';
+    h += '<div style="flex-shrink:0;">' + renderOriginIcon(s.origin) + '</div>';
+    h += '<div style="flex:1; min-width:0;">';
+    h += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">' + esc(s.humanName) + badge + '</div>';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary || '') + '</div>';
+    h += '</div>';
+    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '</div>';
+
+    // Level 3 — lookup copy from local registry
+    var localSig = (typeof POH !== 'undefined' && POH.SIGNALS) ? POH.SIGNALS[s.id] : null;
+    var copy = localSig ? localSig.copy : null;
+    var hasCopy = copy && copy.whatItMeans && copy.whatItMeans !== 'TODO';
+
+    h += '<div class="poh-signal-detail" style="display:none; padding:8px 0 14px 20px; border-left:2px solid var(--border); margin:0 0 8px 5px;">';
+
+    if (hasCopy) {
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">What it means</div>';
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6;">' + esc(copy.whatItMeans) + '</div>';
+      h += '</div>';
+    }
+
+    // What this reads on their chain — shipped summary only
+    if (s.summary) {
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">What this reads on their chain</div>';
+      h += '<div style="font-size:var(--fs-sm); color:var(--text); line-height:1.5; background:var(--bg-input); border-radius:var(--radius-sm); padding:10px 12px;">' + esc(s.summary) + '</div>';
+      h += '</div>';
+    }
+
+    if (hasCopy && copy.whyItMatters) {
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Why it matters</div>';
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6;">' + esc(copy.whyItMatters) + '</div>';
+      h += '</div>';
+    }
+
+    if (!hasCopy && !s.summary) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.5; font-style:italic;">No detail shared for this signal.</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Fallback: synthesize a minimal verdict from a pre-v2.47.0 thread_snapshot
+  // that has no broadcast pohVerdict. Translates the integrity block into
+  // pseudo-signal rows so the same renderer can display them. Not meant to
+  // match the full registry — just the readable subset of what older
+  // versions shipped. Rows use legacy-prefixed ids so they don't try to
+  // look up copy from our registry; inline summary carries the meaning.
+  function deriveCounterpartyVerdictFromLegacySnap(ts) {
+    if (!ts || !ts.integrity) return null;
+    var ig = ts.integrity;
+    var signals = [];
+    var countStrong = 0, countWorthNoting = 0;
+    var expected = 0, contributing = 0;
+
+    expected++;
+    signals.push({
+      id: 'legacyGenesisPhoto',
+      humanName: 'Genesis photo anchored',
+      tier: 2,
+      origin: 'chain',
+      expected: true,
+      presence: ig.genesisPhoto ? 'present' : 'absent',
+      behavior: ig.genesisPhoto ? 'normal' : 'worth-noting',
+      summary: ig.genesisPhoto ? 'Chain anchored to photo at first launch' + (ig.genesisPhotoSource ? ' (' + ig.genesisPhotoSource + ')' : '') : 'No genesis photo on this chain'
+    });
+    if (ig.genesisPhoto) { countStrong++; contributing++; } else { countWorthNoting++; }
+
+    if (typeof ig.sensorCoverage === 'number') {
+      expected++;
+      var covOk = ig.sensorCoverage >= 50;
+      signals.push({
+        id: 'legacySensorCoverage',
+        humanName: 'Sensor coverage',
+        tier: 2,
+        origin: 'chain',
+        expected: true,
+        presence: ig.sensorCoverage > 0 ? 'present' : 'absent',
+        behavior: covOk ? 'normal' : 'worth-noting',
+        summary: ig.sensorCoverage + '% of records carry sensor snapshots'
+      });
+      if (covOk && ig.sensorCoverage > 0) { countStrong++; contributing++; } else { countWorthNoting++; }
+    }
+
+    if (typeof ig.distinctDevices === 'number') {
+      expected++;
+      var devOk = ig.distinctDevices >= 1 && ig.distinctDevices <= 3;
+      signals.push({
+        id: 'legacyDeviceConsistency',
+        humanName: 'Device consistency',
+        tier: 3,
+        origin: 'chain',
+        expected: true,
+        presence: 'present',
+        behavior: devOk ? 'normal' : 'worth-noting',
+        summary: ig.distinctDevices + ' distinct device fingerprint' + (ig.distinctDevices === 1 ? '' : 's') + ' across chain'
+      });
+      if (devOk) { countStrong++; contributing++; } else { countWorthNoting++; }
+    }
+
+    if (typeof ig.distinctCounterparties === 'number' && ig.distinctCounterparties > 0) {
+      expected++;
+      signals.push({
+        id: 'legacyCounterpartyDiversity',
+        humanName: 'Counterparty diversity',
+        tier: 2,
+        origin: 'chain',
+        expected: true,
+        presence: 'present',
+        behavior: 'normal',
+        summary: ig.distinctCounterparties + ' distinct counterpart' + (ig.distinctCounterparties === 1 ? 'y' : 'ies') + ' in chain history'
+      });
+      countStrong++; contributing++;
+    }
+
+    if (typeof ig.avgPingGapDays === 'number' && ts.pings > 0) {
+      expected++;
+      signals.push({
+        id: 'legacyPingRhythm',
+        humanName: 'Ping rhythm',
+        tier: 1,
+        origin: 'chain',
+        expected: true,
+        presence: 'present',
+        behavior: 'normal',
+        summary: ts.pings + ' ping' + (ts.pings === 1 ? '' : 's') + ', average gap ' + ig.avgPingGapDays + ' days'
+      });
+      countStrong++; contributing++;
+    }
+
+    var statement, tone;
+    if (countStrong >= Math.ceil(expected * 0.75)) { statement = 'Partial signals (older version) \u2014 readable'; tone = 'partial'; }
+    else if (countStrong >= Math.ceil(expected / 2)) { statement = 'Partial signals (older version)'; tone = 'partial'; }
+    else { statement = 'Limited signals on this chain'; tone = 'weak'; }
+
+    return {
+      deviceClass: 'unknown',
+      statement: statement,
+      tone: tone,
+      countStrong: countStrong,
+      countWorthNoting: countWorthNoting,
+      countAlarming: 0,
+      countExpected: expected,
+      countPresentExpected: contributing,
+      countBonus: 0,
+      totalContributing: contributing,
+      totalAvailable: expected,
+      byOrigin: {
+        device:   { expected: 0, contributing: 0, total: 0 },
+        external: { expected: 0, contributing: 0, total: 0 },
+        chain:    { expected: expected, contributing: contributing, total: expected }
+      },
+      signals: signals
+    };
   }
 
   function renderStandingTab() {
