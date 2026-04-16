@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.6
+// APPLICATION LAYER v2.39.7
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -5246,10 +5246,20 @@ const PAIR_CODE_LENGTH = 4;
   function toggleLocationTab() {
     state.settings.locationAuto = !state.settings.locationAuto;
     save();
+    renderSettingsTab();
     if (state.settings.locationAuto) {
-      navigator.geolocation?.getCurrentPosition(function() { toast('Location enabled'); renderSettingsTab(); }, function() { state.settings.locationAuto = false; save(); toast('Location denied'); renderSettingsTab(); });
-    } else {
-      renderSettingsTab();
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function() { toast('Location enabled'); },
+          function() { state.settings.locationAuto = false; save(); renderSettingsTab(); toast('Location denied'); },
+          { timeout: 10000 }
+        );
+      } else {
+        state.settings.locationAuto = false;
+        save();
+        renderSettingsTab();
+        toast('Location not available on this device');
+      }
     }
   }
 
