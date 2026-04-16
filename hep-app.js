@@ -5364,26 +5364,79 @@ const PAIR_CODE_LENGTH = 4;
     refreshHome();
   }
 
-  function toggleLocationTab() {
-    state.settings.locationAuto = !state.settings.locationAuto;
+  // Turn location ON or OFF from the Settings tab / Standing tile.
+  //
+  // Previously this flipped the toggle visible-state, fired getCurrentPosition,
+  // then flipped back on denial. On a PC where the browser has location
+  // pre-blocked, the flip + revert was near-instant and invisible, making
+  // the toggle appear broken. Michael reported: "it kind of toggles off
+  // rapidly, it's hard to see if it works, but when I go back it's usually
+  // off."
+  //
+  // New behavior:
+  //  1. If Permissions API is available and state is 'denied', DON'T flip
+  //     the toggle at all. Show a persistent-style error message with
+  //     instructions specific to the browser. Toggle state stays OFF,
+  //     visibly consistent with reality.
+  //  2. If state is 'prompt' or unknown, flip the toggle optimistically
+  //     and request the position. On denial, flip back with clear error.
+  //  3. If state is 'granted', flip on without the permission roundtrip.
+  //  4. Turning OFF is immediate, no permission check needed.
+  async function toggleLocationTab() {
+    // Turning OFF is always immediate
+    if (state.settings.locationAuto) {
+      state.settings.locationAuto = false;
+      save();
+      renderSettingsTab();
+      refreshHome();
+      return;
+    }
+
+    // Turning ON: check permission state first
+    if (!navigator.geolocation) {
+      toast('Location not available on this device');
+      return;
+    }
+
+    // Query Permissions API when available — avoids visible toggle flicker
+    // when permission is pre-denied
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        var perm = await navigator.permissions.query({ name: 'geolocation' });
+        if (perm.state === 'denied') {
+          toast('Browser blocked location \u2014 enable it in the browser\'s site permissions');
+          return;
+        }
+      }
+    } catch(e) {
+      // Permissions API unavailable or errored — fall through to request
+    }
+
+    // Optimistic flip, then request position
+    state.settings.locationAuto = true;
     save();
     renderSettingsTab();
     refreshHome();
-    if (state.settings.locationAuto) {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          function() { toast('Location enabled'); },
-          function() { state.settings.locationAuto = false; save(); renderSettingsTab(); refreshHome(); toast('Location denied'); },
-          { timeout: 10000 }
-        );
-      } else {
+
+    navigator.geolocation.getCurrentPosition(
+      function() {
+        toast('Location enabled');
+      },
+      function(err) {
+        // Revert and explain
         state.settings.locationAuto = false;
         save();
         renderSettingsTab();
         refreshHome();
-        toast('Location not available on this device');
-      }
-    }
+        var msg;
+        if (err && err.code === 1) msg = 'Browser blocked location \u2014 enable it in the browser\'s site permissions';
+        else if (err && err.code === 2) msg = 'Location unavailable on this device right now';
+        else if (err && err.code === 3) msg = 'Location request timed out \u2014 try again';
+        else msg = 'Location could not be enabled';
+        toast(msg);
+      },
+      { timeout: 10000 }
+    );
   }
 
   function updateSensorStatus() {
@@ -5587,8 +5640,16 @@ const PAIR_CODE_LENGTH = 4;
     } else { copyShareLink(); }
   }
 
+  // Canonical app URL — all share surfaces, QR codes, and clipboard links
+  // resolve to this URL regardless of where the user is running from
+  // (local dev, alternate domain, installed PWA). Sharing always points
+  // people to the live app, not to a local dev build or the marketing
+  // root. Marketing site is at humanexchangeprotocol.org; app is at the
+  // subdomain below.
+  var CANONICAL_APP_URL = 'https://app.humanexchangeprotocol.org/';
+
   function getAppBase() {
-    return window.location.href.split('?')[0].replace(/\/+$/, '') + '/';
+    return CANONICAL_APP_URL;
   }
 
   function b64Encode(str) { return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -8288,13 +8349,20 @@ function init() {
     h += '</div>';
     h += '</div>';
 
-    // Sort signals: by origin group (device → external → chain), then by tier within each group
+    // Sort signals: origin grouping first (device → external → chain), then
+    // within each group, present signals first / absent signals last, then
+    // by tier. This makes the top of the list read as "what's working" and
+    // dim absent signals get stacked at the bottom of each group —
+    // transparent but visually receding.
     var sorted = v.signals.slice().sort(function(a, b) {
       var originOrder = { device: 0, external: 1, chain: 2 };
       var ao = originOrder[a.origin] !== undefined ? originOrder[a.origin] : 9;
       var bo2 = originOrder[b.origin] !== undefined ? originOrder[b.origin] : 9;
       if (ao !== bo2) return ao - bo2;
-      // Within origin, critical first
+      // Present first, absent last within each origin group
+      var aPresent = a.presence === 'present' ? 0 : 1;
+      var bPresent = b.presence === 'present' ? 0 : 1;
+      if (aPresent !== bPresent) return aPresent - bPresent;
       return (b.tier || 0) - (a.tier || 0);
     });
 
@@ -8345,8 +8413,12 @@ function init() {
       }
     }
 
+    // Dim opacity on absent signals so they visually recede while staying
+    // readable. Present signals render at full contrast.
+    var rowOpacity = s.presence === 'absent' ? '0.55' : '1';
+
     var h = '';
-    h += '<div class="poh-signal-row" data-idx="' + idx + '">';
+    h += '<div class="poh-signal-row" data-idx="' + idx + '" style="opacity:' + rowOpacity + ';">';
     // Row header (tap to expand Level 3)
     h += '<div style="display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer;" onclick="App.togglePOHSignalDetail(this)">';
     h += '<div style="width:10px; height:10px; border-radius:50%; background:' + dotColor + '; flex-shrink:0;"></div>';
@@ -8745,12 +8817,16 @@ function init() {
     h += '</div>';
     h += '</div>';
 
-    // Sort and render signal rows
+    // Sort and render signal rows. Same present-first / absent-bottom
+    // logic as the owner's POH card for visual consistency.
     var sorted = (v.signals || []).slice().sort(function(a, b) {
       var originOrder = { device: 0, external: 1, chain: 2 };
       var ao = originOrder[a.origin] !== undefined ? originOrder[a.origin] : 9;
       var bo2 = originOrder[b.origin] !== undefined ? originOrder[b.origin] : 9;
       if (ao !== bo2) return ao - bo2;
+      var aPresent = a.presence === 'present' ? 0 : 1;
+      var bPresent = b.presence === 'present' ? 0 : 1;
+      if (aPresent !== bPresent) return aPresent - bPresent;
       return (b.tier || 0) - (a.tier || 0);
     });
     for (var i = 0; i < sorted.length; i++) {
@@ -8781,8 +8857,11 @@ function init() {
       badge = '<span style="font-size:10px; font-weight:500; color:var(--text-faint); background:var(--bg-input); padding:2px 6px; border-radius:8px; margin-left:6px; letter-spacing:0.3px;">N/A FOR DEVICE</span>';
     }
 
+    // Dim absent rows (same treatment as owner's POH card)
+    var rowOpacity = s.presence === 'absent' ? '0.55' : '1';
+
     var h = '';
-    h += '<div class="poh-signal-row" data-idx="' + idx + '">';
+    h += '<div class="poh-signal-row" data-idx="' + idx + '" style="opacity:' + rowOpacity + ';">';
     h += '<div style="display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer;" onclick="App.togglePOHSignalDetail(this)">';
     h += '<div style="width:10px; height:10px; border-radius:50%; background:' + dotColor + '; flex-shrink:0;"></div>';
     h += '<div style="flex-shrink:0;">' + renderOriginIcon(s.origin) + '</div>';
@@ -9801,10 +9880,11 @@ function init() {
   }
 
   function shareApp() {
+    var url = getAppBase();
     if (navigator.share) {
-      navigator.share({ title: 'Human Exchange Protocol', text: 'Record cooperative acts between people.', url: 'https://humanexchangeprotocol.org' }).catch(function() {});
+      navigator.share({ title: 'Human Exchange Protocol', text: 'Record cooperative acts between people.', url: url }).catch(function() {});
     } else {
-      try { navigator.clipboard.writeText('https://humanexchangeprotocol.org'); toast('Link copied'); } catch(e) { toast('Share not available'); }
+      try { navigator.clipboard.writeText(url); toast('Link copied'); } catch(e) { toast('Share not available'); }
     }
   }
 

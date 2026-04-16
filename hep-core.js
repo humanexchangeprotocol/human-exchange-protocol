@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.56.0';
+const APP_VERSION='2.57.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -1416,8 +1416,19 @@ const SIGNALS = {
         return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Network type info not exposed by this browser' };
       }
       if (raw.liveReading) {
+        // NetworkInformation.effectiveType reports the *speed tier*
+        // ('slow-2g' | '2g' | '3g' | '4g'), not the physical medium.
+        // A wired desktop on gigabit ethernet gets reported as '4g'
+        // because that's the top tier in the API's schema. Wording
+        // clarifies this is a speed read, not a device-type claim.
         var t = raw.liveReading.effectiveType || raw.liveReading.type || 'unknown';
-        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Connected via ' + t };
+        var summary;
+        if (t === '4g') summary = 'Fast connection (4g speed tier)';
+        else if (t === '3g') summary = 'Moderate connection (3g speed tier)';
+        else if (t === '2g') summary = 'Slow connection (2g speed tier)';
+        else if (t === 'slow-2g') summary = 'Very slow connection';
+        else summary = 'Connected (' + t + ')';
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: summary };
       }
       return { presence: 'present', expected: true, behavior: 'normal', contribution: 0, summary: 'Available, no live reading yet' };
     },
