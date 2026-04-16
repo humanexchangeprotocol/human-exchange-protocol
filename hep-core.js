@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.46.1';
+const APP_VERSION='2.46.2';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -1095,24 +1095,34 @@ const SIGNALS = {
     // Counts records carrying a chainMerkleRoot field. Merkle roots on
     // each record commit to the entire chain state at that point.
     // A record with a merkle root cannot be silently re-ordered or altered.
+    //
+    // Legacy handling: chainMerkleRoot was introduced at SV_V3 (version 3).
+    // Records at SV_LEGACY (1) or SV_V2 (2) never carried this field —
+    // they are excluded from the denominator to avoid penalizing chains
+    // that began before the field existed. For users starting today
+    // (all records at current SV), the ratio naturally reaches 100%.
     capture: function(ctx) {
       if (!ctx || !ctx.chain) return null;
-      var total = 0, withRoot = 0;
+      var total = 0, withRoot = 0, legacySkipped = 0;
       for (var i = 0; i < ctx.chain.length; i++) {
         var r = ctx.chain[i];
         if (r.type === 'genesis') continue;
+        // Skip records whose serialization predates this field
+        var sv = r.serVersion || 1;
+        if (sv < 3) { legacySkipped++; continue; }
         total++;
         if (typeof r.chainMerkleRoot === 'string' && r.chainMerkleRoot.length > 0) withRoot++;
       }
-      if (total === 0) return null;
+      if (total === 0 && legacySkipped === 0) return null;
       return {
         total: total,
         withRoot: withRoot,
-        ratio: withRoot / total
+        legacySkipped: legacySkipped,
+        ratio: total > 0 ? withRoot / total : 1
       };
     },
     interpret: function(raw, deviceClassStr) {
-      if (!raw || raw.total === 0) {
+      if (!raw || (raw.total === 0 && raw.legacySkipped === 0)) {
         return {
           presence: 'absent',
           expected: true,
@@ -1121,23 +1131,32 @@ const SIGNALS = {
           summary: 'No non-genesis records yet to anchor'
         };
       }
+      if (raw.total === 0 && raw.legacySkipped > 0) {
+        return {
+          presence: 'present',
+          expected: true,
+          behavior: 'normal',
+          contribution: 0,
+          summary: 'All records predate this feature — no action needed'
+        };
+      }
       if (raw.ratio >= 0.99) {
         return {
           presence: 'present', expected: true, behavior: 'normal',
           contribution: WEIGHT.CRITICAL,
-          summary: 'Every record anchored by a Merkle root — chain integrity intact'
+          summary: 'Every eligible record anchored by a Merkle root — chain integrity intact'
         };
       } else if (raw.ratio >= 0.9) {
         return {
           presence: 'present', expected: true, behavior: 'normal',
           contribution: Math.floor(WEIGHT.CRITICAL / 2),
-          summary: 'Most records anchored by Merkle root'
+          summary: 'Most eligible records anchored by Merkle root'
         };
       } else {
         return {
           presence: 'present', expected: true, behavior: 'worth-noting',
           contribution: 0,
-          summary: Math.round((1 - raw.ratio) * 100) + '% of records missing their Merkle root'
+          summary: Math.round((1 - raw.ratio) * 100) + '% of eligible records missing their Merkle root'
         };
       }
     },
@@ -1159,24 +1178,31 @@ const SIGNALS = {
     expectedOn: ['ios', 'android', 'pc'],
     // Counts records carrying an entropyPrev field, which links each
     // record to unpredictable randomness from the previous one.
+    //
+    // Legacy handling: entropyPrev was introduced at SV_V2 (version 2).
+    // Records at SV_LEGACY (1) predate the field and are excluded from
+    // the denominator.
     capture: function(ctx) {
       if (!ctx || !ctx.chain) return null;
-      var total = 0, withEntropy = 0;
+      var total = 0, withEntropy = 0, legacySkipped = 0;
       for (var i = 0; i < ctx.chain.length; i++) {
         var r = ctx.chain[i];
         if (r.type === 'genesis') continue;
+        var sv = r.serVersion || 1;
+        if (sv < 2) { legacySkipped++; continue; }
         total++;
         if (typeof r.entropyPrev === 'string' && r.entropyPrev.length > 0) withEntropy++;
       }
-      if (total === 0) return null;
+      if (total === 0 && legacySkipped === 0) return null;
       return {
         total: total,
         withEntropy: withEntropy,
-        ratio: withEntropy / total
+        legacySkipped: legacySkipped,
+        ratio: total > 0 ? withEntropy / total : 1
       };
     },
     interpret: function(raw, deviceClassStr) {
-      if (!raw || raw.total === 0) {
+      if (!raw || (raw.total === 0 && raw.legacySkipped === 0)) {
         return {
           presence: 'absent',
           expected: true,
@@ -1185,23 +1211,32 @@ const SIGNALS = {
           summary: 'No non-genesis records yet'
         };
       }
+      if (raw.total === 0 && raw.legacySkipped > 0) {
+        return {
+          presence: 'present',
+          expected: true,
+          behavior: 'normal',
+          contribution: 0,
+          summary: 'All records predate this feature — no action needed'
+        };
+      }
       if (raw.ratio >= 0.99) {
         return {
           presence: 'present', expected: true, behavior: 'normal',
           contribution: WEIGHT.SUPPORTING,
-          summary: 'Entropy chain unbroken across ' + raw.total + ' record' + (raw.total === 1 ? '' : 's')
+          summary: 'Entropy chain unbroken across ' + raw.total + ' eligible record' + (raw.total === 1 ? '' : 's')
         };
       } else if (raw.ratio >= 0.9) {
         return {
           presence: 'present', expected: true, behavior: 'normal',
           contribution: Math.floor(WEIGHT.SUPPORTING / 2),
-          summary: 'Entropy chain present on most records'
+          summary: 'Entropy chain present on most eligible records'
         };
       } else {
         return {
           presence: 'present', expected: true, behavior: 'worth-noting',
           contribution: 0,
-          summary: 'Entropy chain broken on ' + Math.round((1 - raw.ratio) * 100) + '% of records'
+          summary: 'Entropy chain broken on ' + Math.round((1 - raw.ratio) * 100) + '% of eligible records'
         };
       }
     },

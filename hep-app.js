@@ -8525,19 +8525,25 @@ function init() {
       return h;
     }
     // Merkle root
-    if (s.id === 'merkleRoot' && typeof s.raw.total === 'number') {
-      var pct = Math.round(s.raw.ratio * 100);
+    if (s.id === 'merkleRoot' && s.raw && (typeof s.raw.total === 'number' || typeof s.raw.legacySkipped === 'number')) {
+      var pct = s.raw.total > 0 ? Math.round(s.raw.ratio * 100) : 100;
       var h = '';
-      h += '<div><strong>Non-genesis records:</strong> ' + s.raw.total + '</div>';
+      h += '<div><strong>Eligible records:</strong> ' + s.raw.total + '</div>';
       h += '<div style="margin-top:4px;"><strong>With Merkle root:</strong> ' + s.raw.withRoot + ' (' + pct + '%)</div>';
+      if (s.raw.legacySkipped > 0) {
+        h += '<div style="margin-top:8px; color:var(--text-dim); font-style:italic;">' + s.raw.legacySkipped + ' record' + (s.raw.legacySkipped === 1 ? '' : 's') + ' predate this feature and are not counted.</div>';
+      }
       return h;
     }
     // Entropy chain
-    if (s.id === 'entropyChain' && typeof s.raw.total === 'number') {
-      var pct = Math.round(s.raw.ratio * 100);
+    if (s.id === 'entropyChain' && s.raw && (typeof s.raw.total === 'number' || typeof s.raw.legacySkipped === 'number')) {
+      var pct = s.raw.total > 0 ? Math.round(s.raw.ratio * 100) : 100;
       var h = '';
-      h += '<div><strong>Non-genesis records:</strong> ' + s.raw.total + '</div>';
+      h += '<div><strong>Eligible records:</strong> ' + s.raw.total + '</div>';
       h += '<div style="margin-top:4px;"><strong>With entropy link:</strong> ' + s.raw.withEntropy + ' (' + pct + '%)</div>';
+      if (s.raw.legacySkipped > 0) {
+        h += '<div style="margin-top:8px; color:var(--text-dim); font-style:italic;">' + s.raw.legacySkipped + ' record' + (s.raw.legacySkipped === 1 ? '' : 's') + ' predate this feature and are not counted.</div>';
+      }
       return h;
     }
     // Generic fallback — show whatever's in raw
