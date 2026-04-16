@@ -6690,6 +6690,20 @@ function init() {
           if (nameEl) nameEl.textContent = decrypted._name;
           if (avatarEl) avatarEl.textContent = decrypted._name.charAt(0).toUpperCase();
         }
+        // If the user already confirmed SAS and the Review screen is
+        // showing (ex-review-container exists and is visible), the
+        // counterparty context block may have been rendered without
+        // data. Re-invoke exConfirmSAS now so the context cards fill
+        // in from the newly arrived snapshot. Same for the receiver-
+        // wait screen if we're past Review.
+        var reviewContainer = document.getElementById('ex-review-container');
+        if (reviewContainer && reviewContainer.style.display !== 'none' && reviewContainer.innerHTML.length > 0) {
+          try { exConfirmSAS(); } catch(e) { console.log('[ex-flow] Re-render after snapshot failed:', e.message); }
+        }
+        var rwTiles = document.getElementById('ex-rw-tiles');
+        if (rwTiles) {
+          try { exRenderReceiverWait(); } catch(e) { console.log('[ex-flow] Wait re-render after snapshot failed:', e.message); }
+        }
       });
     }
   }
@@ -6712,60 +6726,21 @@ function init() {
   }
 
   function exConfirmSAS() {
-    // SAS confirmed — render combined Review screen with chain health + proof of human
+    // SAS confirmed — render the Review screen. Partner identity block
+    // at top, then counterparty context (chain shape + POH verdict),
+    // then the primary Confirm action. All the legacy assessment logic
+    // that used to live here (exClassifyChain, exIsEmulator, healthBadge,
+    // pohOk, ad-hoc signal interpretation) was removed in v2.54.0 once
+    // the registry-backed POH card took over and made it redundant.
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     _textureTs = ts;
     var name = (ts && ts._name) || 'Partner';
     var initial = name.charAt(0).toUpperCase();
-    var dev = (ts && ts._device) || {};
-    var cl = ts ? exClassifyChain(ts) : { state: 'young', observations: [] };
     var sasCode = document.getElementById('ex-sas-code') ? document.getElementById('ex-sas-code').textContent : '--';
     var fp = sessionPartner ? (sessionPartner.fingerprint || '').substring(0, 16) : '';
 
-    // Determine overall assessment
-    var assessLabel, assessColor, assessBg, assessSub;
-    if (cl.state === 'nonhuman') {
-      assessLabel = 'Ask about this'; assessColor = 'var(--red)'; assessBg = 'var(--red-light)';
-      assessSub = 'Device signals are unusual. Make sure you are with a real person.';
-    } else if (cl.state === 'unusual') {
-      assessLabel = 'A few things to note'; assessColor = '#B45309'; assessBg = 'rgba(180,83,9,0.08)';
-      assessSub = 'Some patterns are uncommon. Worth a conversation before proceeding.';
-    } else if (cl.state === 'young' || !ts || !ts.n || ts.n < 6) {
-      assessLabel = 'Developing chain'; assessColor = 'var(--accent)'; assessBg = 'var(--accent-light)';
-      assessSub = 'Limited history. This chain is still building its record.';
-    } else {
-      assessLabel = 'Everything looks good'; assessColor = 'var(--green)'; assessBg = 'var(--green-light)';
-      assessSub = 'Strong chain, normal device signals.';
-    }
-
-    // Chain health badge
-    var healthBadge = cl.state === 'nonhuman' ? 'Unusual' : cl.state === 'unusual' ? 'Ask' : cl.state === 'young' ? 'Developing' : 'Strong';
-    var healthColor = cl.state === 'nonhuman' ? 'var(--red)' : cl.state === 'unusual' ? '#B45309' : cl.state === 'young' ? 'var(--accent)' : 'var(--green)';
-    var healthBg = cl.state === 'nonhuman' ? 'var(--red-light)' : cl.state === 'unusual' ? 'rgba(180,83,9,0.08)' : cl.state === 'young' ? 'var(--accent-light)' : 'var(--green-light)';
-
-    // Proof of human assessment
-    var pohOk = !exIsEmulator(dev) && dev.touchPoints > 0;
-    var hasSensors = dev.recordsWithSensor > 0;
-    var hasGeo = dev.recordsWithGeo > 0;
-    var pohLabel = pohOk ? 'Normal' : 'Unusual';
-    var pohColor = pohOk ? 'var(--green)' : 'var(--red)';
-    var pohBg = pohOk ? 'var(--green-light)' : 'var(--red-light)';
-
-    var n = ts ? (ts.n || 0) : 0;
-    var g = ts ? (ts.g || 0) : 0;
-    var r = ts ? (ts.r || 0) : 0;
-    var people = ts ? (ts.people || 0) : 0;
-
     var html = '';
-
-    // DIAGNOSTIC SENTINEL v2.52.0 — this banner ALWAYS renders when the
-    // new code path is executing. If the user doesn't see this banner,
-    // the old hep-app.js is still loading from cache (force a service
-    // worker update) or a different render function is being hit.
-    // This sentinel will be removed once deployment is verified.
-    console.log('[ex-flow v2.52.0] exConfirmSAS called. sessionPartner:', !!sessionPartner, 'thread_snapshot present:', !!(sessionPartner && sessionPartner.thread_snapshot), 'ts.n:', ts ? ts.n : 'no ts', 'ts.pohVerdict present:', !!(ts && ts.pohVerdict), 'ts.catsTimeline present:', !!(ts && ts.catsTimeline), 'ts.integrity present:', !!(ts && ts.integrity));
-    html += '<div style="background:linear-gradient(135deg, var(--accent), #6aa84f); color:#fff; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:13px; font-weight:600; text-align:center; letter-spacing:0.5px;">NEW SURFACES v2.52.0 \u2014 LOADED</div>';
 
     // Partner identity + SAS (compact)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:10px; box-shadow:var(--shadow);">';
@@ -6780,43 +6755,21 @@ function init() {
     html += '<div style="font-size:24px; font-weight:700; color:var(--accent); font-family:var(--font-mono); letter-spacing:4px;">' + esc(sasCode) + '</div>';
     html += '</div></div></div>';
 
-    // Counterparty context block — MOVED ABOVE the Confirm button and the
-    // Overall assessment bar in v2.52.0 so it's visible without scrolling.
-    // Previously this lived below the Confirm button, which meant users
-    // tapped Confirm and moved to the next screen without ever seeing it.
-    // Always renders a visible marker, even when ts is absent or thin,
-    // so the presence of THIS card confirms the new code is executing.
-    try {
-      console.log('[ex-flow v2.52.0] About to render counterparty context. ts:', ts);
-      if (ts) {
-        var ctxHtml = renderCounterpartyContextBlock(ts);
-        console.log('[ex-flow v2.52.0] Context block length:', ctxHtml.length);
-        if (ctxHtml && ctxHtml.length > 0) {
-          html += ctxHtml;
-        } else {
-          html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Counterparty context block ran but produced no visible content. ts.n = ' + (ts.n || 0) + ', pohVerdict = ' + (ts.pohVerdict ? 'yes' : 'no') + ', integrity = ' + (ts.integrity ? 'yes' : 'no') + '</div>';
-        }
-      } else {
-        html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Waiting for their chain data to arrive... (no thread_snapshot yet)</div>';
+    // Counterparty context block — chain shape card + POH verdict card.
+    // Placed above the Confirm button so it's visible without scrolling
+    // past the primary action. If the snapshot hasn't arrived yet (rare
+    // but possible on fast SAS verification), the block is simply
+    // omitted and will appear when exConfirmSAS is re-invoked from the
+    // snapshot poll callback in exOnConnected.
+    if (ts) {
+      try { html += renderCounterpartyContextBlock(ts); } catch(cpe) {
+        console.log('[ex-flow] Counterparty context render failed:', cpe.message);
       }
-    } catch(cpe) {
-      console.log('[ex-flow v2.52.0] Counterparty context render THREW:', cpe.message, cpe.stack);
-      html += '<div style="background:rgba(214,107,107,0.08); border:1px solid rgba(214,107,107,0.3); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--red);">Render error: ' + esc(cpe.message) + '</div>';
     }
-
-    // Overall assessment bar
-    html += '<div style="background:' + assessBg + '; border:1px solid ' + assessColor + '22; border-radius:var(--radius); padding:12px 14px; margin-bottom:10px; display:flex; align-items:center; gap:12px;">';
-    html += '<div style="width:10px; height:10px; border-radius:50%; background:' + assessColor + '; flex-shrink:0;"></div>';
-    html += '<div><div style="font-size:14px; font-weight:600; color:' + assessColor + ';">' + assessLabel + '</div>';
-    html += '<div style="font-size:12px; color:var(--text-dim); margin-top:2px;">' + assessSub + '</div></div></div>';
 
     // Confirm button
     html += '<button class="btn btn-primary" style="width:100%; margin-bottom:4px;" onclick="App.exReviewConfirm()">Confirm</button>';
     html += '<div style="text-align:center; margin-bottom:14px;"><span style="font-size:13px; color:var(--text-faint); cursor:pointer;" onclick="App.exRejectSAS()">Not the right person?</span></div>';
-
-    // Divider
-    html += '<div style="height:1px; background:var(--border); margin:4px 0 12px;"></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); text-align:center; margin-bottom:10px;">More about this person</div>';
 
     // Render into the verify step container (replacing the SAS-only view)
     var verifyStep = document.getElementById('ex-step-verify');
@@ -7775,8 +7728,6 @@ function init() {
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     var name = (ts && ts._name) || 'the other person';
 
-    console.log('[ex-flow v2.53.0] exRenderReceiverWait called. ts.n:', ts ? ts.n : 'no ts', 'pohVerdict:', !!(ts && ts.pohVerdict), 'catsTimeline:', !!(ts && ts.catsTimeline), 'integrity:', !!(ts && ts.integrity));
-
     // Update spinner label
     var spinLabel = document.getElementById('ex-rw-spinner-label');
     if (spinLabel) spinLabel.textContent = 'Waiting for ' + name + '\'s proposal';
@@ -7784,36 +7735,19 @@ function init() {
     var tilesEl = document.getElementById('ex-rw-tiles');
     if (!tilesEl) return;
 
+    // Counterparty context block — chain shape card + POH verdict card.
+    // Replaces the legacy "Their Pricing" + "Chain Health" tiles that
+    // lived here before v2.53.0. Renders while the user waits for the
+    // proposer to submit their proposal. When the proposal arrives,
+    // exShowProposalReady renders into ex-rw-proposal below but does
+    // NOT re-render this block — it stays visible above the proposal
+    // card so the user has the full "about them" context throughout.
     var html = '';
-
-    // DIAGNOSTIC SENTINEL v2.53.0 — this banner confirms the new code
-    // is executing on the EXCHANGE-step wait screen (step 3 of 4).
-    // Will be stripped once deployment is verified.
-    html += '<div style="background:linear-gradient(135deg, var(--accent), #6aa84f); color:#fff; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:13px; font-weight:600; text-align:center; letter-spacing:0.5px;">NEW SURFACES v2.53.0 \u2014 STEP 3 LOADED</div>';
-
-    // Counterparty context block REPLACES the legacy "Their Pricing" +
-    // "Chain Health" tiles that used to live here. Renders the new
-    // chain shape card (uplifting framing, shape not score) and the
-    // proof-of-human verdict card (registry-backed) in a single
-    // coherent "About this counterparty" block. Same helper used on
-    // the post-SAS Review screen (exConfirmSAS) for continuity.
-    try {
-      if (ts) {
-        var ctxHtml = renderCounterpartyContextBlock(ts);
-        console.log('[ex-flow v2.53.0] Context block length on wait screen:', ctxHtml.length);
-        if (ctxHtml && ctxHtml.length > 0) {
-          html += ctxHtml;
-        } else {
-          html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Counterparty context block ran but produced no visible content. ts.n = ' + (ts.n || 0) + ', pohVerdict = ' + (ts.pohVerdict ? 'yes' : 'no') + ', integrity = ' + (ts.integrity ? 'yes' : 'no') + '</div>';
-        }
-      } else {
-        html += '<div style="background:var(--bg-raised); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--text-dim);">Waiting for their chain data to arrive... (no thread_snapshot on wait screen)</div>';
+    if (ts) {
+      try { html += renderCounterpartyContextBlock(ts); } catch(cpe) {
+        console.log('[ex-flow] Counterparty context render failed on wait:', cpe.message);
       }
-    } catch(cpe) {
-      console.log('[ex-flow v2.53.0] Counterparty context render threw on wait:', cpe.message, cpe.stack);
-      html += '<div style="background:rgba(214,107,107,0.08); border:1px solid rgba(214,107,107,0.3); border-radius:var(--radius); padding:14px; margin-bottom:10px; font-size:13px; color:var(--red);">Render error: ' + esc(cpe.message) + '</div>';
     }
-
     tilesEl.innerHTML = html;
   }
 
@@ -7914,23 +7848,17 @@ function init() {
 
     html += '</div>'; // end card
 
-    // Counterparty context block — chain shape + POH verdict, rendered
-    // again on the proposal review surface so the decision has the full
-    // context visible at the moment of choosing.
-    try {
-      if (providerSnap) {
-        html += renderCounterpartyContextBlock(providerSnap);
-      }
-    } catch(cpe) {
-      console.log('[ex-flow v2.53.0] Counterparty context render failed on proposal:', cpe.message);
-    }
-
     // Pricing context time-scatter chart — category-locked, shows my +
     // their + shared history over time with today's proposed value
-    // pinned. Complements (does not replace) the service-description
-    // range bar above, which matches the exact service description.
-    // This chart matches category broadly and adds temporal + relational
-    // dimensions.
+    // pinned. Complements the service-description range bar above,
+    // which matches exact service description; this chart matches the
+    // category broadly and adds temporal + relational dimensions.
+    //
+    // The counterparty context block (chain shape + POH verdict) is
+    // NOT re-rendered here. It lives in ex-rw-tiles above the proposal
+    // area, populated by exRenderReceiverWait when the wait screen
+    // first mounted, and stays visible throughout. Rendering it again
+    // here caused duplicate-card stacking below the Confirm button.
     try {
       if (providerSnap && sessionPartner) {
         html += renderPricingContextChart(
@@ -7940,7 +7868,7 @@ function init() {
         );
       }
     } catch(pce) {
-      console.log('[ex-flow v2.53.0] Pricing chart render failed:', pce.message);
+      console.log('[ex-flow] Pricing chart render failed:', pce.message);
     }
 
     // Confirm / reject
