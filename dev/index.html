@@ -379,9 +379,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .wallet-display { padding: 20px 0 24px; }
 .wallet-label { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
 .wallet-amount { font-size: 56px; font-weight: 300; letter-spacing: -1px; }
-.wallet-amount.surplus { color: var(--green); }
-.wallet-amount.deficit { color: var(--red); }
-.wallet-amount.zero { color: var(--text-dim); }
+.wallet-amount.surplus { color: var(--text); }
+.wallet-amount.deficit { color: var(--text); }
+.wallet-amount.zero { color: var(--text); }
 .wallet-position { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
 .wallet-detail { background: var(--bg-raised); border-radius: var(--radius); padding: 12px 16px; border: 1px solid var(--border); }
 
@@ -1260,11 +1260,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <!-- Top bar -->
   <div class="home-top-bar">
     <div class="home-identity">
-      <div class="greeting" id="home-greeting">Your Thread</div>
+      <div class="greeting" id="home-greeting">Your Chain</div>
     </div>
     <div class="home-top-icons">
-      <button class="top-icon-btn" onclick="App.openWallet()" aria-label="Wallet">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" fill="currentColor"/><path d="M2 10h20"/><path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg>
+      <button class="top-icon-btn" onclick="App.openWallet()" aria-label="My chain">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 1 0-6.364l2.121-2.122a4.5 4.5 0 0 1 6.364 6.364l-1.06 1.06"/><path d="M14 10a4.5 4.5 0 0 1 0 6.364l-2.121 2.122a4.5 4.5 0 0 1-6.364-6.364l1.06-1.06"/></svg>
       </button>
     </div>
   </div>
@@ -1333,12 +1333,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="wallet-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>My Thread</h2>
+      <h2>My Chain</h2>
       <button class="modal-close" onclick="App.closeModal('wallet')">&#10005;</button>
     </div>
     <div class="modal-body wallet-body">
       <div class="wallet-display">
-        <div class="wallet-label">Current Position</div>
+        <div class="wallet-label">Balance</div>
         <div class="wallet-amount" id="wallet-amount">0</div>
         <div class="wallet-position" id="wallet-position">balanced</div>
       </div>
@@ -1353,7 +1353,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div id="wallet-ratio-bar" style="margin-top:8px;"></div>
       </div>
 
-      <!-- Chain Health + Pricing History + Full Thread -->
+      <!-- Chain Health + Pricing History + Full Chain -->
       <div style="margin-top:20px;">
         <div style="display:flex; align-items:center; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyTextureFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Chain health</span>
@@ -1362,22 +1362,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
         <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyPricingFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Pricing history</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and rates</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and prices</span>
           <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
         </div>
         <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openChainViewerFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Full thread</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">All transaction data</span>
-          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
-        </div>
-        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showMyPhotos();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">My photos</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Show to verify in person</span>
+          <span style="font-size:14px; font-weight:500; color:var(--text);">Full chain</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Every recorded act</span>
           <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
         </div>
       </div>
 
-      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared thread data.</p>
+      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared chain data.</p>
 
       <!-- Standing content moved here from the (now-removed) Standing tab.
            Renders identity panel, POH verdict, categories, stats, and
@@ -1817,7 +1812,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="hs-success">
           <div class="hs-check">&#10003;</div>
           <h3>Act Recorded</h3>
-          <p>Both threads are written. The cooperative act is memorialized.</p>
+          <p>Both chains are written. The cooperative act is memorialized.</p>
           <button class="btn btn-primary" onclick="App.closeConfirm()">Done</button>
         </div>
       </div>
@@ -1830,7 +1825,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="chain-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>My Thread</h2>
+      <h2>My Chain</h2>
       <button class="modal-close" onclick="App.closeModal('chain')">&#10005;</button>
     </div>
     <div class="tabs">
@@ -1845,11 +1840,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="chainshare-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>Share Thread</h2>
+      <h2>Share Chain</h2>
       <button class="modal-close" onclick="App.closeModal('chainshare')">&#10005;</button>
     </div>
     <div class="modal-body" id="chainshare-body">
-      <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your thread for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
+      <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your chain for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
       <div class="review-panel" id="chainshare-summary"></div>
       <div class="hs-qr"><canvas id="chainshare-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('chainshare')">&#x26F6; Make bigger for scanning</button></div>
       <textarea class="payload-area" id="chainshare-payload" readonly></textarea>
@@ -1863,7 +1858,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="chainview-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>Their Thread</h2>
+      <h2>Their Chain</h2>
       <button class="modal-close" onclick="App.closeModal('chainview')">&#10005;</button>
     </div>
     <div class="tabs">
@@ -1949,7 +1944,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9776;</div>
         <div class="lt-info">
           <div class="lt-title">Foundations</div>
-          <div class="lt-desc">How exchanges work, what your thread is, and what you can build</div>
+          <div class="lt-desc">How exchanges work, what your chain is, and what you can build</div>
         </div>
         <div class="lt-arrow">&#8250;</div>
       </div>
@@ -1965,7 +1960,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-icon" style="background:rgba(204,68,68,0.12);">&#8644;</div>
         <div class="lt-info">
           <div class="lt-title">Exchange &amp; Parity</div>
-          <div class="lt-desc">Exchange ratios, purchasing power, and cross-thread trust</div>
+          <div class="lt-desc">Exchange ratios, purchasing power, and cross-chain trust</div>
         </div>
         <div class="lt-arrow">&#8250;</div>
       </div>
@@ -2033,7 +2028,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="setting-row">
         <div>
           <div class="label">Hide Counterparty Names</div>
-          <div class="desc">Others viewing your thread won't see names</div>
+          <div class="desc">Others viewing your chain won't see names</div>
         </div>
         <button class="switch on" id="switch-hide-names" onclick="App.togglePrivacy('hideNames')"></button>
       </div>
@@ -2044,7 +2039,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
         <button class="switch on" id="switch-hide-location" onclick="App.togglePrivacy('hideLocations')"></button>
       </div>
-      <p class="privacy-info">These settings control what others see when you share your thread for negotiation. Your own thread view always shows full detail. Counterparty names are never shared by default.</p>
+      <p class="privacy-info">These settings control what others see when you share your chain for negotiation. Your own chain view always shows full detail. Counterparty names are never shared by default.</p>
 
       <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Proof of Human</h3>
       <p class="privacy-info" style="margin-bottom:12px;">These sensors help prove your chain belongs to a real person. Your phone captures a snapshot of physical reality during each exchange. Only hashes are stored -- raw sensor data never leaves your device.</p>
@@ -2076,7 +2071,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Data</h3>
       <div class="setting-action" onclick="App.exportBackup()">
         <div class="label">Export Backup</div>
-        <div class="desc">Save encrypted backup of your thread and keys</div>
+        <div class="desc">Save encrypted backup of your chain and keys</div>
       </div>
       <div class="setting-action" onclick="App.importBackup()">
         <div class="label">Import Backup</div>
@@ -2095,8 +2090,8 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <h3 style="font-size: 13px; color:var(--red); text-transform:uppercase; letter-spacing:1px; padding:20px 0 8px;">Danger Zone</h3>
       <div class="setting-action" onclick="App.deleteChain()">
-        <div class="label" style="color:var(--red);">Delete My Thread</div>
-        <div class="desc">You will be offered a backup before anything is erased. Deletion removes your thread, keys, and all data from this device permanently.</div>
+        <div class="label" style="color:var(--red);">Delete My Chain</div>
+        <div class="desc">You will be offered a backup before anything is erased. Deletion removes your chain, keys, and all data from this device permanently.</div>
       </div>
 
       <div style="padding: 20px 0; text-align: center;">

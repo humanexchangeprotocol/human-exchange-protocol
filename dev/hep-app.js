@@ -14,7 +14,7 @@ const PAIR_CODE_LENGTH = 4;
     settings: 'Settings',
     exchangeTitle: 'Exchange',
     confirmTitle: 'Confirm',
-    shareChain: 'Share My Thread',
+    shareChain: 'Share My Chain',
     providing: "I'm providing",
     receiving: "I'm receiving",
     description: 'Description',
@@ -1166,7 +1166,7 @@ const PAIR_CODE_LENGTH = 4;
     const name = state.declarations.name || '';
     var hour = new Date().getHours();
     var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    document.getElementById('home-greeting').textContent = name ? greeting + ', ' + name : 'Your Thread';
+    document.getElementById('home-greeting').textContent = name ? greeting + ', ' + name : 'Your Chain';
     // Re-render Home tab (primary landing) so totals + recent list reflect
     // the latest chain state after any change. renderStandingTab still
     // gets called here so an open wallet modal also refreshes in place.
@@ -1863,7 +1863,7 @@ const PAIR_CODE_LENGTH = 4;
       statusEl.className = 'pair-status resolved';
       document.getElementById('pair-status-icon').innerHTML = '&#10003;';
       document.getElementById('pair-status-text').textContent =
-        'Exchange resolved. Both threads are written.';
+        'Exchange resolved. Both chains are written.';
     }
 
     // If we're still on the pair step, show done
@@ -2275,9 +2275,9 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function renderThreadSnapshot(ts) {
-    if (!ts) return '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">No thread data shared</span></div></div>';
+    if (!ts) return '<div class="session-thread"><div class="st-title">Their chain</div><div class="st-row"><span class="st-label">No chain data shared</span></div></div>';
     let html = '<div class="session-thread">' +
-      '<div class="st-title">Their thread</div>' +
+      '<div class="st-title">Their chain</div>' +
       '<div class="st-row"><span class="st-label">Acts recorded</span><span class="st-val">' + (ts.n || 0) + '</span></div>' +
       '<div class="st-row"><span class="st-label">Provided</span><span class="st-val">' + (ts.g || 0) + '</span></div>' +
       '<div class="st-row"><span class="st-label">Received</span><span class="st-val">' + (ts.r || 0) + '</span></div>' +
@@ -2322,14 +2322,14 @@ const PAIR_CODE_LENGTH = 4;
 
   function renderSessionTabContent(tab) {
     const ts = sessionPartner ? sessionPartner.thread_snapshot : null;
-    if (!ts || !ts.n) return '<div class="empty-state">No thread data shared.</div>';
+    if (!ts || !ts.n) return '<div class="empty-state">No chain data shared.</div>';
 
     if (tab === 'texture') {
       let h = '<div class="review-panel">';
       h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + ts.n + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + ts.d + ' u/act</span></div>';
       h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + ts.g + ' / ' + ts.r + '</span></div>';
-      h += '<div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">' + (ts.t0 ? new Date(ts.t0).toLocaleDateString() + ' \u2014 ' + (ts.t1 ? new Date(ts.t1).toLocaleDateString() : 'now') : '\u2014') + '</span></div>';
+      h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (ts.t0 ? new Date(ts.t0).toLocaleDateString() + ' \u2014 ' + (ts.t1 ? new Date(ts.t1).toLocaleDateString() : 'now') : '\u2014') + '</span></div>';
       h += '</div>';
       // Integrity signals
       var ig = ts.integrity;
@@ -2467,7 +2467,7 @@ const PAIR_CODE_LENGTH = 4;
     var theirDensity = ts.d || 1;
 
     if (!mySnap || myDensity === 0) {
-      return '<div class="empty-state">You need at least one act in your thread to calculate exchange rates.</div>' +
+      return '<div class="empty-state">You need at least one act in your chain to calculate exchange rates.</div>' +
         '<p style="font-size: 13px;color:var(--text-faint);margin-top:8px;line-height:1.5;">Their density: ' + theirDensity + ' u/act. Once you have exchange history, you\'ll see how your valuations compare.</p>';
     }
 
@@ -2590,9 +2590,9 @@ const PAIR_CODE_LENGTH = 4;
       html += '</div>';
     } else if (!sessionPartner._snapshotDecrypted) {
       // Snapshot not yet received -- show loading state
-      html += '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">Loading encrypted thread data...</span></div></div>';
+      html += '<div class="session-thread"><div class="st-title">Their chain</div><div class="st-row"><span class="st-label">Loading encrypted chain data...</span></div></div>';
     } else {
-      html += '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">No thread data shared</span></div></div>';
+      html += '<div class="session-thread"><div class="st-title">Their chain</div><div class="st-row"><span class="st-label">No chain data shared</span></div></div>';
     }
 
     if (sessionRole === 'proposer') {
@@ -2609,7 +2609,7 @@ const PAIR_CODE_LENGTH = 4;
       if (ts && ts.n) {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       } else if (!sessionPartner._snapshotDecrypted) {
-        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their thread data before you can send...</div>';
+        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their chain data before you can send...</div>';
       } else {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       }
@@ -2617,7 +2617,7 @@ const PAIR_CODE_LENGTH = 4;
     } else {
       html += '<div class="pair-status resolving" style="margin-top:16px;" id="session-waiting-proposal">' +
         '<div class="ps-icon">&#9203;</div>' +
-        '<div class="ps-text">Exploring their thread. Their proposal will appear here when they send it.</div></div>';
+        '<div class="ps-text">Exploring their chain. Their proposal will appear here when they send it.</div></div>';
       content.innerHTML = html;
       startSessionPoll();
     }
@@ -2942,7 +2942,7 @@ const PAIR_CODE_LENGTH = 4;
     // Full interactive thread viewer below for exploration
     if (sessionPartner && sessionPartner.thread_snapshot && sessionPartner.thread_snapshot.n) {
       html += '<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">';
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Explore their thread</div>';
+      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Explore their chain</div>';
       html += buildSessionTabBar();
       html += '<div class="sess-tab-content" id="sess-tab-body">' + renderSessionTabContent(sessionActiveTab) + '</div>';
       html += '</div>';
@@ -3487,7 +3487,7 @@ const PAIR_CODE_LENGTH = 4;
       <div class="review-row"><span class="rlbl">Acts</span><span class="rval">${snap.n}</span></div>
       <div class="review-row"><span class="rlbl">Density</span><span class="rval">${snap.d}</span></div>
       <div class="review-row"><span class="rlbl">Give/Receive</span><span class="rval">${snap.g}/${snap.r}</span></div>
-      <div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">${snap.t0?new Date(snap.t0).toLocaleDateString():'\u2014'}</span></div>
+      <div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">${snap.t0?new Date(snap.t0).toLocaleDateString():'\u2014'}</span></div>
       ${Object.entries(snap.cats).map(([k,v])=>`<div class="review-row"><span class="rlbl">${esc(k)}</span><span class="rval">${v.n} acts \u00b7 avg ${v.avg}</span></div>`).join('')}
     `;
 
@@ -3525,7 +3525,7 @@ const PAIR_CODE_LENGTH = 4;
   function renderIncomingTab(tab) {
     const body = document.getElementById('chainview-body');
     const s = incomingSnap;
-    if (!s || !s.n) { body.innerHTML = '<div class="empty-state">No thread data received.</div>'; return; }
+    if (!s || !s.n) { body.innerHTML = '<div class="empty-state">No chain data received.</div>'; return; }
 
     if (tab === 'texture') {
       let h = '<div class="review-panel">';
@@ -3533,7 +3533,7 @@ const PAIR_CODE_LENGTH = 4;
       h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + s.n + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + s.d + ' u/act</span></div>';
       h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + s.g + ' / ' + s.r + '</span></div>';
-      h += '<div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
+      h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
       h += '</div>';
       h += '<h3 style="margin:16px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
       const cats = s.cats || {};
@@ -3861,7 +3861,7 @@ const PAIR_CODE_LENGTH = 4;
     if (parsed.exchange.description) h += '<div class="cf-ctx-row"><span class="cl">Their description</span><span class="cv">' + esc(parsed.exchange.description) + '</span></div>';
     if (parsed.exchange.category) h += '<div class="cf-ctx-row"><span class="cl">Category</span><span class="cv">' + esc(parsed.exchange.category) + '</span></div>';
     h += '<div class="cf-ctx-row"><span class="cl">Their density</span><span class="cv">' + parsed.density.toFixed(1) + '</span></div>';
-    h += '<div class="cf-ctx-row"><span class="cl">Their thread</span><span class="cv">' + parsed.chainLen + ' acts</span></div>';
+    h += '<div class="cf-ctx-row"><span class="cl">Their chain</span><span class="cv">' + parsed.chainLen + ' acts</span></div>';
     h += '</div>';
     h += '<div class="field"><label>Their name (for your records)</label><input type="text" id="cf-name" placeholder="Optional"></div>';
     h += '<button class="btn btn-primary" onclick="App.confirmAndSign()">Confirm & Sign</button>';
@@ -3998,7 +3998,7 @@ const PAIR_CODE_LENGTH = 4;
     const mySurplus = HCP.walletBalance(state.chain) || 0;
     const afterBal = mySurplus - fieldAdj;
 
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What does each thread record?</div>';
+    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What does each chain record?</div>';
 
     if (cfAdjVal && cfAdjVal !== cfOrigVal) {
       h += '<div class="cf-revised">Revised from ' + cfOrigVal + ' to ' + cfAdjVal + ' \u2014 they\u2019ll confirm the new value.</div>';
@@ -4006,9 +4006,9 @@ const PAIR_CODE_LENGTH = 4;
 
     // Record cards
     h += '<div class="cf-record-cards">';
-    h += '<div class="cf-rec prov"><div class="cfr-label">Their thread</div><div class="cfr-val" style="color:var(--green);">' + val + '</div><div class="cfr-unit">provided</div></div>';
+    h += '<div class="cf-rec prov"><div class="cfr-label">Their chain</div><div class="cfr-val" style="color:var(--green);">' + val + '</div><div class="cfr-unit">provided</div></div>';
     h += '<div class="cf-rec arrow">\u21c4</div>';
-    h += '<div class="cf-rec recv"><div class="cfr-label">Your thread</div><div class="cfr-val" style="color:var(--blue);">' + fieldAdj + '</div><div class="cfr-unit">received</div></div>';
+    h += '<div class="cf-rec recv"><div class="cfr-label">Your chain</div><div class="cfr-val" style="color:var(--blue);">' + fieldAdj + '</div><div class="cfr-unit">received</div></div>';
     h += '</div>';
 
     // Cost
@@ -4040,7 +4040,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="field"><label>Their name (for your records)</label><input type="text" id="cf-name" placeholder="Optional display name"></div>';
 
     // View chain link
-    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size:13px;color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full thread data \u203a</button></div>';
+    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size:13px;color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full chain \u203a</button></div>';
 
     h += '<button class="btn btn-primary" onclick="App.confirmAndSign()">Confirm & Sign</button>';
     h += '<button class="btn btn-secondary" onclick="App.cancelConfirm()">Decline</button>';
@@ -4048,7 +4048,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="cf-note"><strong>What happens next:</strong> ' +
       (cfAdjVal && cfAdjVal !== cfOrigVal ?
         'Your revised value will be sent to them for confirmation. They\u2019ll see ' + cfAdjVal + ' instead of ' + cfOrigVal + '. If they confirm, the three-touch settlement proceeds normally.' :
-        'Your confirmation is sent back. They complete the settlement. Both threads record the exchange in their own units.') +
+        'Your confirmation is sent back. They complete the settlement. Both chains record the exchange in their own units.') +
       '</div>';
 
     document.getElementById('cf-page-record').innerHTML = h;
@@ -4542,9 +4542,9 @@ const PAIR_CODE_LENGTH = 4;
           emptyHtml += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size:14px; color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
         }
         emptyHtml += '</div>';
-        emptyHtml += '<div class="empty-state">Your scale is set. Your thread will grow from your first exchange.</div>';
+        emptyHtml += '<div class="empty-state">Your scale is set. Your chain will grow from your first exchange.</div>';
       } else {
-        emptyHtml = '<div class="empty-state">Your thread is empty. Your first exchange will appear here.</div>';
+        emptyHtml = '<div class="empty-state">Your chain is empty. Your first exchange will appear here.</div>';
       }
       body.innerHTML = emptyHtml; filter.innerHTML = ''; return;
     }
@@ -4598,7 +4598,7 @@ const PAIR_CODE_LENGTH = 4;
         h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + s.n + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + s.d + ' u/act</span></div>';
         h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + s.g + ' / ' + s.r + '</span></div>';
-        h += '<div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
+        h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
         if (s.pings > 0) {
           h += '<div class="review-row"><span class="rlbl">Heartbeats</span><span class="rval">' + s.pings + '</span></div>';
         }
@@ -5589,7 +5589,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function proceedWithDelete() {
-    if (!confirm('Your thread will be permanently erased from this device. If you have not saved a backup, it is gone forever.\n\nContinue?')) return;
+    if (!confirm('Your chain will be permanently erased from this device. If you have not saved a backup, it is gone forever.\n\nContinue?')) return;
     const typed = prompt('Type DELETE to confirm:');
     if (typed !== 'DELETE') { toast('Deletion cancelled'); return; }
 
@@ -5791,10 +5791,10 @@ const PAIR_CODE_LENGTH = 4;
           body: '<p>When you provide something \u2014 mow a lawn, fix a pipe, teach a lesson, share a skill \u2014 <span class="highlight">you name the value.</span> A number that represents the energy you spent.</p><p>No institution tells you what your work is worth. No algorithm decides. You declare it, and the other person either agrees or you have a conversation.</p><p>This is how valuation worked before anyone decided for everyone.</p>' },
         { icon: '&#128587;', title: 'Both sides honest',
           body: '<p>Every act has a provider and a receiver. <span class="highlight">Both are honest positions.</span></p><p>A teacher provides for years before receiving. A student receives for years before giving. A person in crisis receives care. None of this is a burden \u2014 it\u2019s honest receiving.</p><p>The words are simple: <span class="highlight">provided</span> and <span class="highlight">received</span>. No moral weight. Just honest direction.</p>' },
-        { icon: '&#128200;', title: 'Your thread is your reference',
-          body: '<p>Over time your thread builds a record of what you\u2019ve valued and what others have valued when working with you. <span class="highlight">Your own history becomes your pricing guide.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your context for the next one. The pattern is yours. Nobody else sets it.</p><p>Price discovery emerges naturally from honest history. No authority required.</p>' },
+        { icon: '&#128200;', title: 'Your chain is your reference',
+          body: '<p>Over time your chain builds a record of what you\u2019ve valued and what others have valued when working with you. <span class="highlight">Your own history becomes your pricing guide.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your context for the next one. The pattern is yours. Nobody else sets it.</p><p>Price discovery emerges naturally from honest history. No authority required.</p>' },
         { icon: '&#128161;', title: 'No wrong number',
-          body: '<p>A haircut might be worth 10 in one context and 25 in another. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>There is no correct price for anything. There is only what two people honestly agreed happened between them. The thread doesn\u2019t judge. It records the cooperative reality.</p><p>That\u2019s the point. The value is yours.</p>' },
+          body: '<p>A haircut might be worth 10 in one context and 25 in another. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>There is no correct price for anything. There is only what two people honestly agreed happened between them. The chain doesn\u2019t judge. It records the cooperative reality.</p><p>That\u2019s the point. The value is yours.</p>' },
       ]
     },
     beyond: {
@@ -5804,10 +5804,10 @@ const PAIR_CODE_LENGTH = 4;
           body: '<p>You fix your neighbor\u2019s sink. She\u2019s grateful, but she can\u2019t help you right now \u2014 and what you actually need is someone to tutor your kid.</p><p><span class="highlight">This is the oldest problem in cooperation.</span> Economists call it the coincidence of wants: both people need to want what the other has, at the same time, in the right proportion.</p><p>For most of human history, communities solved this with memory. Everyone knew who contributed and who received. That memory was the ledger.</p>' },
         { icon: '&#127759;', title: 'What money solved',
           body: '<p>Community memory worked, but it had limits. <span class="highlight">It couldn\u2019t scale beyond the people who knew you.</span></p><p>Money solved this by creating a universal token \u2014 help someone, receive a coin, spend that coin with a stranger across town. You no longer needed the same person to help you back. The timing problem was solved.</p><p>But money solved it by creating a permission system. If the system doesn\u2019t recognize your work, you don\u2019t get the token. No token, no participation. The solution created its own exclusions.</p>' },
-        { icon: '&#128241;', title: 'What your thread solves',
-          body: '<p>Your thread is a portable record of your cooperative history. When someone who\u2019s never met you reads it, <span class="highlight">they can see the shape of who you are</span> \u2014 what you\u2019ve done, how consistently, in what categories.</p><p>You fix the sink. Your thread records it. Next week you meet a tutor. She doesn\u2019t know your neighbor. She doesn\u2019t need to. She reads your thread and sees a real person with a real history of honest cooperation.</p><p>The timing problem is solved. No universal token required.</p>' },
+        { icon: '&#128241;', title: 'What your chain solves',
+          body: '<p>Your chain is a portable record of your cooperative history. When someone who\u2019s never met you reads it, <span class="highlight">they can see the shape of who you are</span> \u2014 what you\u2019ve done, how consistently, in what categories.</p><p>You fix the sink. Your chain records it. Next week you meet a tutor. She doesn\u2019t know your neighbor. She doesn\u2019t need to. She reads your chain and sees a real person with a real history of honest cooperation. A thread forms between you.</p><p>The timing problem is solved. No universal token required.</p>' },
         { icon: '&#9878;', title: 'No one is excluded',
-          body: '<p>Here\u2019s the difference: <span class="highlight">you don\u2019t need a balance or a surplus to participate.</span> Your thread doesn\u2019t check your account before letting you cooperate.</p><p>A person who has received far more than they\u2019ve provided \u2014 a student, an elder, someone recovering from crisis \u2014 still has a readable thread. Still has a history. Still can cooperate with anyone willing.</p><p>Money solved the coincidence of wants but created gatekeeping. The thread solves it without the gate.</p>' },
+          body: '<p>Here\u2019s the difference: <span class="highlight">you don\u2019t need a balance or a surplus to participate.</span> Your chain doesn\u2019t check your account before letting you cooperate.</p><p>A person who has received far more than they\u2019ve provided \u2014 a student, an elder, someone recovering from crisis \u2014 still has a readable chain. Still has a history. Still can cooperate with anyone willing.</p><p>Money solved the coincidence of wants but created gatekeeping. The fabric of cooperation forms without the gate.</p>' },
       ]
     },
     calibrate: {
@@ -5847,7 +5847,7 @@ const PAIR_CODE_LENGTH = 4;
           body: '<p>Here\u2019s the internal map you just built \u2014 <span class="highlight">your own sense of relative value.</span></p>' +
             '<div id="cal-summary"></div>' +
             '<p>This isn\u2019t a price list. It\u2019s a compass. When you do your first real exchange and someone asks <span class="highlight">\u201cwhat\u2019s this worth?\u201d</span> \u2014 you already have an answer that\u2019s yours.</p>' +
-            '<div class="cal-note">Your thread will grow from here. Every real exchange refines your sense of value. This was just the starting point.</div>' },
+            '<div class="cal-note">Your chain will grow from here. Every real exchange refines your sense of value. This was just the starting point.</div>' },
       ]
     },
 
@@ -5856,11 +5856,11 @@ const PAIR_CODE_LENGTH = 4;
       title: 'Foundations',
       slides: [
         { icon: '&#8644;', title: 'How does an exchange work?',
-          body: '<p>One person provides a service, a product, or help. The other person receives it. Both agree on a value \u2014 a number that represents what just happened.</p><p><span class="highlight">You declare the value of your own work.</span> Nobody tells you what it\u2019s worth. The other person agrees or you negotiate.</p><p>The act gets recorded on both threads. That\u2019s it. No money changed hands. Real work got recorded.</p>' },
-        { icon: '&#9776;', title: 'What\u2019s a thread?',
-          body: '<p>Your thread is your complete history of cooperative acts. Every exchange you\u2019ve ever done, in order, linked together so nothing can be changed after the fact.</p><p><span class="highlight">Your balance shows whether you\u2019ve provided more than you\u2019ve received, or the reverse.</span> Both are honest positions.</p><p>A teacher gives for years before receiving. A student receives for years before giving. The thread holds the full arc. Nobody owns your thread except you.</p>' },
+          body: '<p>One person provides a service, a product, or help. The other person receives it. Both agree on a value \u2014 a number that represents what just happened.</p><p><span class="highlight">You declare the value of your own work.</span> Nobody tells you what it\u2019s worth. The other person agrees or you negotiate.</p><p>The act gets recorded on both chains. That\u2019s it. No money changed hands. Real work got recorded.</p>' },
+        { icon: '&#9776;', title: 'Chain, thread, fabric',
+          body: '<p>Your <span class="highlight">chain</span> is your complete history of cooperative acts. Every exchange you\u2019ve ever done, in order, linked together so nothing can be changed after the fact. Your balance shows whether you\u2019ve provided more than you\u2019ve received, or the reverse. Both are honest positions.</p><p>Every time you cooperate with someone, a <span class="highlight">thread</span> is woven between your chain and theirs. The act sits on both, linking you. You might never see that person again, or you might exchange with them a hundred times. Each act is another thread.</p><p>When threads multiply across a community, they form a <span class="highlight">fabric</span> \u2014 the cooperation that was always there, now visible. Nobody owns the fabric. It emerges from the acts.</p><p>A teacher gives for years before receiving. A student receives for years before giving. The chain holds the full arc. The threads show who cooperated. The fabric is what a community is, made legible.</p>' },
         { icon: '&#128241;', title: 'Two phones, one exchange',
-          body: '<p>An exchange can happen several ways. If you are together, you exchange short pairing codes and your phones connect through the network. <span class="highlight">Both phones record the act. Both threads grow by one entry.</span></p><p>If there is no internet, you can use QR codes directly between phones. The record lives on your phone and theirs. Nobody else has a copy unless you choose to share it.</p>' },
+          body: '<p>An exchange can happen several ways. If you are together, you exchange short pairing codes and your phones connect through the network. <span class="highlight">Both phones record the act. Both chains grow by one entry.</span></p><p>If there is no internet, you can use QR codes directly between phones. The record lives on your phone and theirs. Nobody else has a copy unless you choose to share it.</p>' },
         { icon: '&#10024;', title: 'What can you imagine?',
           body: '<p>A neighborhood where every act of cooperation is visible. A community that can see what it\u2019s actually capable of. An elder whose lifetime of giving is finally recorded.</p><p><span class="highlight">Your imagination is the limit.</span> This tool records cooperative acts \u2014 what you build with it is up to you and your community.</p><p>Start by doing what you\u2019re already doing. Just record it this time.</p>' },
       ]
@@ -5868,23 +5868,23 @@ const PAIR_CODE_LENGTH = 4;
     pricing: {
       title: 'Price Discovery',
       slides: [
-        { icon: '&#128269;', title: 'Your thread is your reference',
-          body: '<p>Over time, your thread builds a record of what you\u2019ve charged and what you\u2019ve paid. When negotiating a new exchange, <span class="highlight">you can surface comparable acts from your own history.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your pricing context. The other person can see the pattern without seeing who those acts were with.</p><p>Price discovery emerges naturally from honest history.</p>' },
+        { icon: '&#128269;', title: 'Your chain is your reference',
+          body: '<p>Over time, your chain builds a record of what you\u2019ve provided and what you\u2019ve received. When negotiating a new exchange, <span class="highlight">you can surface comparable acts from your own history.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your pricing context. The other person can see the pattern without seeing who those acts were with.</p><p>Price discovery emerges naturally from honest history.</p>' },
         { icon: '&#9881;', title: 'Negotiation is human',
-          body: '<p>Two people might value the same work differently. That\u2019s not a flaw \u2014 it\u2019s how real exchange works. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>A haircut might be worth 10 in one context and 25 in another. The thread doesn\u2019t judge. It records the cooperative reality between two specific people at a specific moment.</p>' },
-        { icon: '&#128202;', title: 'The thread viewer',
-          body: '<p>When someone shares their thread with you before an exchange, <span class="highlight">you can see the shape of their work</span> \u2014 what categories they work in, how consistently they price, how active they\u2019ve been.</p><p>This is the context that makes negotiation informed rather than blind. You\u2019re not guessing. You\u2019re reading an honest record.</p>' },
+          body: '<p>Two people might value the same work differently. That\u2019s not a flaw \u2014 it\u2019s how real exchange works. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>A haircut might be worth 10 in one context and 25 in another. The chain doesn\u2019t judge. It records the cooperative reality between two specific people at a specific moment.</p>' },
+        { icon: '&#128202;', title: 'The chain viewer',
+          body: '<p>When someone shares their chain with you before an exchange, <span class="highlight">you can see the shape of their work</span> \u2014 what categories they work in, how consistently they price, how active they\u2019ve been.</p><p>This is the context that makes negotiation informed rather than blind. You\u2019re not guessing. You\u2019re reading an honest record.</p>' },
       ]
     },
     exchange: {
       title: 'Exchange & Parity',
       slides: [
         { icon: '&#8644;', title: 'The exchange rate',
-          body: '<p>Every person values their effort on their own scale. Your \u201c10\u201d and someone else\u2019s \u201c10\u201d might represent very different amounts of energy. <span class="highlight">The exchange rate translates between your scale and theirs.</span></p><p>Think of it the way currencies work between countries. A dollar and a euro measure differently. Neither is wrong. The exchange rate makes sure both sides are represented honestly.</p><p>Your rate comes from your thread\u2019s density compared to theirs. As both threads grow, the rate gets more precise.</p>' },
+          body: '<p>Every person values their effort on their own scale. Your \u201c10\u201d and someone else\u2019s \u201c10\u201d might represent very different amounts of energy. <span class="highlight">The exchange rate translates between your scale and theirs.</span></p><p>Think of it the way currencies work between countries. A dollar and a euro measure differently. Neither is wrong. The exchange rate makes sure both sides are represented honestly.</p><p>Your rate comes from your chain\u2019s density compared to theirs. As both chains grow, the rate gets more precise.</p>' },
         { icon: '&#9878;', title: 'How parity works',
-          body: '<p>When two people exchange, the rate between their threads adjusts prices so both sides are honestly represented. <span class="highlight">This happens automatically from the data. Nobody sets the rate.</span></p><p>Over time, your thread accumulates valuation data from everyone you have exchanged with. That accumulated data forms a basket, similar to what economists use to calculate purchasing power parity between countries, except nobody built or governs it.</p><p>Within specific categories of work, the rates are even more precise.</p>' },
-        { icon: '&#128279;', title: 'Trust across threads',
-          body: '<p>You don\u2019t need to know someone to exchange with them. You need to see their thread. <span class="highlight">A long, active, balanced thread is hard to fake and easy to trust.</span></p><p>The protocol doesn\u2019t vouch for anyone. The thread speaks for itself. A person with 500 confirmed acts over two years tells a different story than a person with 3 acts last week.</p><p>Trust is built honestly through cooperation. Fabrication is expensive to sustain.</p>' },
+          body: '<p>When two people exchange, the rate between their chains adjusts prices so both sides are honestly represented. <span class="highlight">This happens automatically from the data. Nobody sets the rate.</span></p><p>Over time, your chain accumulates valuation data from everyone you have exchanged with. That accumulated data forms a basket, similar to what economists use to calculate purchasing power parity between countries, except nobody built or governs it.</p><p>Within specific categories of work, the rates are even more precise.</p>' },
+        { icon: '&#128279;', title: 'Trust across chains',
+          body: '<p>You don\u2019t need to know someone to exchange with them. You need to see their chain. <span class="highlight">A long, active, balanced chain is hard to fake and easy to trust.</span></p><p>The protocol doesn\u2019t vouch for anyone. The chain speaks for itself. A person with 500 confirmed acts over two years tells a different story than a person with 3 acts last week.</p><p>Trust is built honestly through cooperation. Fabrication is expensive to sustain.</p>' },
       ]
     },
     community: {
@@ -5893,7 +5893,7 @@ const PAIR_CODE_LENGTH = 4;
         { icon: '&#127793;', title: 'Planting the first seeds',
           body: '<p>Every network starts with two people doing one honest exchange. <span class="highlight">You don\u2019t need critical mass. You need one real act.</span></p><p>Start with what\u2019s already happening \u2014 a neighbor who watches your kids, a friend who fixes your car, a colleague who covers your shift. Record what was already real.</p><p>The protocol doesn\u2019t create cooperation. It makes existing cooperation visible.</p>' },
         { icon: '&#127760;', title: 'The network grows naturally',
-          body: '<p>When your counterparties start recording their own acts with others, the network spreads without anyone managing it. <span class="highlight">There is no sign-up, no onboarding funnel, no growth team.</span></p><p>Each person\u2019s thread is independent. The connections form when people exchange. The community emerges from the acts themselves, not from a platform.</p>' },
+          body: '<p>When your counterparties start recording their own acts with others, the network spreads without anyone managing it. <span class="highlight">There is no sign-up, no onboarding funnel, no growth team.</span></p><p>Each person\u2019s chain is independent. Threads form when people exchange. As more people cooperate, the threads weave into a fabric \u2014 the community, made visible. The community emerges from the acts themselves, not from a platform.</p>' },
         { icon: '&#127919;', title: 'What communities can see',
           body: '<p>When enough people in a neighborhood are recording cooperative acts, <span class="highlight">the community can see what it\u2019s actually capable of.</span></p><p>How much tutoring happens every week. How many meals get shared. How much repair work circulates. The invisible economy becomes visible \u2014 not to surveil, but to understand and strengthen.</p><p>A community that can see its own cooperation can organize around it.</p>' },
       ]
@@ -5902,9 +5902,9 @@ const PAIR_CODE_LENGTH = 4;
       title: 'Your Phone, Your Server',
       slides: [
         { icon: '&#128241;', title: 'Offline by design',
-          body: '<p>This app works without the internet. Your thread lives on your device. Exchanges happen face-to-face. <span class="highlight">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>' },
+          body: '<p>This app works without the internet. Your chain lives on your device. Exchanges happen face-to-face. <span class="highlight">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>' },
         { icon: '&#128274;', title: 'Your data stays yours',
-          body: '<p>No one can access your thread without your PIN. No company stores a copy. No government has a backdoor. <span class="highlight">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>' },
+          body: '<p>No one can access your chain without your PIN. No company stores a copy. No government has a backdoor. <span class="highlight">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>' },
         { icon: '&#9889;', title: 'Resilience through simplicity',
           body: '<p>The entire application is a single file. It runs on any phone with a browser. <span class="highlight">There is no server to hack, no database to breach, no company to shut down.</span></p><p>If the website disappears tomorrow, every installed copy keeps working. The protocol lives wherever the people are. That\u2019s the point.</p>' },
       ]
@@ -5913,7 +5913,7 @@ const PAIR_CODE_LENGTH = 4;
       title: 'Privacy & Safety',
       slides: [
         { icon: '&#9737;', title: 'You control what others see',
-          body: '<p>When you share your thread for negotiation, <span class="highlight">no counterparty names are ever shown.</span> Only your work patterns, categories, and pricing history.</p><p>The person you\u2019re negotiating with can see the shape of your work without knowing who you worked with. Your competence travels with you. Your connections stay private.</p>' },
+          body: '<p>When you share your chain for negotiation, <span class="highlight">no counterparty names are ever shown.</span> Only your work patterns, categories, and pricing history.</p><p>The person you\u2019re negotiating with can see the shape of your work without knowing who you worked with. Your competence travels with you. Your connections stay private.</p>' },
         { icon: '&#128737;', title: 'Protection in dangerous places',
           body: '<p>If you\u2019re in a situation where revealing your network could be dangerous, <span class="highlight">the protocol protects you by design.</span></p><p>No central registry knows you exist. No list of members can be seized. Your thread is encrypted behind your PIN. To an outside observer, the app is just a file on your phone.</p><p>If you need to disappear, delete your thread. It\u2019s gone. No trace, no record, no recovery.</p>' },
         { icon: '&#128100;', title: 'Identity without identification',
@@ -6374,7 +6374,7 @@ function init() {
           btn.style.padding = '12px 24px';
           btn.style.borderRadius = '8px';
           btn.style.fontSize = '15px';
-          btn.textContent = 'Import an existing thread';
+          btn.textContent = 'Import an existing chain';
         });
       }
     }
@@ -6928,7 +6928,7 @@ function init() {
       // Estimate counterparty diversity from category data
       var catCount = Object.keys(ts.cats || {}).length;
       if (ts.n >= 3 && catCount <= 1) {
-        observations.push({ signal: 'single-cat', text: 'So far, all exchanges fall in one category. This is normal if this is what the person does for their work or daily life. As their thread grows, more variety may appear naturally.' });
+        observations.push({ signal: 'single-cat', text: 'So far, all exchanges fall in one category. This is normal if this is what the person does for their work or daily life. As their chain grows, more variety may appear naturally.' });
       }
       return { state: 'young', observations: observations };
     }
@@ -7030,7 +7030,7 @@ function init() {
         'This is not debt. No one will ever come for this balance. Human beings receive far more than they give for most of their early life, and when we get old, we will again. There are seasons of providing and seasons of receiving.' +
         '</div>' +
         '<div style="font-size:14px; color:var(--text-dim); line-height:1.7;">' +
-        'This number does not stop you from cooperating with anyone. You can provide, you can receive. Your thread continues to grow regardless of where this number sits.' +
+        'This number does not stop you from cooperating with anyone. You can provide, you can receive. Your chain continues to grow regardless of where this number sits.' +
         '</div>';
       document.getElementById('texture-detail-title').textContent = title;
       document.getElementById('texture-detail-body').innerHTML = body;
