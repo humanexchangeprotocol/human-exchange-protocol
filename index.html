@@ -1158,6 +1158,47 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     </div>
   </div>
 
+  <!-- SENSORS -->
+  <div id="setup-sensors" class="step">
+    <div class="guidance">
+      <strong style="font-size:17px;">Help prove you are real</strong>
+    </div>
+    <div class="guidance" style="font-size:14px; line-height:1.6;">
+      During exchanges, your phone captures glimpses of physical reality. Movement, location, device state. These signals are hashed before storage. Raw data never leaves your device.
+    </div>
+    <div class="guidance" style="font-size:14px; line-height:1.6;">
+      Apps you already use collect this data to build a profile of you. Here, it produces a hash that proves you are real without exposing what it measured.
+    </div>
+
+    <div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="flex:1; margin-right:12px;">
+          <div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">Location</div>
+          <div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.5; margin-top:4px;">Proves your chain spans real places over time</div>
+        </div>
+        <div class="switch" id="setup-switch-location" onclick="App.setupToggleLocation()"></div>
+      </div>
+    </div>
+
+    <div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="flex:1; margin-right:12px;">
+          <div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">Motion sensors</div>
+          <div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.5; margin-top:4px;">Proves a real hand holds a real phone</div>
+        </div>
+        <div class="switch" id="setup-switch-motion" onclick="App.setupToggleMotion()"></div>
+      </div>
+    </div>
+
+    <div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:20px;">
+      <div style="font-size:var(--fs-md); color:var(--text); font-weight:500; margin-bottom:6px;">Captured automatically</div>
+      <div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.5;">Battery level, network type, and other device signals are captured during exchanges with no permission needed.</div>
+    </div>
+
+    <button class="btn btn-primary" onclick="App.submitSensors()">Continue</button>
+    <div style="text-align:center; margin-top:12px; font-size:var(--fs-sm); color:var(--text-faint);">You can change these anytime in Settings</div>
+  </div>
+
   <!-- GENERATING -->
   <div id="setup-generating" class="step">
     <p>Generating your identity...</p>

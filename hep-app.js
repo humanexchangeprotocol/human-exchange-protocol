@@ -374,14 +374,12 @@ const PAIR_CODE_LENGTH = 4;
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
     // Skip range exercise (now available in Learn tab as "Find Your Unit")
-    setupStep('generating');
-    generateIdentity(state.pin);
+    setupStep('sensors');
   }
   function skipDeclarations() {
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
-    setupStep('generating');
-    generateIdentity(state.pin);
+    setupStep('sensors');
   }
 
   // --- Range sub-step navigation ---
@@ -549,14 +547,70 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations.valTagsSimple = getValTags('vt-simple');
     state.declarations.valTagsDaily = getValTags('vt-daily');
     state.declarations.valTagsComplex = getValTags('vt-complex');
-    setupStep('generating');
-    generateIdentity(state.pin);
+    setupStep('sensors');
   }
 
   function skipRange() {
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
     // Range stays at 0/empty — pending state
+    setupStep('sensors');
+  }
+
+  // --- Onboarding sensor toggles ---
+  function setupToggleLocation() {
+    var sw = document.getElementById('setup-switch-location');
+    if (state.settings.locationAuto) {
+      state.settings.locationAuto = false;
+      sw.classList.remove('on');
+    } else {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function() { state.settings.locationAuto = true; sw.classList.add('on'); save(); toast('Location enabled'); },
+          function() { state.settings.locationAuto = false; sw.classList.remove('on'); save(); toast('Location denied by browser'); },
+          { timeout: 10000 }
+        );
+      } else {
+        toast('Location not available on this device');
+      }
+    }
+    save();
+  }
+
+  function setupToggleMotion() {
+    var sw = document.getElementById('setup-switch-motion');
+    if (state.settings.sensorMotion) {
+      state.settings.sensorMotion = false;
+      sw.classList.remove('on');
+      save();
+      return;
+    }
+    // iOS requires explicit permission request behind user gesture
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().then(function(result) {
+        if (result === 'granted') {
+          state.settings.sensorMotion = true;
+          state.settings.sensorMotionGranted = true;
+          sw.classList.add('on');
+          save();
+          toast('Motion sensors enabled');
+        } else {
+          toast('Motion permission denied');
+        }
+      }).catch(function() { toast('Motion permission failed'); });
+    } else {
+      // Android/desktop — no permission needed
+      state.settings.sensorMotion = true;
+      state.settings.sensorMotionGranted = true;
+      sw.classList.add('on');
+      save();
+      toast('Motion sensors enabled');
+    }
+  }
+
+  function submitSensors() {
+    // Save name from the name step (safety — may already be saved)
+    state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
     setupStep('generating');
     generateIdentity(state.pin);
   }
@@ -8607,6 +8661,7 @@ function init() {
     init, setupStep, completeSetup: completeSetupWrapped,
     switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
+    setupToggleLocation, setupToggleMotion, submitSensors,
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
