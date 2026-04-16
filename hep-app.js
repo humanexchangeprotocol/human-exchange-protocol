@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.5
+// APPLICATION LAYER v2.39.6
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -5211,14 +5211,12 @@ const PAIR_CODE_LENGTH = 4;
 
   async function toggleMotion() {
     if (state.settings.sensorMotion) {
-      // Turning off -- just update preference (can't revoke browser permission)
       state.settings.sensorMotion = false;
       document.getElementById('switch-motion').classList.remove('on');
       save();
       updateSensorStatus();
       return;
     }
-    // Turning on
     var granted = await requestMotionPermission();
     if (granted) {
       document.getElementById('switch-motion').classList.add('on');
@@ -5227,6 +5225,32 @@ const PAIR_CODE_LENGTH = 4;
       toast('Motion permission denied by browser');
     }
     updateSensorStatus();
+  }
+
+  async function toggleMotionTab() {
+    if (state.settings.sensorMotion) {
+      state.settings.sensorMotion = false;
+      save();
+      renderSettingsTab();
+      return;
+    }
+    var granted = await requestMotionPermission();
+    if (granted) {
+      toast('Motion sensors enabled');
+    } else {
+      toast('Motion permission denied by browser');
+    }
+    renderSettingsTab();
+  }
+
+  function toggleLocationTab() {
+    state.settings.locationAuto = !state.settings.locationAuto;
+    save();
+    if (state.settings.locationAuto) {
+      navigator.geolocation?.getCurrentPosition(function() { toast('Location enabled'); renderSettingsTab(); }, function() { state.settings.locationAuto = false; save(); toast('Location denied'); renderSettingsTab(); });
+    } else {
+      renderSettingsTab();
+    }
   }
 
   function updateSensorStatus() {
@@ -8373,6 +8397,35 @@ function init() {
     html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
     html += '</div></div>';
 
+    // Proof of Human
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Proof of Human</div>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:14px;">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</div>';
+    // Motion toggle
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Motion sensors</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Proves a real hand holds a real phone</div></div>';
+    html += '<div class="switch ' + (state.settings.sensorMotion ? 'on' : '') + '" id="switch-motion-tab" onclick="App.toggleMotionTab()"></div>';
+    html += '</div>';
+    // Location toggle
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Location</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Proves your chain spans real places over time</div></div>';
+    html += '<div class="switch ' + (state.settings.locationAuto ? 'on' : '') + '" id="switch-location-tab" onclick="App.toggleLocationTab()"></div>';
+    html += '</div>';
+    // Passive sensor status
+    var statusParts = [];
+    if (_sensor.battery) statusParts.push('Battery');
+    if (_sensor.network) statusParts.push('Network');
+    if (_sensor.light !== null) statusParts.push('Light');
+    if (_sensor.pressure !== null) statusParts.push('Pressure');
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); padding-top:10px; line-height:1.5;">';
+    if (statusParts.length) {
+      html += 'Captured automatically: ' + statusParts.join(', ');
+    } else {
+      html += 'Passive sensors will activate when available';
+    }
+    html += '</div>';
+    html += '</div>';
+
     // Network
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
@@ -8570,7 +8623,7 @@ function init() {
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
-    openSettings, togglePrivacy, toggleLocation, toggleMotion,
+    openSettings, togglePrivacy, toggleLocation, toggleMotion, toggleMotionTab, toggleLocationTab,
     testWitnessConnection,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
