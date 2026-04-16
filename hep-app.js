@@ -876,6 +876,13 @@ const PAIR_CODE_LENGTH = 4;
       if (ratioText) ratioText.textContent = '\u2014';
       if (ratioBar) ratioBar.innerHTML = '';
     }
+
+    // Standing content (identity panel, POH verdict, categories, etc.)
+    // was moved from the removed Standing tab into this wallet modal
+    // in v2.58.0. Render it into the wallet-standing-content div
+    // appended to the wallet body.
+    try { renderStandingTab(); } catch(e) { console.log('[wallet] Standing render failed:', e.message); }
+
     showModal('wallet');
   }
 
@@ -8207,7 +8214,10 @@ function init() {
   }
 
   // === TAB NAVIGATION ===
-  var activeTab = 'standing';
+  // The Standing tab was removed in v2.58.0 — its content moved into the
+  // wallet modal (top-right icon), freeing the primary nav slot for Share.
+  // Default here must match the tab marked active in index.html's tab bar.
+  var activeTab = 'share';
 
   function switchTab(tab) {
     activeTab = tab;
@@ -8219,10 +8229,49 @@ function init() {
     document.querySelectorAll('.tab-content').forEach(function(el) {
       el.classList.toggle('active', el.id === 'tab-' + tab);
     });
-    if (tab === 'standing') renderStandingTab();
+    if (tab === 'share') renderShareTab();
     else if (tab === 'history') renderHistoryTab();
     else if (tab === 'learn') renderLearnTab();
     else if (tab === 'settings') renderSettingsTab();
+  }
+
+  // --- Share tab (replaces the old Standing tab in the bottom bar) ---
+  // Standing content moved into the wallet modal; the Share surface took
+  // over the primary tab slot. Renders QR code, copy link, and the intro
+  // link (referral flow). Same content as the legacy share modal but
+  // inline in the tab instead of overlaid.
+  function renderShareTab() {
+    var el = document.getElementById('tab-share-content');
+    if (!el) return;
+    var baseUrl = getAppBase();
+    var refUrl = baseUrl + '?ref=' + state.fingerprint;
+
+    var html = '';
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Share the protocol</div>';
+    html += '<p style="font-size:var(--fs-md); color:var(--text-dim); margin:0 0 18px; line-height:1.5;">Share the Human Exchange Protocol with someone. They\'ll be able to install it on their phone and get started.</p>';
+    html += '<div class="share-url" id="share-tab-url" style="margin-bottom:14px;">' + esc(baseUrl) + '</div>';
+    html += '<div class="qr-container" style="display:flex; justify-content:center; margin-bottom:16px;"><canvas id="share-tab-qr"></canvas></div>';
+    html += '<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" onclick="App.copyShareLink()">Copy link</button>';
+    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.shareViaSystem()">Share via system</button>';
+    html += '</div>';
+
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Introduce with a first exchange</div>';
+    html += '<p style="font-size:var(--fs-md); color:var(--text-dim); margin:0 0 16px; line-height:1.5;">Want to introduce someone with a guided first exchange? Send the link below instead — it includes your identity so they can practice with you.</p>';
+    html += '<div class="share-url" style="margin-bottom:14px;">' + esc(refUrl) + '</div>';
+    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.copyShareLinkRef()">Copy introduction link</button>';
+    html += '</div>';
+
+    el.innerHTML = html;
+
+    // Render QR asynchronously so the tab switch doesn't block
+    try {
+      var canvas = document.getElementById('share-tab-qr');
+      if (canvas) QR.generate(baseUrl, canvas, 240);
+    } catch(e) {
+      console.log('[share tab] QR render failed:', e.message);
+    }
   }
 
   // --- Device capabilities for POH rollup ---
@@ -9486,8 +9535,13 @@ function init() {
     return h;
   }
 
+  // renderStandingTab — now writes into the wallet modal, not a tab.
+  // In v2.58.0 the Standing tab was removed from the bottom nav and its
+  // content moved into the wallet modal body (opened via the wallet icon
+  // at the top of the device). The function name is kept for continuity
+  // with callers, but it now targets 'wallet-standing-content'.
   function renderStandingTab() {
-    var el = document.getElementById('tab-standing-content');
+    var el = document.getElementById('wallet-standing-content');
     if (!el) return;
     var ex = state.chain.filter(HCP.isAct);
     var balance = HCP.walletBalance(state.chain);

@@ -1260,15 +1260,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <button class="top-icon-btn" onclick="App.openWallet()" aria-label="Wallet">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" fill="currentColor"/><path d="M2 10h20"/><path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg>
       </button>
-      <button class="top-icon-btn" onclick="App.shareApp()" aria-label="Share">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-      </button>
     </div>
   </div>
 
-  <!-- TAB: Standing -->
-  <div class="tab-content active" id="tab-standing">
-    <div class="tab-content-inner" id="tab-standing-content"></div>
+  <!-- TAB: Share (was Standing) -->
+  <div class="tab-content active" id="tab-share">
+    <div class="tab-content-inner" id="tab-share-content"></div>
   </div>
 
   <!-- TAB: History -->
@@ -1298,9 +1295,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
   <!-- Tab bar -->
   <div class="tab-bar" id="main-tab-bar">
-    <div class="tab-bar-item active" onclick="App.switchTab('standing')" data-tab="standing">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      <span class="tab-label">Standing</span>
+    <div class="tab-bar-item active" onclick="App.switchTab('share')" data-tab="share">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      <span class="tab-label">Share</span>
     </div>
     <div class="tab-bar-item" onclick="App.switchTab('history')" data-tab="history">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1366,6 +1363,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       </div>
 
       <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared thread data.</p>
+
+      <!-- Standing content moved here from the (now-removed) Standing tab.
+           Renders identity panel, POH verdict, categories, stats, and
+           related surfaces. renderStandingTab() writes into this div. -->
+      <div id="wallet-standing-content" style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border);"></div>
     </div>
   </div>
 </div>
