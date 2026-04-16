@@ -6786,56 +6786,23 @@ function init() {
     html += '<div style="height:1px; background:var(--border); margin:4px 0 12px;"></div>';
     html += '<div style="font-size:12px; color:var(--text-faint); text-align:center; margin-bottom:10px;">More about this person</div>';
 
-    // Chain Health tile (collapsed)
-    html += '<div id="ex-review-health" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
-    html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-health-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-    html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Chain Health</span>';
-    html += '<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:' + healthBg + '; color:' + healthColor + ';">' + healthBadge + '</span>';
-    html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>';
-    html += '</button>';
-    html += '<div id="ex-health-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px;">';
-    // Stats grid
-    html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">';
-    html += '<div style="background:var(--green-light); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--green);">' + g + '</div><div style="font-size:11px; color:var(--text-dim);">Provided</div></div>';
-    html += '<div style="background:var(--accent-light); border-radius:6px; padding:8px 10px; text-align:center;"><div style="font-size:18px; font-weight:700; color:var(--accent);">' + r + '</div><div style="font-size:11px; color:var(--text-dim);">Received</div></div>';
-    html += '</div>';
-    html += '<div style="font-size:13px;">';
-    html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--text-dim);">Exchanges</span><span style="font-weight:600; color:var(--text);">' + n + '</span></div>';
-    html += '<div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--text-dim);">People</span><span style="font-weight:600; color:var(--text);">' + people + '</span></div>';
-    html += '</div>';
-    // Observations
-    if (cl.observations && cl.observations.length > 0) {
-      html += '<div style="margin-top:8px; padding:8px 10px; background:rgba(0,0,0,0.02); border-radius:6px; font-size:12px; color:var(--text-dim); line-height:1.5;">';
-      cl.observations.forEach(function(o) { html += '<div style="margin-bottom:4px;">' + esc(o.text).substring(0, 120) + '</div>'; });
-      html += '</div>';
+    // Counterparty context block — new registry-backed surfaces that
+    // REPLACE the legacy Chain Health + Proof of Human tiles that used
+    // to live here (ad-hoc exClassifyChain + exIsEmulator logic,
+    // predating the POH registry). Chain shape card uses uplifting
+    // framing (shape not score). POH card uses the full 17-source
+    // registry, rendering the counterparty's own broadcast pohVerdict
+    // on v2.47.0+ senders and falling back to an integrity-derived
+    // verdict for older senders. Both cards render through the same
+    // helper used on the session-based flow's proposal review, so
+    // UX is consistent across exchange paths.
+    try {
+      if (ts) {
+        html += renderCounterpartyContextBlock(ts);
+      }
+    } catch(cpe) {
+      console.log('[ex-flow] Counterparty context render failed:', cpe.message);
     }
-    html += '<button style="width:100%; margin-top:8px; padding:9px; background:none; border:1px solid var(--border); border-radius:6px; font-size:13px; color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.showTextureDetail(\'full\')">View full chain analysis</button>';
-    html += '</div></div>';
-
-    // Proof of Human tile (collapsed)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;">';
-    html += '<button style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:none; border:none; cursor:pointer; font-family:var(--font);" onclick="var d=document.getElementById(\'ex-poh-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-    html += '<span style="font-size:14px; font-weight:600; color:var(--text);">Proof of Human</span>';
-    html += '<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:12px; font-weight:600; padding:3px 10px; border-radius:12px; background:' + pohBg + '; color:' + pohColor + ';">' + pohLabel + '</span>';
-    html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>';
-    html += '</button>';
-    html += '<div id="ex-poh-detail" style="display:none; border-top:1px solid var(--border); padding:12px 14px; font-size:13px;">';
-    var signals = [
-      ['Device', dev.touchPoints > 0 ? 'Mobile phone' : 'Unknown', dev.touchPoints > 0],
-      ['Sensors', dev.recordsWithSensor ? (Math.round(dev.recordsWithSensor / Math.max(dev.totalRecords, 1) * 100) + '% present') : 'Unknown', hasSensors],
-      ['GPS', dev.recordsWithGeo ? 'Present' : 'None', hasGeo],
-      ['Server', 'Recognized', true],
-    ];
-    signals.forEach(function(s) {
-      html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">';
-      html += '<span style="color:var(--text-dim);">' + s[0] + '</span>';
-      html += '<span style="color:' + (s[2] ? 'var(--green)' : '#B45309') + '; font-weight:500;">' + s[1] + '</span>';
-      html += '</div>';
-    });
-    if (!pohOk) {
-      html += '<div style="margin-top:8px; padding:8px 10px; background:rgba(204,68,68,0.06); border-radius:6px; font-size:12px; color:var(--text-dim); line-height:1.5;">Device signals suggest this may not be a typical phone. Are you standing with a real person?</div>';
-    }
-    html += '</div></div>';
 
     // Render into the verify step container (replacing the SAS-only view)
     var verifyStep = document.getElementById('ex-step-verify');
@@ -8144,6 +8111,35 @@ function init() {
     }
 
     html += '</div>'; // end proposal card
+
+    // Counterparty context block — chain shape + POH verdict, rendered
+    // again on the proposal review surface so the decision has the full
+    // context present at the moment of choosing. First shown after SAS
+    // verification (exConfirmSAS), shown again here for continuity.
+    try {
+      if (providerSnap) {
+        html += renderCounterpartyContextBlock(providerSnap);
+      }
+    } catch(cpe) {
+      console.log('[ex-flow] Counterparty context render failed on proposal:', cpe.message);
+    }
+
+    // Pricing context time-scatter chart — category-locked, shows my +
+    // their + shared history over time with today's proposed value
+    // pinned. Complements (does not replace) the existing service-
+    // description range bar above, which is service-granular rather
+    // than category-level. Both live together for now.
+    try {
+      if (providerSnap && sessionPartner) {
+        html += renderPricingContextChart(
+          providerSnap,
+          p,
+          sessionPartner.fingerprint
+        );
+      }
+    } catch(pce) {
+      console.log('[ex-flow] Pricing context render failed:', pce.message);
+    }
 
     // Confirm / discuss
     html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%; margin-top:16px; margin-bottom:8px;" onclick="App.sessionConfirm()">Confirm exchange</button>';
