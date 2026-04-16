@@ -8156,6 +8156,41 @@ function init() {
     else if (tab === 'settings') renderSettingsTab();
   }
 
+  // --- Device capabilities for POH rollup ---
+  // Reads live _sensor state and browser feature detection to tell the
+  // registry what hardware this device has and what the user has enabled.
+  function pohDeviceCapabilities() {
+    var cap = {
+      // Geolocation
+      hasGeolocation: ('geolocation' in navigator),
+      locationEnabled: !!state.settings.locationAuto,
+      liveGeo: _sensor.geo || null,
+      // Motion
+      hasMotion: ('DeviceMotionEvent' in window) || ('DeviceOrientationEvent' in window),
+      motionEnabled: !!state.settings.sensorMotion,
+      liveAccel: _sensor.accel || null,
+      liveGyro: _sensor.gyro || null,
+      // Battery
+      hasBattery: ('getBattery' in navigator) && !!_sensor.battery,
+      liveBattery: _sensor.battery || null,
+      // Network
+      hasNetworkInfo: !!(navigator.connection || navigator.mozConnection || navigator.webkitConnection),
+      liveNetwork: _sensor.network || null,
+      // Ambient light
+      hasAmbientLight: ('AmbientLightSensor' in window),
+      liveLight: (typeof _sensor.light === 'number') ? _sensor.light : null,
+      // Barometric pressure
+      hasPressure: ('PressureSensor' in window) || ('Barometer' in window),
+      livePressure: (typeof _sensor.pressure === 'number') ? _sensor.pressure : null,
+      // WebGL / canvas
+      hasWebGL: (function() { try { var c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch(e) { return false; } })(),
+      liveWebGL: getWebGLRenderer(),
+      hasCanvas: (function() { try { return !!document.createElement('canvas').getContext('2d'); } catch(e) { return false; } })(),
+      liveCanvas: null // canvas hash computed at capture time only
+    };
+    return cap;
+  }
+
   // --- Proof of Human verdict card renderer ---
   // Context shape: { chain, exchange (optional) }
   // Used on Standing (aggregate) and chain viewer (per-exchange, later).
@@ -8177,7 +8212,7 @@ function init() {
     var h = '';
     h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
 
-    // Level 1 — verdict header (always visible), tappable to toggle signal list
+    // Level 1 — verdict header (always visible), tappable to toggle list
     h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
     h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
@@ -8185,26 +8220,74 @@ function init() {
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
 
-    // Count summary
-    var countLine = v.countStrong + ' of ' + v.countExpected + ' signals strong';
-    if (v.countBonus > 0) countLine += ' · +' + v.countBonus + ' bonus';
-    if (v.countAlarming > 0) countLine += ' · ' + v.countAlarming + ' alarming';
-    else if (v.countWorthNoting > 0) countLine += ' · ' + v.countWorthNoting + ' worth noting';
-    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + countLine + '</div>';
+    // Main data-sources summary: "X of Y available data sources contributing"
+    var mainLine = 'Drawing from ' + v.totalContributing + ' of ' + v.totalAvailable + ' available data source' + (v.totalAvailable === 1 ? '' : 's');
+    if (v.countBonus > 0) mainLine += ' · +' + v.countBonus + ' bonus';
+    if (v.countAlarming > 0) mainLine += ' · ' + v.countAlarming + ' alarming';
+    else if (v.countWorthNoting > 0) mainLine += ' · ' + v.countWorthNoting + ' worth noting';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
     h += '<span class="poh-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
     h += '</div></div>';
 
-    // Level 2 — signal list (hidden by default)
+    // Per-origin breakdown strip (compact, just below header)
+    h += '<div style="display:flex; gap:8px; margin-top:12px; font-size:var(--fs-xs);">';
+    var bo = v.byOrigin;
+    if (bo.device.expected > 0) {
+      h += '<div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:8px 10px; text-align:center;">';
+      h += '<div style="color:var(--text-faint); letter-spacing:0.5px; margin-bottom:2px;">' + renderOriginIcon('device') + ' Device</div>';
+      h += '<div style="color:var(--text); font-weight:600;">' + bo.device.contributing + ' / ' + bo.device.expected + '</div>';
+      h += '</div>';
+    }
+    if (bo.external.expected > 0) {
+      h += '<div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:8px 10px; text-align:center;">';
+      h += '<div style="color:var(--text-faint); letter-spacing:0.5px; margin-bottom:2px;">' + renderOriginIcon('external') + ' External</div>';
+      h += '<div style="color:var(--text); font-weight:600;">' + bo.external.contributing + ' / ' + bo.external.expected + '</div>';
+      h += '</div>';
+    }
+    if (bo.chain.expected > 0) {
+      h += '<div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:8px 10px; text-align:center;">';
+      h += '<div style="color:var(--text-faint); letter-spacing:0.5px; margin-bottom:2px;">' + renderOriginIcon('chain') + ' Chain</div>';
+      h += '<div style="color:var(--text); font-weight:600;">' + bo.chain.contributing + ' / ' + bo.chain.expected + '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+
+    // Level 2 — full list (hidden by default)
     h += '<div class="poh-signals" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:6px;">';
-    for (var i = 0; i < v.signals.length; i++) {
-      var s = v.signals[i];
-      h += renderPOHSignalRow(s, i);
+
+    // Origin explainer at top of expanded section
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); line-height:1.5; padding:8px 0 4px; border-bottom:1px solid var(--border); margin-bottom:4px;">';
+    h += renderOriginIcon('device') + ' <strong style="color:var(--text-dim);">Device</strong> — hardware on your phone contributes to each record. ';
+    h += renderOriginIcon('external') + ' <strong style="color:var(--text-dim);">External</strong> — data that reaches you from others or from the witness. ';
+    h += renderOriginIcon('chain') + ' <strong style="color:var(--text-dim);">Chain</strong> — patterns we observe as your chain grows over time.';
+    h += '</div>';
+
+    // Sort signals: by origin group (device → external → chain), then by tier within each group
+    var sorted = v.signals.slice().sort(function(a, b) {
+      var originOrder = { device: 0, external: 1, chain: 2 };
+      var ao = originOrder[a.origin] !== undefined ? originOrder[a.origin] : 9;
+      var bo2 = originOrder[b.origin] !== undefined ? originOrder[b.origin] : 9;
+      if (ao !== bo2) return ao - bo2;
+      // Within origin, critical first
+      return (b.tier || 0) - (a.tier || 0);
+    });
+
+    for (var i = 0; i < sorted.length; i++) {
+      h += renderPOHSignalRow(sorted[i], i);
     }
     h += '</div>';
 
     h += '</div>';
     return h;
+  }
+
+  // Small icon + color for each origin type
+  function renderOriginIcon(origin) {
+    if (origin === 'device') return '<span style="display:inline-block; width:14px; text-align:center; color:var(--green); font-weight:600;">&#9670;</span>'; // diamond
+    if (origin === 'external') return '<span style="display:inline-block; width:14px; text-align:center; color:#B45309; font-weight:600;">&#9671;</span>'; // hollow diamond
+    if (origin === 'chain') return '<span style="display:inline-block; width:14px; text-align:center; color:var(--accent); font-weight:600;">&#9679;</span>'; // dot
+    return '<span style="display:inline-block; width:14px;">&nbsp;</span>';
   }
 
   // One row in the signal list, expandable to show Level 3 details.
@@ -8225,15 +8308,29 @@ function init() {
       badge = '<span style="font-size:10px; font-weight:500; color:var(--text-faint); background:var(--bg-input); padding:2px 6px; border-radius:8px; margin-left:6px; letter-spacing:0.3px;">N/A FOR DEVICE</span>';
     }
 
+    // Inline enable affordance — show for device-origin sources that are
+    // expected, hardware-available, but user hasn't enabled
+    var enableCtrl = '';
+    if (s.origin === 'device' && s.expected && s.raw && s.raw.hardwareAvailable && s.raw.enabled === false) {
+      // Only wire toggles for signals we actually have handlers for
+      if (s.id === 'locationSensor') {
+        enableCtrl = '<div class="switch" onclick="event.stopPropagation(); App.toggleLocationTab()"></div>';
+      } else if (s.id === 'motionSensor') {
+        enableCtrl = '<div class="switch" onclick="event.stopPropagation(); App.toggleMotionTab()"></div>';
+      }
+    }
+
     var h = '';
     h += '<div class="poh-signal-row" data-idx="' + idx + '">';
     // Row header (tap to expand Level 3)
     h += '<div style="display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer;" onclick="App.togglePOHSignalDetail(this)">';
     h += '<div style="width:10px; height:10px; border-radius:50%; background:' + dotColor + '; flex-shrink:0;"></div>';
+    h += '<div style="flex-shrink:0;">' + renderOriginIcon(s.origin) + '</div>';
     h += '<div style="flex:1; min-width:0;">';
     h += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">' + esc(s.humanName) + badge + '</div>';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary) + '</div>';
     h += '</div>';
+    if (enableCtrl) h += '<div style="flex-shrink:0; margin-right:4px;">' + enableCtrl + '</div>';
     h += '<span class="poh-sig-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
     h += '</div>';
 
@@ -8299,8 +8396,51 @@ function init() {
   // "What we see here" formatter — pulls numbers/hashes from raw signal data
   function renderPOHSignalData(s) {
     if (!s.raw) {
-      if (!s.expected) return 'This signal is not expected on your device class. Not applicable.';
-      return 'No data captured for this signal yet.';
+      if (!s.expected) return 'This data source is not expected on your device. Not applicable.';
+      return 'No data captured for this source yet.';
+    }
+    // Device-origin: common pattern — hardware availability + enabled state + live reading
+    if (s.origin === 'device') {
+      var h = '';
+      h += '<div><strong>Hardware available:</strong> ' + (s.raw.hardwareAvailable ? 'yes' : 'no') + '</div>';
+      if (typeof s.raw.enabled === 'boolean') {
+        h += '<div style="margin-top:4px;"><strong>Enabled:</strong> ' + (s.raw.enabled ? 'yes' : 'no') + '</div>';
+      }
+      // Per-sensor live reading formats
+      if (s.id === 'locationSensor' && s.raw.liveGeo) {
+        var g = s.raw.liveGeo;
+        h += '<div style="margin-top:4px;"><strong>Last reading:</strong> ' + (g.lat !== undefined ? g.lat.toFixed(3) + ', ' + g.lng.toFixed(3) : '(captured)') + '</div>';
+      }
+      if (s.id === 'locationSensor' && typeof s.raw.contributed === 'number' && s.raw.total > 0) {
+        var pct = Math.round((s.raw.contributed / s.raw.total) * 100);
+        h += '<div style="margin-top:4px;"><strong>Attached to records:</strong> ' + s.raw.contributed + ' of ' + s.raw.total + ' (' + pct + '%)</div>';
+      }
+      if (s.id === 'motionSensor') {
+        h += '<div style="margin-top:4px;"><strong>Accelerometer live:</strong> ' + (s.raw.accelLive ? 'yes' : 'no') + '</div>';
+        h += '<div style="margin-top:4px;"><strong>Gyroscope live:</strong> ' + (s.raw.gyroLive ? 'yes' : 'no') + '</div>';
+      }
+      if (s.id === 'batterySensor' && s.raw.liveReading) {
+        var pct2 = Math.round((s.raw.liveReading.level || 0) * 100);
+        h += '<div style="margin-top:4px;"><strong>Current level:</strong> ' + pct2 + '%</div>';
+        h += '<div style="margin-top:4px;"><strong>Charging:</strong> ' + (s.raw.liveReading.charging ? 'yes' : 'no') + '</div>';
+      }
+      if (s.id === 'networkSensor' && s.raw.liveReading) {
+        var n = s.raw.liveReading;
+        if (n.effectiveType) h += '<div style="margin-top:4px;"><strong>Effective type:</strong> ' + esc(n.effectiveType) + '</div>';
+        if (n.type) h += '<div style="margin-top:4px;"><strong>Type:</strong> ' + esc(n.type) + '</div>';
+        if (typeof n.downlink === 'number') h += '<div style="margin-top:4px;"><strong>Downlink:</strong> ' + n.downlink + ' Mbps</div>';
+        if (typeof n.rtt === 'number') h += '<div style="margin-top:4px;"><strong>Round-trip:</strong> ' + n.rtt + ' ms</div>';
+      }
+      if (s.id === 'ambientLightSensor' && typeof s.raw.liveReading === 'number') {
+        h += '<div style="margin-top:4px;"><strong>Current reading:</strong> ' + s.raw.liveReading + ' lux</div>';
+      }
+      if (s.id === 'pressureSensor' && typeof s.raw.liveReading === 'number') {
+        h += '<div style="margin-top:4px;"><strong>Current pressure:</strong> ' + s.raw.liveReading + ' hPa</div>';
+      }
+      if (s.id === 'webglRenderer' && s.raw.liveReading) {
+        h += '<div style="margin-top:4px;"><strong>Renderer:</strong> ' + esc(s.raw.liveReading) + '</div>';
+      }
+      return h;
     }
     // Clock agreement: aggregated skew across exchanges
     if (s.id === 'clockSkew' && typeof s.raw.meanAbsMs === 'number') {
@@ -8399,7 +8539,7 @@ function init() {
   function openPOHTechnical(signalId) {
     var sig = POH.SIGNALS[signalId];
     if (!sig) return;
-    var ctx = { chain: state.chain };
+    var ctx = { chain: state.chain, deviceCapabilities: pohDeviceCapabilities() };
     var v = POH.rollup(ctx);
     var s = v.signals.find(function(x) { return x.id === signalId; });
 
@@ -8571,37 +8711,11 @@ function init() {
     html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
     html += '</div></div>';
 
-    // Chain health nudges — only show when POH signals are off (auto-hides when all on)
-    var offSensors = [];
-    if (!state.settings.locationAuto) offSensors.push('location');
-    if (!state.settings.sensorMotion) offSensors.push('motion');
-    if (offSensors.length > 0) {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Strengthen your chain</div>';
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.5; margin-bottom:6px;">Enable more proof-of-human signals. Each one is hashed on your device before storage.</div>';
-      if (offSensors.indexOf('location') !== -1) {
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 10px; border-top:1px solid var(--border); margin-top:10px;">';
-        html += '<div style="flex:1; margin-right:12px;">';
-        html += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">Enable location</div>';
-        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.4; margin-top:2px;">Proves your chain spans real places over time</div>';
-        html += '</div>';
-        html += '<div class="switch" onclick="App.toggleLocationTab()"></div>';
-        html += '</div>';
-      }
-      if (offSensors.indexOf('motion') !== -1) {
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 10px; border-top:1px solid var(--border);">';
-        html += '<div style="flex:1; margin-right:12px;">';
-        html += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">Enable motion sensors</div>';
-        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); line-height:1.4; margin-top:2px;">Proves a real hand holds a real phone</div>';
-        html += '</div>';
-        html += '<div class="switch" onclick="App.toggleMotionTab()"></div>';
-        html += '</div>';
-      }
-      html += '</div>';
-    }
-
     // Proof of Human verdict card (aggregate for this chain)
-    html += renderPOHVerdict({ chain: state.chain });
+    // Absorbs what used to be a separate "Strengthen your chain" nudge card —
+    // device-origin rows now carry inline enable toggles when the source
+    // is available but not enabled.
+    html += renderPOHVerdict({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() });
 
     // Participation card (no position/balance shown - person can check via wallet)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';

@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.45.0';
+const APP_VERSION='2.46.0';
 const VERSION_CHECK_URL='https://humanexchangeprotocol.github.io/human-exchange-protocol/version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -525,22 +525,31 @@ function deviceClass() {
 // enrichment  = signal adds texture, minor positive contribution
 const WEIGHT = { CRITICAL: 3, SUPPORTING: 2, ENRICHMENT: 1 };
 
+// --- Data source origins ---
+// Every data source has an origin — where the data comes from.
+// This replaces the signal-vs-sensor taxonomy with a single primitive: data.
+//   device   — from the device's own hardware (barometer, GPS, battery)
+//   external — from elsewhere (witness server, counterparty-shared data)
+//   chain    — observed patterns in the chain over time
+const ORIGIN = { DEVICE: 'device', EXTERNAL: 'external', CHAIN: 'chain' };
+
 // --- Status codes for interpret() return ---
 // presence:  'present' | 'absent'
-// expected:  true | false              (given current device class)
+// expected:  true | false              (given current device + user choice)
 // behavior:  'normal' | 'worth-noting' | 'alarming' | 'n/a'
-// contribution: number (positive = strengthens chain, negative = weakens,
-//                       zero = neutral, bonus = device went above baseline)
+// contribution: number (positive = strengthens chain, negative = weakens)
 
-// --- Signal registry ---
-// Each entry is self-contained. To add a new signal: add an entry.
-// To retire: remove an entry. No other code changes required.
+// --- Data source registry ---
+// Each entry is self-contained. Entries describe a data source — a place
+// the chain draws information from. The UI treats all entries uniformly.
+// To add a new source: add an entry. To retire: remove. No other changes.
 const SIGNALS = {
 
   clockSkew: {
     id: 'clockSkew',
     humanName: 'Clock agreement',
     tier: WEIGHT.CRITICAL,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android', 'pc'], // universal
     // Reads clockSkew from every exchange record in the chain.
     // Each record stores (this device's time) minus (counterparty's time)
@@ -621,8 +630,9 @@ const SIGNALS = {
 
   witnessRTT: {
     id: 'witnessRTT',
-    humanName: 'Witness response time',
+    humanName: 'Witness server response',
     tier: WEIGHT.SUPPORTING,
+    origin: ORIGIN.EXTERNAL,
     expectedOn: ['ios', 'android', 'pc'],
     // Reads rtt_ms from witnessAttestation on records that were attested.
     // Witness attestation is optional — offline-first design means absence
@@ -695,6 +705,7 @@ const SIGNALS = {
     id: 'sensorHashMatch',
     humanName: 'Device consistency',
     tier: WEIGHT.CRITICAL,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android', 'pc'],
     // Reads sensorHash from every record and counts distinct values.
     // A chain from one device produces a small number of distinct hashes
@@ -776,6 +787,7 @@ const SIGNALS = {
     id: 'counterpartyGeo',
     humanName: 'Counterparty locations',
     tier: WEIGHT.SUPPORTING,
+    origin: ORIGIN.EXTERNAL,
     expectedOn: ['ios', 'android', 'pc'], // measures others' devices, not yours
     // Counts exchanges where the counterparty shared a location.
     // This is about the counterparty's contribution to the exchange,
@@ -843,6 +855,7 @@ const SIGNALS = {
     id: 'connectivity',
     humanName: 'Online/offline mix',
     tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android', 'pc'],
     // Counts how many exchanges happened while online vs offline.
     // Real phones go through both states. All-online or all-offline
@@ -913,6 +926,7 @@ const SIGNALS = {
     id: 'exchangePath',
     humanName: 'Exchange method mix',
     tier: WEIGHT.SUPPORTING,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android', 'pc'],
     // Reads exchangePath from every exchange record and counts the mix.
     // Values: 'session' (live co-present), 'qr' (scan code, usually in-person),
@@ -994,8 +1008,9 @@ const SIGNALS = {
 
   batteryDetails: {
     id: 'batteryDetails',
-    humanName: 'Battery signature',
+    humanName: 'Battery variation pattern',
     tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android'], // Battery Status API limited/absent on PC
     // Reads batteryState from pohSnapshot on records that captured it.
     // Real devices show realistic battery variation over time —
@@ -1075,6 +1090,7 @@ const SIGNALS = {
     id: 'merkleRoot',
     humanName: 'Chain integrity',
     tier: WEIGHT.CRITICAL,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android', 'pc'],
     // Counts records carrying a chainMerkleRoot field. Merkle roots on
     // each record commit to the entire chain state at that point.
@@ -1139,6 +1155,7 @@ const SIGNALS = {
     id: 'entropyChain',
     humanName: 'Entropy continuity',
     tier: WEIGHT.SUPPORTING,
+    origin: ORIGIN.CHAIN,
     expectedOn: ['ios', 'android', 'pc'],
     // Counts records carrying an entropyPrev field, which links each
     // record to unpredictable randomness from the previous one.
@@ -1196,6 +1213,287 @@ const SIGNALS = {
       if (!raw) return null;
       return { type: 'range', value: Math.round(raw.ratio * 100), unit: '% linked', normalRange: [99, 100], observedRange: [0, 100] };
     }
+  },
+
+  // ==================================================================
+  // DEVICE-ORIGIN DATA SOURCES
+  // Each entry describes one piece of hardware on the device.
+  // The capture function reads ctx.deviceCapabilities (passed from the app)
+  // plus the chain to determine availability, enabled state, and
+  // how many records this source has contributed to.
+  // ==================================================================
+
+  locationSensor: {
+    id: 'locationSensor',
+    humanName: 'Location',
+    tier: WEIGHT.SUPPORTING,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['ios', 'android', 'pc'], // browser geolocation works everywhere, accuracy varies
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      var hardwareAvailable = cap.hasGeolocation !== false; // default true unless explicitly false
+      var enabled = !!cap.locationEnabled;
+      // Count records carrying geo
+      var contributed = 0, total = 0;
+      if (ctx.chain) {
+        for (var i = 0; i < ctx.chain.length; i++) {
+          var r = ctx.chain[i];
+          if (r.type === 'genesis') continue;
+          total++;
+          if (r.geo) contributed++;
+        }
+      }
+      return {
+        hardwareAvailable: hardwareAvailable,
+        enabled: enabled,
+        liveReading: cap.liveGeo || null,
+        contributed: contributed,
+        total: total
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: true, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Location is not available on this device' };
+      }
+      if (!raw.enabled) {
+        return { presence: 'absent', expected: true, behavior: 'worth-noting', contribution: 0, summary: 'Available but not enabled — turn on to strengthen chain' };
+      }
+      if (raw.total === 0) {
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Enabled — will contribute to your first exchange' };
+      }
+      if (raw.contributed > 0) {
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.SUPPORTING, summary: 'Location attached to ' + raw.contributed + ' of ' + raw.total + ' records' };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: Math.floor(WEIGHT.SUPPORTING / 2), summary: 'Enabled but not yet captured on any records' };
+    },
+    copy: {
+      whatItMeans: 'Your phone can figure out roughly where it is, using GPS, wifi, and cellular signals. When you enable location, a coarse approximation gets attached to each exchange you record. This becomes part of the permanent evidence that your chain happened in real places.',
+      whyItMatters: 'A chain made by someone moving through real cities, towns, and neighborhoods leaves a geographic pattern that is hard to fabricate. An attacker simulating many accounts from one basement cannot produce a convincing spread of locations across time. Location data is not required to cooperate, but chains that carry it are stronger evidence of real movement through a real world.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  motionSensor: {
+    id: 'motionSensor',
+    humanName: 'Motion sensors',
+    tier: WEIGHT.SUPPORTING,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['ios', 'android'], // desktops rarely have accelerometer/gyroscope
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasMotion,
+        enabled: !!cap.motionEnabled,
+        accelLive: cap.liveAccel || null,
+        gyroLive: cap.liveGyro || null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Motion sensors are not available on this device' };
+      }
+      if (!raw.enabled) {
+        return { presence: 'absent', expected: true, behavior: 'worth-noting', contribution: 0, summary: 'Available but not enabled — turn on to prove a real hand holds your phone' };
+      }
+      var hasLiveAccel = !!raw.accelLive;
+      var hasLiveGyro = !!raw.gyroLive;
+      if (hasLiveAccel || hasLiveGyro) {
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.SUPPORTING, summary: 'Active — accelerometer' + (hasLiveAccel ? ' ✓' : ' –') + ' / gyroscope' + (hasLiveGyro ? ' ✓' : ' –') };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: Math.floor(WEIGHT.SUPPORTING / 2), summary: 'Enabled — waiting for motion readings' };
+    },
+    copy: {
+      whatItMeans: 'A phone held by a person is never perfectly still. The accelerometer senses tilt and movement. The gyroscope senses rotation. These constant tiny readings get folded into your device fingerprint. A phone sitting on a desk produces one kind of pattern. A phone in a pocket produces another. A simulator running in a data center produces neither.',
+      whyItMatters: 'Motion is one of the cheapest ways for a real phone to prove itself, and one of the hardest to fabricate. A simulator can declare any motion values, but it cannot match the micro-chaos of a real hand over thousands of readings. The pattern of a phone\'s movement is as individual as a fingerprint.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  batterySensor: {
+    id: 'batterySensor',
+    humanName: 'Battery',
+    tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['ios', 'android'], // Battery Status API sparse on PC
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasBattery,
+        liveReading: cap.liveBattery || null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: (dClass !== 'pc'), behavior: 'n/a', contribution: 0, summary: dClass === 'pc' ? 'Desktop devices rarely expose battery data' : 'Battery data not available' };
+      }
+      if (raw.liveReading) {
+        var pct = Math.round((raw.liveReading.level || 0) * 100);
+        var state = raw.liveReading.charging ? 'charging' : 'not charging';
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Level ' + pct + '%, ' + state };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: 0, summary: 'Available, no live reading yet' };
+    },
+    copy: {
+      whatItMeans: 'Your phone reports its current battery level and whether it is plugged in. Each time you record an exchange, this snapshot joins the record. Over time the chain carries a story of daily charge and discharge cycles.',
+      whyItMatters: 'Battery is the simplest kind of hardware signal, and one of the first a fabricator will forget to vary. A real phone shows a charge arc during the day. A simulator reports the same value on every exchange. One sample is weak evidence. A hundred samples that reflect a real person\'s charging rhythm is strong evidence.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  networkSensor: {
+    id: 'networkSensor',
+    humanName: 'Network type',
+    tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasNetworkInfo,
+        liveReading: cap.liveNetwork || null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Network type info not exposed by this browser' };
+      }
+      if (raw.liveReading) {
+        var t = raw.liveReading.effectiveType || raw.liveReading.type || 'unknown';
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Connected via ' + t };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: 0, summary: 'Available, no live reading yet' };
+    },
+    copy: {
+      whatItMeans: 'Your phone knows what kind of connection it has — 4G, 5G, wifi, or offline. This changes throughout a real day: cell signal on the street, wifi at home, no connection on the subway. The type of network you are on when you record each exchange adds another layer of context to the chain.',
+      whyItMatters: 'Network type on its own says little. Combined with location, time, and the pattern of other exchanges, it contributes to the overall plausibility of a chain. A phone that was on 4G at 3pm in one city and wifi at 8pm in another city tells a consistent story about a person moving through a real day.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  ambientLightSensor: {
+    id: 'ambientLightSensor',
+    humanName: 'Ambient light',
+    tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['android'], // Chrome on Android; rare on iOS and PC browsers
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasAmbientLight,
+        liveReading: (typeof cap.liveLight === 'number') ? cap.liveLight : null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: (dClass === 'android'), behavior: 'n/a', contribution: 0, summary: 'Ambient light sensor not accessible on this device or browser' };
+      }
+      if (raw.liveReading !== null) {
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Active — ' + raw.liveReading + ' lux' };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: 0, summary: 'Sensor present, awaiting reading' };
+    },
+    copy: {
+      whatItMeans: 'A small sensor on the front of the phone measures how bright the room is. Under a desk lamp, in a pocket, on a sunny street — the light value changes. When this sensor is active, its reading becomes part of each record.',
+      whyItMatters: 'Ambient light is a bonus signal. Most devices do not expose it to the browser. When it is present, it is strong evidence of real hardware — and a source that simulators rarely bother to fake because it is rare to begin with.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  pressureSensor: {
+    id: 'pressureSensor',
+    humanName: 'Barometric pressure',
+    tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['android'], // Pressure API very rare; Android Chrome most likely
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasPressure,
+        liveReading: (typeof cap.livePressure === 'number') ? cap.livePressure : null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Barometer not accessible on this device or browser' };
+      }
+      if (raw.liveReading !== null) {
+        return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Active — ' + raw.liveReading + ' hPa' };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: 0, summary: 'Sensor present, awaiting reading' };
+    },
+    copy: {
+      whatItMeans: 'Many modern phones have a barometer that measures air pressure. Pressure changes with altitude and weather. A phone at ground level on a clear day reads one value; the same phone on a mountain or during a storm reads another. When your device exposes this sensor, its readings become part of the record.',
+      whyItMatters: 'Barometric pressure is an unusual signal to fabricate because it correlates with weather systems and elevation in ways a simulator rarely attempts. When present across a chain, it adds another physical constraint to the overall pattern of reality.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  webglRenderer: {
+    id: 'webglRenderer',
+    humanName: 'Graphics renderer',
+    tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasWebGL,
+        liveReading: cap.liveWebGL || null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: true, behavior: 'worth-noting', contribution: 0, summary: 'WebGL blocked — unusual and worth checking' };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Active — renders ' + (raw.liveReading ? '(' + raw.liveReading.substring(0, 32) + '…)' : 'hash only') };
+    },
+    copy: {
+      whatItMeans: 'Every device has a graphics chip. When your browser renders a small test pattern using that chip, the exact image that comes back depends on the specific hardware and drivers — down to tiny rounding differences. A hash of that pattern becomes part of your device fingerprint.',
+      whyItMatters: 'Graphics rendering is one of the most distinctive hardware fingerprints available to a browser. It is very hard for a simulator to fake convincingly because it requires matching the actual floating-point behavior of a specific GPU and driver combination. A chain with a stable WebGL signature over many records strongly suggests one consistent piece of hardware.'
+    },
+    visualize: function(raw) { return null; }
+  },
+
+  canvasRenderer: {
+    id: 'canvasRenderer',
+    humanName: '2D canvas rendering',
+    tier: WEIGHT.ENRICHMENT,
+    origin: ORIGIN.DEVICE,
+    expectedOn: ['ios', 'android', 'pc'],
+    capture: function(ctx) {
+      if (!ctx) return null;
+      var cap = ctx.deviceCapabilities || {};
+      return {
+        hardwareAvailable: !!cap.hasCanvas,
+        liveReading: cap.liveCanvas || null
+      };
+    },
+    interpret: function(raw, dClass) {
+      if (!raw) return { presence: 'absent', expected: false, behavior: 'n/a', contribution: 0, summary: 'Unknown' };
+      if (!raw.hardwareAvailable) {
+        return { presence: 'absent', expected: true, behavior: 'worth-noting', contribution: 0, summary: 'Canvas rendering blocked — unusual' };
+      }
+      return { presence: 'present', expected: true, behavior: 'normal', contribution: WEIGHT.ENRICHMENT, summary: 'Active — rendering hash captured' };
+    },
+    copy: {
+      whatItMeans: 'Your browser can draw shapes and text into a hidden canvas. The exact pixel result depends on your operating system, installed fonts, graphics drivers, and color profile. A hash of that result is another part of your device fingerprint.',
+      whyItMatters: 'Canvas rendering is a quieter cousin of WebGL. It is less variable but harder to fake across platforms. Together with WebGL and other fingerprints, it helps confirm that the chain comes from one consistent device rather than a shifting simulation.'
+    },
+    visualize: function(raw) { return null; }
   }
 
 };
@@ -1210,11 +1508,18 @@ function rollup(ctx) {
   var countStrong = 0;       // normal + present + expected
   var countWorthNoting = 0;
   var countAlarming = 0;
-  var countExpected = 0;     // how many signals should fire on this device
+  var countExpected = 0;     // how many sources should contribute on this device
   var countPresentExpected = 0;
   var countBonus = 0;        // present AND not-expected (device went above baseline)
   var totalContribution = 0;
-  var maxContribution = 0;   // theoretical max if every expected signal were normal
+  var maxContribution = 0;   // theoretical max if every expected source were normal
+
+  // Per-origin counts for the top-of-card summary
+  var byOrigin = {
+    device:   { expected: 0, contributing: 0, total: 0 },
+    external: { expected: 0, contributing: 0, total: 0 },
+    chain:    { expected: 0, contributing: 0, total: 0 }
+  };
 
   var ids = Object.keys(SIGNALS);
   for (var i = 0; i < ids.length; i++) {
@@ -1223,6 +1528,7 @@ function rollup(ctx) {
     var raw = null;
     try { raw = sig.capture(ctx); } catch(e) { raw = null; }
     var interp = sig.interpret(raw, dClass);
+    var origin = sig.origin || 'chain'; // default for older entries
 
     // Track counts
     if (expected) {
@@ -1231,7 +1537,6 @@ function rollup(ctx) {
       if (interp.presence === 'present') countPresentExpected++;
     } else if (interp.presence === 'present') {
       countBonus++;
-      // Bonus signals add positive contribution but don't subtract from max
       totalContribution += sig.tier;
     }
 
@@ -1241,10 +1546,23 @@ function rollup(ctx) {
 
     totalContribution += (interp.contribution || 0);
 
+    // Origin bucket counts — only count sources that are expected on this device
+    if (byOrigin[origin]) {
+      byOrigin[origin].total++;
+      if (expected) {
+        byOrigin[origin].expected++;
+        if (interp.presence === 'present') byOrigin[origin].contributing++;
+      } else if (interp.presence === 'present') {
+        // Bonus from unexpected origin still counts as contributing
+        byOrigin[origin].contributing++;
+      }
+    }
+
     signalResults.push({
       id: sig.id,
       humanName: sig.humanName,
       tier: sig.tier,
+      origin: origin,
       expected: expected,
       presence: interp.presence,
       behavior: interp.behavior,
@@ -1256,23 +1574,26 @@ function rollup(ctx) {
     });
   }
 
-  // Build a verdict statement based on the overall picture.
-  // Keep this deliberately simple to start — tune later.
+  // Verdict statement based on overall picture.
   var statement;
   var statementTone;
   if (countAlarming > 0) {
     statement = 'Some signals look wrong on this chain';
     statementTone = 'alarming';
   } else if (countStrong >= countExpected) {
-    statement = 'Critical proof-of-human validated';
+    statement = 'Strong proof-of-human across available data';
     statementTone = 'strong';
   } else if (countStrong >= Math.ceil(countExpected / 2)) {
-    statement = 'Partial proof-of-human — more signals would strengthen this chain';
+    statement = 'Partial proof-of-human — more data would strengthen this chain';
     statementTone = 'partial';
   } else {
-    statement = 'Limited proof-of-human signals so far';
+    statement = 'Limited data so far — chain is still forming';
     statementTone = 'weak';
   }
+
+  // Total across all origins — "X of Y available data sources"
+  var totalContributing = byOrigin.device.contributing + byOrigin.external.contributing + byOrigin.chain.contributing;
+  var totalAvailable = byOrigin.device.expected + byOrigin.external.expected + byOrigin.chain.expected;
 
   return {
     deviceClass: dClass,
@@ -1286,6 +1607,9 @@ function rollup(ctx) {
     countBonus: countBonus,
     totalContribution: totalContribution,
     maxContribution: maxContribution,
+    totalContributing: totalContributing,
+    totalAvailable: totalAvailable,
+    byOrigin: byOrigin,
     signals: signalResults
   };
 }
@@ -1293,6 +1617,7 @@ function rollup(ctx) {
 return {
   deviceClass: deviceClass,
   WEIGHT: WEIGHT,
+  ORIGIN: ORIGIN,
   SIGNALS: SIGNALS,
   rollup: rollup
 };
