@@ -3365,15 +3365,25 @@ const PAIR_CODE_LENGTH = 4;
     if (witnessUrl) recordServerSuccess(witnessUrl);
 
     // Close the modal directly. The new exchange now lives in the
-    // chain and will appear at the top of Home as a Pending row
-    // (witnessAttestation absent on the record until submitWitness
-    // returns). closeExchange() handles cleanupSession, modal close,
-    // refreshHome, and the 'Exchange complete' toast (gated on
-    // _sessionWritten which is true by this point). The legacy
-    // 'Exchange recorded' Done screen with its 'Return to home'
-    // button is no longer shown -- the user lands directly on Home
-    // with the new exchange visible.
+    // chain and will appear at the top of Home in the In flight card
+    // (as a Pending witness row). closeExchange() handles
+    // cleanupSession, modal close, refreshHome, and the 'Exchange
+    // complete' toast (gated on _sessionWritten which is true by this
+    // point). The legacy 'Exchange recorded' Done screen with its
+    // 'Return to home' button is no longer shown -- the user lands
+    // directly on Home with the new exchange visible.
     closeExchange();
+
+    // Schedule a follow-up refresh so the row exits the In flight
+    // hold and drops to Recent at the right moment. Without this,
+    // refreshHome only fires when state changes (witness attestation,
+    // tab switches), and the row could sit in In flight indefinitely
+    // even after the hold window has elapsed. The 4100ms matches the
+    // IN_FLIGHT_HOLD_MS in renderHomeTab plus a small margin to make
+    // the filter cleanly switch sides.
+    setTimeout(function() {
+      try { if (typeof refreshHome === 'function') refreshHome(); } catch(_) {}
+    }, 4100);
   }
 
   function cleanupSession() {
@@ -8515,8 +8525,23 @@ function init() {
     // re-renders from tab switches stay quiet.
     var pp = state.pendingProposal;
     var hasPP = pp && pp.details && pp._partnerName != null;
-    var pendingRecords = ex.filter(function(r) { return !r.witnessAttestation; });
-    var settledRecords = ex.filter(function(r) { return !!r.witnessAttestation; });
+    // Hold just-recorded records in the In flight zone for a brief
+    // window even after witness has attested. The witness round-trip
+    // is typically <1s, much faster than a person can perceive the
+    // 'pending witness' state, so without a hold the row appears to
+    // skip In flight entirely. With the hold, the user sees a clear
+    // transition: the row appears in In flight as 'Pending witness',
+    // changes to 'Witness attested' green-check the moment attestation
+    // arrives, then drops to Recent at the end of the hold window.
+    var IN_FLIGHT_HOLD_MS = 4000;
+    var pendingRecords = ex.filter(function(r) {
+      if (!r.witnessAttestation) return true;
+      return (Date.now() - r.timestamp) < IN_FLIGHT_HOLD_MS;
+    });
+    var settledRecords = ex.filter(function(r) {
+      if (!r.witnessAttestation) return false;
+      return (Date.now() - r.timestamp) >= IN_FLIGHT_HOLD_MS;
+    });
     var hasInFlight = hasPP || pendingRecords.length > 0;
 
     if (hasInFlight) {
@@ -8554,8 +8579,9 @@ function init() {
         ifRows.push(ppRow);
       }
 
-      // (b) Pending records (in chain, awaiting witness). Show newest
-      // first to match the rest of the UI.
+      // (b) Pending records (in chain, awaiting witness OR recently
+      // attested but still in the hold window). Show newest first to
+      // match the rest of the UI.
       pendingRecords.slice().reverse().forEach(function(r) {
         var rDesc = r.description || r.category || 'Exchange';
         var rName = state.settings.hideNames ? '' : (r.counterpartyName || '');
@@ -8569,13 +8595,26 @@ function init() {
         var rPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + rValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
         var rFresh = (Date.now() - r.timestamp) < 8000;
         var rFreshClass = rFresh ? ' fresh' : '';
-        var rStatus = rName ? esc(rName) + ' \u00b7 Pending witness attestation' : 'Pending witness attestation';
+        // Three sub-states inside In flight:
+        //   not attested           -> 'Pending' pill, accent subtitle
+        //   attested + in hold     -> green check pill, green subtitle
+        // The transition between them happens automatically when
+        // submitWitness sets r.witnessAttestation and triggers a
+        // refreshHome (per v2.61.28).
+        var rAttested = !!r.witnessAttestation;
+        var rPill = rAttested
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(43,140,62,0.12); color:var(--green); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Recorded</span>'
+          : '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span>';
+        var rStatus = rAttested
+          ? (rName ? esc(rName) + ' \u00b7 Witness attested' : 'Witness attested')
+          : (rName ? esc(rName) + ' \u00b7 Pending witness attestation' : 'Pending witness attestation');
+        var rStatusColor = rAttested ? 'var(--green)' : 'var(--accent)';
         var pendRow = '';
         pendRow += '<div class="in-flight-row' + rFreshClass + '" style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
         pendRow += '<div style="width:42px; height:32px; border-radius:8px; background:' + rBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + rArrow + rPerson + '</div>';
         pendRow += '<div style="flex:1; min-width:0;">';
-        pendRow += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(rDesc) + '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span></div>';
-        pendRow += '<div style="font-size:var(--fs-sm); color:var(--accent);">' + rStatus + '</div>';
+        pendRow += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(rDesc) + rPill + '</div>';
+        pendRow += '<div style="font-size:var(--fs-sm); color:' + rStatusColor + ';">' + rStatus + '</div>';
         pendRow += '</div>';
         pendRow += '<div style="font-size:var(--fs-md); font-weight:600; color:' + rValColor + '; white-space:nowrap;">' + rValSign + r.value + '</div>';
         pendRow += '</div>';
