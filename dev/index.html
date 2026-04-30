@@ -1336,20 +1336,13 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <button class="modal-close" onclick="App.closeModal('wallet')">&#10005;</button>
     </div>
     <div class="modal-body wallet-body">
-      <div class="wallet-display">
-        <div class="wallet-label">Balance</div>
-        <div class="wallet-amount" id="wallet-amount">0</div>
-        <div class="wallet-position" id="wallet-position">balanced</div>
-      </div>
-      <div style="text-align:center; margin-bottom:16px;">
-        <button id="wallet-learn-btn" style="background:none; border:none; color:var(--accent); font-size:14px; cursor:pointer; text-decoration:underline; padding:0;" onclick="App.showTextureDetail('wallet-position-explain')">Learn what this number means</button>
-      </div>
       <div class="wallet-detail">
         <div class="review-row"><span class="rlbl">Total provided</span><span class="rval" id="wallet-provided">0</span></div>
         <div class="review-row"><span class="rlbl">Total received</span><span class="rval" id="wallet-received">0</span></div>
         <div class="review-row"><span class="rlbl">Acts</span><span class="rval" id="wallet-acts">0</span></div>
         <div class="review-row"><span class="rlbl">Participation ratio</span><span class="rval" id="wallet-ratio-text"></span></div>
-        <div id="wallet-ratio-bar" style="margin-top:8px;"></div>
+        <div id="wallet-ratio-bar" style="margin-top:8px; margin-bottom:8px;"></div>
+        <div class="review-row" style="border-top:1px solid var(--border); padding-top:10px;"><span class="rlbl">Net balance <button style="background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; text-decoration:underline; padding:0 0 0 6px;" onclick="App.showTextureDetail('wallet-position-explain')">what is this</button></span><span class="rval" id="wallet-net-balance">0</span></div>
       </div>
 
       <!-- Chain Health + Pricing History + Full Chain -->
@@ -1371,7 +1364,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
       </div>
 
-      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared chain data.</p>
+      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your totals are private. They never appear in shared chain data.</p>
 
       <!-- Standing content moved here from the (now-removed) Standing tab.
            Renders identity panel, POH verdict, categories, stats, and

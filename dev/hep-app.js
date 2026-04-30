@@ -854,16 +854,19 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Home ---
   function openWallet() {
+    // v2.61.19: balance demoted from 56px headline to a row in the
+    // breakdown card. Verdict-pin alignment -- the net is one statistic
+    // among others, not a verdict on the person. Per-direction totals
+    // also lose their +/- signs since the signed Net balance row now
+    // carries direction; the totals read as plain magnitudes.
     const bal = HCP.walletBalance(state.chain);
-    const el = document.getElementById('wallet-amount');
-    el.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
-    el.className = 'wallet-amount ' + (bal > 0 ? 'surplus' : bal < 0 ? 'deficit' : 'zero');
-    document.getElementById('wallet-position').textContent = bal > 0 ? 'provided more than received' : bal < 0 ? 'received more than provided' : 'balanced';
     let totalP = 0, totalR = 0, actsP = 0, actsR = 0;
     state.chain.forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
-    document.getElementById('wallet-provided').textContent = '+' + totalP.toFixed(0);
-    document.getElementById('wallet-received').textContent = '\u2212' + totalR.toFixed(0);
+    document.getElementById('wallet-provided').textContent = totalP.toFixed(0);
+    document.getElementById('wallet-received').textContent = totalR.toFixed(0);
     document.getElementById('wallet-acts').textContent = state.chain.filter(HCP.isAct).length;
+    var netEl = document.getElementById('wallet-net-balance');
+    if (netEl) netEl.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
     // Render participation ratio
     var ratioBar = document.getElementById('wallet-ratio-bar');
     var ratioText = document.getElementById('wallet-ratio-text');
