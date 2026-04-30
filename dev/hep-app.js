@@ -902,6 +902,13 @@ const PAIR_CODE_LENGTH = 4;
     if (witEl) witEl.textContent = ex.length > 0 ? (witnessedCount + ' / ' + ex.length) : '\u2014';
     var netEl = document.getElementById('wallet-net-balance');
     if (netEl) netEl.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
+
+    // v2.61.22: identity panel rendered at the TOP of the modal body
+    // (above the stats card) so the user reads "this is you" before
+    // the chain stats. Was previously buried halfway down the modal
+    // inside renderStandingTab.
+    var idEl = document.getElementById('wallet-identity-panel');
+    if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
     // Render participation ratio
     var ratioBar = document.getElementById('wallet-ratio-bar');
     var ratioText = document.getElementById('wallet-ratio-text');
@@ -9755,41 +9762,19 @@ function init() {
     return h;
   }
 
-  // renderStandingTab — now writes into the wallet modal, not a tab.
-  // In v2.58.0 the Standing tab was removed from the bottom nav and its
-  // content moved into the wallet modal body (opened via the wallet icon
-  // at the top of the device). The function name is kept for continuity
-  // with callers, but it now targets 'wallet-standing-content'.
-  function renderStandingTab() {
-    var el = document.getElementById('wallet-standing-content');
-    if (!el) return;
-    var ex = state.chain.filter(HCP.isAct);
-    var balance = HCP.walletBalance(state.chain);
-    var provided = ex.filter(function(r) { return r.energyState === 'provided'; });
-    var received = ex.filter(function(r) { return r.energyState === 'received'; });
-    var counterparties = {};
-    ex.forEach(function(r) { if (r.counterparty) counterparties[r.counterparty] = 1; });
-    var cats = {};
-    ex.forEach(function(r) { var k = r.category || 'uncategorized'; cats[k] = (cats[k] || 0) + 1; });
-
-    var html = '';
-
-    // Identity panel (collapsible) with three-state photo logic
+  // v2.61.22: identity panel extracted from renderStandingTab so the
+  // wallet modal can render it at the TOP of the body (above the stats
+  // card) rather than buried halfway down the modal. Returns the full
+  // HTML string for the collapsible identity card -- photo + name +
+  // fingerprint as the collapsed header, expanded view shows photo-state
+  // nudges (genesis/current/both/none), about, skills, and the Edit
+  // profile button. Reads from state directly; no parameters.
+  function renderIdentityPanelHTML() {
     var name = state.declarations.name || 'Anonymous';
     var genesisPhoto = '';
     var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
     if (genesisRec) genesisPhoto = genesisRec.photoData;
     var currentPhoto = state.declarations.photo || '';
-    // Determine photo state: 'none', 'genesis-only', 'current-only', 'both'
-    // genesis-only: chain has a genesis photo, user has not added a current
-    //   replacement yet (or current matches genesis). Show genesis filled,
-    //   current placeholder.
-    // current-only: chain has no genesis photo (anonymous-at-setup user),
-    //   user has since added a current. Genesis slot stays permanently empty
-    //   (chain is immutable, no retroactive genesis photo possible). Show
-    //   current filled, genesis placeholder.
-    // both: chain has a genesis photo AND user has added a different current.
-    //   Show both side by side.
     var photoState = 'none';
     if (genesisPhoto && currentPhoto && genesisPhoto !== currentPhoto) photoState = 'both';
     else if (genesisPhoto) photoState = 'genesis-only';
@@ -9799,6 +9784,7 @@ function init() {
     var decls = [];
     if (state.declarations.skills && state.declarations.skills.length) decls = state.declarations.skills;
 
+    var html = '';
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px; box-shadow:var(--shadow); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer;" onclick="var p=this.nextElementSibling; p.style.display=p.style.display===\'block\'?\'none\':\'block\'; this.querySelector(\'.id-chev\').style.transform=p.style.display===\'block\'?\'rotate(90deg)\':\'\';">';
     if (displayPhoto) {
@@ -9830,7 +9816,6 @@ function init() {
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
     } else if (photoState === 'genesis-only') {
-      // Genesis photo exists, no separate current. Show genesis filled, current placeholder.
       html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
       html += '<div style="text-align:center;"><img src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--accent); background:var(--accent-light); display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="App.openDeclarationsEdit()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
@@ -9844,15 +9829,12 @@ function init() {
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
     } else if (photoState === 'current-only') {
-      // No genesis photo (chain started anonymous, immutable so it stays empty),
-      // but a current photo has been added. Show current filled, genesis placeholder.
       html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
       html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--text-faint); background:var(--bg-input); display:flex; align-items:center; justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center;"><img src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
       html += '</div>';
       html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.5; padding:0 4px;">No genesis photo on this chain. Genesis is permanent and cannot be added later. Your current photo is what counterparties will see.</div>';
     } else if (photoState === 'both') {
-      // Both photos - toggle view
       html += '<div style="display:flex; justify-content:center; gap:24px; margin:12px 0 16px; padding:4px 0 8px;">';
       html += '<div style="text-align:center; cursor:pointer;" onclick="var g=this.querySelector(\'img\'); var c=this.parentElement.querySelector(\'[data-photo=current]\'); if(g)g.style.border=\'3px solid var(--accent)\'; if(c)c.style.border=\'3px solid transparent\';"><img data-photo="genesis" src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid transparent;"><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center; cursor:pointer;" onclick="var c=this.querySelector(\'img\'); var g=this.parentElement.querySelector(\'[data-photo=genesis]\'); if(c)c.style.border=\'3px solid var(--accent)\'; if(g)g.style.border=\'3px solid transparent\';"><img data-photo="current" src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
@@ -9875,17 +9857,31 @@ function init() {
     }
     html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
     html += '</div></div>';
+    return html;
+  }
+
+  // renderStandingTab — now writes into the wallet modal, not a tab.
+  // In v2.58.0 the Standing tab was removed from the bottom nav and its
+  // content moved into the wallet modal body (opened via the wallet icon
+  // at the top of the device). The function name is kept for continuity
+  // with callers, but it now targets 'wallet-standing-content'.
+  function renderStandingTab() {
+    var el = document.getElementById('wallet-standing-content');
+    if (!el) return;
+    var ex = state.chain.filter(HCP.isAct);
+    var html = '';
+
+    // v2.61.22: identity panel moved to the TOP of the wallet modal body
+    // (rendered into #wallet-identity-panel by openWallet via
+    // renderIdentityPanelHTML). This div now renders only the POH verdict
+    // card and the empty-state nudge if applicable. Stats card is rendered
+    // by openWallet directly into the static wallet-detail markup.
 
     // Proof of Human verdict card (aggregate for this chain)
     // Absorbs what used to be a separate "Strengthen your chain" nudge card —
     // device-origin rows now carry inline enable toggles when the source
     // is available but not enabled.
     html += renderPOHVerdict({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() });
-
-    // Participation card removed in v2.61.21: People / Repeat counterparties /
-    // Categories / Chain age / Witnessed are now rows in the consolidated
-    // wallet-detail breakdown card above. Single source of truth for chain
-    // stats, no duplication.
 
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
