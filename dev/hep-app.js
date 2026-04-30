@@ -9718,10 +9718,20 @@ function init() {
     var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
     if (genesisRec) genesisPhoto = genesisRec.photoData;
     var currentPhoto = state.declarations.photo || '';
-    // Determine photo state: 'none', 'genesis', 'both'
+    // Determine photo state: 'none', 'genesis-only', 'current-only', 'both'
+    // genesis-only: chain has a genesis photo, user has not added a current
+    //   replacement yet (or current matches genesis). Show genesis filled,
+    //   current placeholder.
+    // current-only: chain has no genesis photo (anonymous-at-setup user),
+    //   user has since added a current. Genesis slot stays permanently empty
+    //   (chain is immutable, no retroactive genesis photo possible). Show
+    //   current filled, genesis placeholder.
+    // both: chain has a genesis photo AND user has added a different current.
+    //   Show both side by side.
     var photoState = 'none';
     if (genesisPhoto && currentPhoto && genesisPhoto !== currentPhoto) photoState = 'both';
-    else if (genesisPhoto || currentPhoto) photoState = 'genesis';
+    else if (genesisPhoto) photoState = 'genesis-only';
+    else if (currentPhoto) photoState = 'current-only';
     var displayPhoto = currentPhoto || genesisPhoto || '';
     var fp = state.fingerprint || '';
     var decls = [];
@@ -9731,7 +9741,7 @@ function init() {
     html += '<div style="display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer;" onclick="var p=this.nextElementSibling; p.style.display=p.style.display===\'block\'?\'none\':\'block\'; this.querySelector(\'.id-chev\').style.transform=p.style.display===\'block\'?\'rotate(90deg)\':\'\';">';
     if (displayPhoto) {
       html += '<div style="position:relative; flex-shrink:0;"><img src="' + displayPhoto + '" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);">';
-      if (photoState === 'genesis') html += '<div style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:rgba(180,83,9,0.15); border:2px solid var(--bg-raised); display:flex; align-items:center; justify-content:center; font-size:9px; color:#B45309;">!</div>';
+      if (photoState === 'genesis-only') html += '<div style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:rgba(180,83,9,0.15); border:2px solid var(--bg-raised); display:flex; align-items:center; justify-content:center; font-size:9px; color:#B45309;">!</div>';
       html += '</div>';
     } else {
       html += '<div style="position:relative; flex-shrink:0;"><div style="width:44px; height:44px; border-radius:50%; background:var(--accent-light); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--accent); flex-shrink:0;">' + name.charAt(0).toUpperCase() + '</div>';
@@ -9757,10 +9767,10 @@ function init() {
       html += '<button style="background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;" onclick="App.openDeclarationsEdit()">Take photo</button>';
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
-    } else if (photoState === 'genesis') {
-      // Show genesis photo circle + empty current circle
+    } else if (photoState === 'genesis-only') {
+      // Genesis photo exists, no separate current. Show genesis filled, current placeholder.
       html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
-      html += '<div style="text-align:center;"><img src="' + (genesisPhoto || currentPhoto) + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
+      html += '<div style="text-align:center;"><img src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--accent); background:var(--accent-light); display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="App.openDeclarationsEdit()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
       html += '</div>';
       html += '<div style="background:rgba(180,83,9,0.08); border-radius:var(--radius-sm); padding:12px 14px; display:flex; gap:12px; align-items:flex-start;">';
@@ -9771,6 +9781,14 @@ function init() {
       html += '<button style="background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;" onclick="App.openDeclarationsEdit()">Update photo</button>';
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
+    } else if (photoState === 'current-only') {
+      // No genesis photo (chain started anonymous, immutable so it stays empty),
+      // but a current photo has been added. Show current filled, genesis placeholder.
+      html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
+      html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--text-faint); background:var(--bg-input); display:flex; align-items:center; justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
+      html += '<div style="text-align:center;"><img src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
+      html += '</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.5; padding:0 4px;">No genesis photo on this chain. Genesis is permanent and cannot be added later. Your current photo is what counterparties will see.</div>';
     } else if (photoState === 'both') {
       // Both photos - toggle view
       html += '<div style="display:flex; justify-content:center; gap:24px; margin:12px 0 16px; padding:4px 0 8px;">';
