@@ -8341,9 +8341,14 @@ function init() {
         var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         var isProv = r.energyState === 'provided';
-        var valColor = isProv ? 'var(--green)' : 'var(--red)';
+        // Bite 2 of language audit: row valence neutralized. Received is not
+        // bad in HEP; provided and received are two roles in a cooperative
+        // act, both honest. Green for provided, blue for received -- both
+        // pleasant, neither valence-laden -- matches the Home totals pattern.
+        // Direction is still carried by the arrow icon and the +/- sign.
+        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
         var valSign = isProv ? '+' : '\u2212';
-        var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+        var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
         var arrowIcon = isProv
           ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
           : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
@@ -9855,7 +9860,8 @@ function init() {
       recent.forEach(function(r) {
         var desc = r.description || r.category || 'Exchange';
         var isProv = r.energyState === 'provided';
-        var valColor = isProv ? 'var(--green)' : 'var(--red)';
+        // See Bite 2 note in renderHomeTab.
+        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
         var valSign = isProv ? '+' : '-';
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0;' + (r !== recent[recent.length-1] ? ' border-bottom:1px solid var(--border);' : '') + '">';
@@ -9893,9 +9899,10 @@ function init() {
       var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       var isProv = r.energyState === 'provided';
-      var valColor = isProv ? 'var(--green)' : 'var(--red)';
+      // See Bite 2 note in renderHomeTab: green for provided, blue for received.
+      var valColor = isProv ? 'var(--green)' : 'var(--blue)';
       var valSign = isProv ? '+' : '-';
-      var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+      var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
       // Horizontal arrow (left) + person silhouette (right). Arrow toward person = received, away = provided.
       var arrowIcon = isProv
         ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
