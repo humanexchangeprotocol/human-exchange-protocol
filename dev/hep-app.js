@@ -3072,7 +3072,16 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function writeSessionRecord(role, data) {
-    const p = data.proposal || sessionProposal;
+    // Source of proposal content depends on role.
+    //   Confirmer: sessionProposal was populated and decrypted when the proposal
+    //   arrived on this device. data.proposal in the /confirm response only carries
+    //   the placeholder zeros that the proposer sent in the encrypted-path body
+    //   (real content lived in encrypted_exchange and was decrypted INTO sessionProposal).
+    //   Using data.proposal here drops description, value, and direction.
+    //
+    //   Proposer: completeSessionExchange populated data.proposal.* directly (decrypt
+    //   or pendingProposal fallback). sessionProposal is null on this side.
+    const p = (role === 'confirmer' && sessionProposal) ? sessionProposal : data.proposal;
     if (!p) return;
 
     // Determine direction and counterparty based on role
