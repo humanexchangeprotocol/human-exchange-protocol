@@ -9871,30 +9871,8 @@ function init() {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
       html += 'No exchanges yet. Tap <strong>+</strong> to start your first one.';
       html += '</div>';
-    } else if (ex.length > 0) {
-      // Recent activity (last 3)
-      var recent = ex.slice().reverse().slice(0, 3);
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent</div>';
-      html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.switchTab(\'history\')">View all</span>';
-      html += '</div>';
-      recent.forEach(function(r) {
-        var desc = r.description || r.category || 'Exchange';
-        var isProv = r.energyState === 'provided';
-        // See Bite 2 note in renderHomeTab.
-        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
-        var valSign = isProv ? '+' : '-';
-        var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0;' + (r !== recent[recent.length-1] ? ' border-bottom:1px solid var(--border);' : '') + '">';
-        html += '<div style="font-size:var(--fs-md); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; margin-right:12px;">' + esc(desc) + '</div>';
-        html += '<div style="display:flex; align-items:center; gap:8px;">';
-        html += '<span style="font-size:var(--fs-sm); color:var(--text-faint);">' + ds + '</span>';
-        html += '<span style="font-size:var(--fs-md); font-weight:600; color:' + valColor + ';">' + valSign + r.value + '</span>';
-        html += '</div></div>';
-      });
-      html += '</div>';
     }
+    // Recent activity card removed in v2.61.20 -- duplicated the History tab.
     el.innerHTML = html;
   }
 
