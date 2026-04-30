@@ -8255,7 +8255,7 @@ function init() {
       html += '<div id="home-list" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow);">';
       recent.forEach(function(r, idx) {
         var desc = r.description || r.category || 'Exchange';
-        var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
+        var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         var isProv = r.energyState === 'provided';
         var valColor = isProv ? 'var(--green)' : 'var(--red)';
@@ -9788,7 +9788,7 @@ function init() {
     html += '<div id="hist-list">';
     ex.forEach(function(r) {
       var desc = r.description || r.category || 'Exchange';
-      var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
+      var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
       var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       var isProv = r.energyState === 'provided';
