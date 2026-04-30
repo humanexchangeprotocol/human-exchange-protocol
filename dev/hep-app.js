@@ -5238,25 +5238,6 @@ const PAIR_CODE_LENGTH = 4;
     if (returnPollEl) returnPollEl.style.display = 'none';
   }
 
-  async function testWitnessConnection() {
-    const statusEl = document.getElementById('witness-status');
-    const urlEl = document.getElementById('witness-url-display');
-    if (!statusEl) return;
-    const url = getWitnessUrl();
-    if (urlEl) urlEl.textContent = url || '';
-    if (!url) { statusEl.textContent = 'No server configured'; statusEl.style.color = 'var(--text-dim)'; return; }
-    statusEl.textContent = 'Connecting...';
-    statusEl.style.color = 'var(--text-dim)';
-    try {
-      const resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(5000) });
-      if (!resp.ok) throw new Error('Status ' + resp.status);
-      const data = await resp.json();
-      statusEl.innerHTML = '<span style="color:var(--green)">Connected</span> &middot; v' + data.version + ' &middot; ' + data.witnessed_total + ' witnesses';
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:var(--red)">Failed</span> &middot; ' + (e.message || 'Could not reach server');
-    }
-  }
-
   async function checkForUpdates() {
     try {
       const resp = await fetch(VERSION_CHECK_URL, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
@@ -5304,57 +5285,12 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Settings ---
-  function openSettings() {
-    showModal('settings');
-    document.getElementById('settings-fp').textContent = state.fingerprint;
-    var sv = document.getElementById('settings-version');
-    if (sv) sv.textContent = 'v' + APP_VERSION + ' \u00b7 The value trust creates';
-    document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
-    document.getElementById('switch-hide-names').classList.toggle('on', state.settings.hideNames);
-    document.getElementById('switch-hide-location').classList.toggle('on', state.settings.hideLocations);
-    var motionSwitch = document.getElementById('switch-motion');
-    if (motionSwitch) motionSwitch.classList.toggle('on', state.settings.sensorMotion);
-    updateSensorStatus();
-    testWitnessConnection();
-  }
-
   function togglePrivacy(key) {
     if (!key) key = 'hideNames'; // default for tab toggle
     state.settings[key] = !state.settings[key];
-    // Update both old modal and new tab switches if they exist
-    var el1 = document.getElementById('switch-hide-names');
-    if (el1) el1.classList.toggle('on', state.settings.hideNames);
-    var el2 = document.getElementById('switch-hide-names-tab');
-    if (el2) el2.classList.toggle('on', state.settings.hideNames);
-    var el3 = document.getElementById('switch-hide-location');
-    if (el3) el3.classList.toggle('on', state.settings.hideLocations);
+    var el = document.getElementById('switch-hide-names-tab');
+    if (el) el.classList.toggle('on', state.settings.hideNames);
     save();
-  }
-
-  function toggleLocation() {
-    state.settings.locationAuto = !state.settings.locationAuto;
-    document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
-    save();
-    if (state.settings.locationAuto) navigator.geolocation?.getCurrentPosition(function() { toast('Location enabled'); updateSensorStatus(); }, function() { state.settings.locationAuto = false; document.getElementById('switch-location').classList.remove('on'); save(); toast('Location denied'); });
-    else updateSensorStatus();
-  }
-
-  async function toggleMotion() {
-    if (state.settings.sensorMotion) {
-      state.settings.sensorMotion = false;
-      document.getElementById('switch-motion').classList.remove('on');
-      save();
-      updateSensorStatus();
-      return;
-    }
-    var granted = await requestMotionPermission();
-    if (granted) {
-      document.getElementById('switch-motion').classList.add('on');
-      toast('Motion sensors enabled');
-    } else {
-      toast('Motion permission denied by browser');
-    }
-    updateSensorStatus();
   }
 
   async function toggleMotionTab() {
@@ -9986,16 +9922,8 @@ function init() {
     if (!el) return;
     var html = '';
 
-    // Privacy
+    // Proof of Human (top, prominent)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; margin-top:4px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Hide counterparty names</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Names hidden in shared data</div></div>';
-    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
-    html += '</div></div>';
-
-    // Proof of Human
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Proof of Human</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:14px;">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</div>';
     // Motion toggle
@@ -10023,40 +9951,38 @@ function init() {
     html += '</div>';
     html += '</div>';
 
-    // Network
+    // Privacy
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="color:var(--text-dim);">Witness server</span><span style="color:var(--text); font-size:var(--fs-sm);">' + esc(getWitnessUrl() || 'None') + '</span></div>';
-    html += '<div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-bottom:8px;"></div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.testWitnessConnection()">Test connection</button>';
-    html += '</div>';
-
-    // Data
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
-    html += '<div style="display:flex; gap:10px; margin-bottom:10px;">';
-    html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.exportBackup()">Export backup</button>';
-    html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.importBackup()">Import backup</button>';
-    html += '</div>';
-    // Chain tools
-    html += '<div style="border-top:1px solid var(--border); padding-top:10px;">';
-    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openChainViewer()">';
-    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">View full chain</span>';
-    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
-    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openMyTexture()">';
-    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">Chain health</span>';
-    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
-    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openMyPricing()">';
-    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">Pricing history</span>';
-    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Hide counterparty names</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Names hidden in shared data</div></div>';
+    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
     html += '</div></div>';
 
-    // Security
+    // Network — connected / not connected, with small refresh icon
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Security</div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.changePIN()">Change PIN</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.installFromSettings()">Install to home screen</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-top:8px;" onclick="App.forceUpdate()">Check for updates</button>';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Witness server</div><div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Checking\u2026</div></div>';
+    html += '<button aria-label="Re-check connection" style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); padding:6px 12px; font-size:16px; cursor:pointer; line-height:1;" onclick="App.checkWitnessStatus()">\u21bb</button>';
+    html += '</div></div>';
+
+    // Install to home screen (prominent)
+    html += '<div style="margin-bottom:16px;">';
+    html += '<button style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer; box-shadow:var(--shadow);" onclick="App.installFromSettings()">Install to home screen</button>';
+    html += '</div>';
+
+    // Data (Export, Import, Change PIN)
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.exportBackup()">Export backup</button>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.importBackup()">Import backup</button>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.changePIN()">Change PIN</button>';
+    html += '</div>';
+
+    // Check for updates (low priority, small)
+    html += '<div style="text-align:center; padding:4px 0 16px;">';
+    html += '<button style="background:none; border:none; color:var(--text-faint); font-size:var(--fs-sm); cursor:pointer; text-decoration:underline;" onclick="App.forceUpdate()">Check for updates</button>';
     html += '</div>';
 
     // Danger zone
@@ -10070,6 +9996,31 @@ function init() {
     html += '<div style="text-align:center; padding:16px 0; color:var(--text-faint); font-size:var(--fs-sm);">HEP v' + APP_VERSION + '</div>';
 
     el.innerHTML = html;
+
+    // Auto-check witness status on render
+    checkWitnessStatus();
+  }
+
+  async function checkWitnessStatus() {
+    var el = document.getElementById('settings-witness-status');
+    if (!el) return;
+    var url = getWitnessUrl();
+    if (!url) {
+      el.textContent = 'Not configured';
+      el.style.color = 'var(--text-dim)';
+      return;
+    }
+    el.textContent = 'Checking\u2026';
+    el.style.color = 'var(--text-faint)';
+    try {
+      var resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) throw new Error();
+      el.textContent = 'Connected';
+      el.style.color = 'var(--green)';
+    } catch(e) {
+      el.textContent = 'Not connected';
+      el.style.color = 'var(--red)';
+    }
   }
 
   function shareApp() {
@@ -10222,10 +10173,10 @@ function init() {
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
-    openSettings, togglePrivacy, toggleLocation, toggleMotion, toggleMotionTab, toggleLocationTab,
+    togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
-    testWitnessConnection,
+    checkWitnessStatus,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,

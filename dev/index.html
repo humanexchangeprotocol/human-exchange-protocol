@@ -498,13 +498,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .payload-area { width: 100%; min-height: 100px; padding: 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-mono); font-size: 13px; resize: none; margin-bottom: 12px; }
 
 /* === SETTINGS === */
-.setting-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
-.setting-row .label { font-size: 16px; }
-.setting-row .desc { font-size: 14px; color: var(--text-dim); margin-top: 2px; }
-.setting-action { padding: 14px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
-.setting-action .label { font-size: 16px; color: var(--text); }
-.setting-action .desc { font-size: 14px; color: var(--text-dim); margin-top: 2px; }
-.setting-action:active .label { color: var(--accent); }
 .switch { width: 48px; height: 28px; background: var(--bg-input); border-radius: 14px; position: relative; border: 1px solid var(--border); flex-shrink: 0; }
 .switch.on { background: var(--green); border-color: var(--green); }
 .switch::after { content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%; background: white; top: 2px; left: 2px; transition: transform 0.2s; }
@@ -2002,106 +1995,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 </div>
 
-
-<!-- ========== SETTINGS MODAL ========== -->
-<div class="modal-overlay" id="settings-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Settings</h2>
-      <button class="modal-close" onclick="App.closeModal('settings')">&#10005;</button>
-    </div>
-    <div class="modal-body">
-      <div class="setting-action" onclick="App.openDeclarationsEdit()">
-        <div class="label">Your Declarations</div>
-        <div class="desc">Photo, name, and what you do</div>
-      </div>
-      <div class="setting-action" onclick="App.closeModal('settings'); App.openLearn()">
-        <div class="label">Learn about HEP</div>
-        <div class="desc">How the protocol works and what it can do</div>
-      </div>
-      <div class="setting-action" onclick="App.closeModal('settings'); App.openShare()">
-        <div class="label">Share App</div>
-        <div class="desc">Invite someone to install HEP on their phone</div>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Privacy</h3>
-      <div class="setting-row">
-        <div>
-          <div class="label">Hide Counterparty Names</div>
-          <div class="desc">Others viewing your chain won't see names</div>
-        </div>
-        <button class="switch on" id="switch-hide-names" onclick="App.togglePrivacy('hideNames')"></button>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="label">Hide Locations</div>
-          <div class="desc">Strip street, city, state from shared views</div>
-        </div>
-        <button class="switch on" id="switch-hide-location" onclick="App.togglePrivacy('hideLocations')"></button>
-      </div>
-      <p class="privacy-info">These settings control what others see when you share your chain for negotiation. Your own chain view always shows full detail. Counterparty names are never shared by default.</p>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Proof of Human</h3>
-      <p class="privacy-info" style="margin-bottom:12px;">These sensors help prove your chain belongs to a real person. Your phone captures a snapshot of physical reality during each exchange. Only hashes are stored -- raw sensor data never leaves your device.</p>
-      <div class="setting-row">
-        <div>
-          <div class="label">Motion sensors</div>
-          <div class="desc">Accelerometer and gyroscope prove a real hand holds a real phone</div>
-        </div>
-        <button class="switch" id="switch-motion" onclick="App.toggleMotion()"></button>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="label">Location</div>
-          <div class="desc">GPS proves your chain exists across real places over time</div>
-        </div>
-        <button class="switch" id="switch-location" onclick="App.toggleLocation()"></button>
-      </div>
-      <div id="sensor-status" style="font-size:12px; color:var(--text-faint); padding:8px 0; line-height:1.6;"></div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Network</h3>
-      <div style="padding: 0 0 12px;">
-        <div class="label" style="margin-bottom: 6px;">Witness Server</div>
-        <div class="desc" style="margin-bottom: 10px;">Your exchanges receive signed timestamps from an independent witness server. Connection is automatic.</div>
-        <div id="witness-status" style="font-size:13px; color:var(--text-dim); margin-top:8px;">Checking...</div>
-        <div id="witness-url-display" style="font-size:11px; color:var(--text-dim); margin-top:4px; word-break:break-all;"></div>
-        <button class="btn btn-secondary" style="margin-top:8px; padding:10px 14px; font-size:14px;" onclick="App.testWitnessConnection()">Test Connection</button>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Data</h3>
-      <div class="setting-action" onclick="App.exportBackup()">
-        <div class="label">Export Backup</div>
-        <div class="desc">Save encrypted backup of your chain and keys</div>
-      </div>
-      <div class="setting-action" onclick="App.importBackup()">
-        <div class="label">Import Backup</div>
-        <div class="desc">Restore from a backup file</div>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Device</h3>
-      <div class="setting-action" onclick="App.changePIN()">
-        <div class="label">Change PIN</div>
-        <div class="desc">Update your encryption PIN</div>
-      </div>
-      <div class="setting-action" onclick="App.installFromSettings()">
-        <div class="label">Add to Home Screen</div>
-        <div class="desc">Install the app for quick access</div>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--red); text-transform:uppercase; letter-spacing:1px; padding:20px 0 8px;">Danger Zone</h3>
-      <div class="setting-action" onclick="App.deleteChain()">
-        <div class="label" style="color:var(--red);">Delete My Chain</div>
-        <div class="desc">You will be offered a backup before anything is erased. Deletion removes your chain, keys, and all data from this device permanently.</div>
-      </div>
-
-      <div style="padding: 20px 0; text-align: center;">
-        <div style="font-size: 13px; color: var(--text-dim);">Human Exchange Protocol</div>
-        <div style="font-size: 13px; color: var(--text-faint);" id="settings-version"></div>
-        <div style="font-size: 13px; color: var(--text-faint); margin-top: 8px; font-family: var(--font-mono);" id="settings-fp"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ========== DECLARATIONS EDIT MODAL ========== -->
 <div class="modal-overlay" id="declarations-overlay"> 
