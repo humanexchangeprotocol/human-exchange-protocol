@@ -876,7 +876,7 @@ const PAIR_CODE_LENGTH = 4;
       if (ratioBar) {
         ratioBar.innerHTML = '<div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-faint); margin-bottom:4px;"><span>provided ' + actsP + '</span><span>received ' + actsR + '</span></div>' +
           '<div style="height:14px; border-radius:7px; overflow:hidden; display:flex; background:var(--bg-input);">' +
-          (pPct > 0 ? '<div style="width:' + pPct + '%; background:var(--accent); border-radius:7px 0 0 7px;"></div>' : '') +
+          (pPct > 0 ? '<div style="width:' + pPct + '%; background:var(--green); border-radius:7px 0 0 7px;"></div>' : '') +
           (rPct > 0 ? '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 7px 7px 0;"></div>' : '') +
           '</div>';
       }
@@ -8307,20 +8307,26 @@ function init() {
 
     var html = '';
 
-    // Totals card — the basic standing numbers Michael asked to keep visible
-    // on the landing screen without forcing users into the wallet every time.
+    // Totals card -- Bite 3 verdict-pin alignment (April 30, 2026): the
+    // previous side-by-side amount totals (+totalP / -totalR) were a
+    // balance presentation by implication -- the user's eye computed the
+    // net even without an explicit balance number. Replaced with act
+    // counts (Provided 12 / Received 10) which preserve the activity
+    // sense without the implicit subtraction. Value-totals still live
+    // in the chain modal breakdown card.
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:14px;">';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">+' + totalP + '</div><div style="font-size:var(--fs-xs); color:var(--text-faint);">' + actsP + ' act' + (actsP === 1 ? '' : 's') + '</div></div>';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">\u2212' + totalR + '</div><div style="font-size:var(--fs-xs); color:var(--text-faint);">' + actsR + ' act' + (actsR === 1 ? '' : 's') + '</div></div>';
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">' + actsP + '</div></div>';
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">' + actsR + '</div></div>';
     html += '</div>';
 
-    // Participation ratio bar — same visual as the wallet's ratio bar so
-    // the two read consistently.
+    // Participation ratio bar -- same visual as the wallet's ratio bar so
+    // the two read consistently. v2.61.18: provided half now uses --green
+    // (was --accent, which equals --blue, so the bar rendered all-blue).
     if (totalActs > 0) {
       html += '<div style="display:flex; justify-content:space-between; font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:4px;"><span>participation ratio</span><span style="color:var(--text-dim); font-weight:500;">' + ratioStr + '</span></div>';
       html += '<div style="height:10px; border-radius:5px; overflow:hidden; display:flex; background:var(--bg-input);">';
-      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--accent); border-radius:5px 0 0 5px;"></div>';
+      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--green); border-radius:5px 0 0 5px;"></div>';
       if (rPct > 0) html += '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 5px 5px 0;"></div>';
       html += '</div>';
     } else {
