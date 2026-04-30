@@ -225,7 +225,7 @@ const PAIR_CODE_LENGTH = 4;
     fingerprint: '',
     pin: '',
     declarations: { name: '', about: '', photo: null, photoDate: null, skills: [] },
-    settings: { locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
+    settings: { locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
     direction: 'provided',
     pendingHandshake: null,
     proposalPath: 'inperson',
@@ -257,7 +257,7 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = Object.assign({ name: '', about: '', photo: null, photoDate: null, skills: [], rangeSimpleVal: 0, rangeComplexVal: 0, rangeDailyVal: 0, valTagsSimple: [], valTagsComplex: [], valTagsDaily: [] }, d.declarations || {});
     if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
     if (!state.declarations.skills) state.declarations.skills = [];
-    state.settings = Object.assign({ locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
+    state.settings = Object.assign({ locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
     if (!state.settings.witnessUrl) state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     return true;
   }
@@ -9955,8 +9955,11 @@ function init() {
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
     html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Hide counterparty names</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Names hidden in shared data</div></div>';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Privacy mode</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Hide counterparty names in your own lists</div></div>';
     html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
+    html += '</div>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
+    html += 'Sovereign identity: you decide who knows what about your past. Past counterparty names are never sent to others by default. The chain shares only aggregate data. This setting hides them from your own device too, for when local visibility could put someone at risk or when you simply choose not to disclose. Tradeoff: harder to remember specific past work or offer references. Your chain still demonstrates the history.';
     html += '</div></div>';
 
     // Network — connected / not connected, with small refresh icon
