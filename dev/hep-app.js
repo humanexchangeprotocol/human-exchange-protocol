@@ -1516,7 +1516,15 @@ const PAIR_CODE_LENGTH = 4;
     if (subOpts) subOpts.classList.remove('open');
     if (chevron) chevron.classList.remove('open');
     refreshHome();
-    if (wasDone) toast('Exchange complete');
+    // On a successful exchange, route the user to Home so the In flight
+    // card is in view. Without this the user stays on whatever tab they
+    // launched the exchange from (Settings, Learn, etc.) and never sees
+    // the witness-attestation transition. On a cancel (wasDone=false)
+    // we leave them where they were.
+    if (wasDone) {
+      try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
+      toast('Exchange complete');
+    }
   }
 
   // === Exchange form v2 ===
@@ -1689,6 +1697,11 @@ const PAIR_CODE_LENGTH = 4;
       // confirmation" to a settled chain record.
       closeModal('exchange');
       refreshHome();
+      // Route to Home so the In flight pending-proposal card is in
+      // view immediately. Same reason as the closeExchange case:
+      // without this, a proposer who started the exchange from
+      // another tab stays there and doesn't see the pending row.
+      try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
       return;
     }
 
