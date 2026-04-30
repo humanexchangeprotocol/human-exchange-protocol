@@ -3091,11 +3091,28 @@ const PAIR_CODE_LENGTH = 4;
       cpDeviceHash = (data.proposal && data.proposal.confirmer_device_hash) || undefined;
     }
 
+    // Counterparty's declared name from their thread snapshot. Both sides have
+    // each other's snapshot before either writes their record, so this is
+    // symmetric: each chain records what the other side declared. Empty/missing
+    // is fine -- record.counterpartyName stays undefined in that case.
+    var cpName;
+    try {
+      if (sessionPartner && sessionPartner.thread_snapshot) {
+        var _ts = typeof sessionPartner.thread_snapshot === 'string'
+          ? JSON.parse(sessionPartner.thread_snapshot)
+          : sessionPartner.thread_snapshot;
+        cpName = (_ts && _ts._name) || undefined;
+      }
+    } catch (e) {
+      cpName = undefined;
+    }
+
     const record = HCP.createRecord({
       type: 'exchange',
       value: p.value,
       energyState: myDirection,
       counterparty: counterpartyFp,
+      counterpartyName: cpName,
       description: p.description,
       category: p.category || undefined,
       duration: p.duration || undefined,
