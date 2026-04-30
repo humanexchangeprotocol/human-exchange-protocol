@@ -8618,16 +8618,21 @@ function init() {
         var rPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + rValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
         var rFresh = recordAgeMs(r) < 8000;
         var rFreshClass = rFresh ? ' fresh' : '';
-        // Three sub-states inside In flight:
-        //   not attested           -> 'Pending' pill, accent subtitle
-        //   attested + in hold     -> green check pill, green subtitle
+        // Three sub-states inside In flight (post-record):
+        //   not attested            -> green check 'Approved' pill, accent subtitle
+        //   attested + in hold      -> green check 'Recorded' pill, green subtitle
         // The transition between them happens automatically when
         // submitWitness sets r.witnessAttestation and triggers a
-        // refreshHome (per v2.61.28).
+        // refreshHome (per v2.61.28). The 'Approved' pill in green
+        // gives the user a clear celebratory marker between the
+        // pre-record 'Pending' state (accent) and the final settled
+        // state in Recent. Without it the row could read as 'Pending'
+        // straight to 'Recorded' and the moment of confirmation got
+        // lost in the transition.
         var rAttested = !!r.witnessAttestation;
         var rPill = rAttested
-          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(43,140,62,0.12); color:var(--green); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Recorded</span>'
-          : '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span>';
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--green); color:#fff; margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Recorded</span>'
+          : '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(43,140,62,0.14); color:var(--green); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Approved</span>';
         var rStatus = rAttested
           ? (rName ? esc(rName) + ' \u00b7 Witness attested' : 'Witness attested')
           : (rName ? esc(rName) + ' \u00b7 Pending witness attestation' : 'Pending witness attestation');
