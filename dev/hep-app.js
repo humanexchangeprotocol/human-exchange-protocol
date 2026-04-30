@@ -6547,6 +6547,12 @@ function init() {
     exFlowActive = true;
     exConnectMode = 'start';
     cleanupSession();
+    // Set the role provisionally so the indicator renders in the
+    // proposer's green from the moment Connect appears. The
+    // authoritative role assignment still happens in exOnConnected
+    // once partner data is exchanged; this just keeps the indicator
+    // honest during the wait-for-partner phase.
+    sessionRole = 'proposer';
     showModal('exchange');
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
@@ -6599,6 +6605,12 @@ function init() {
     exConnectMode = 'join';
     exInitiatorRole = null; // joiner — role determined by partner
     cleanupSession();
+    // Set the role provisionally so the indicator renders in
+    // confirmer-blue from the moment the Join screen appears.
+    // exOnConnected will reaffirm or overwrite based on the
+    // partner's announced role; this just keeps the indicator
+    // correct during the code-entry phase.
+    sessionRole = 'confirmer';
     showModal('exchange');
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
@@ -8477,45 +8489,105 @@ function init() {
     }
     html += '</div>';
 
-    // Pending proposal row -- the proposer just submitted a proposal
-    // and the confirmer has not yet confirmed. The proposer's chain
-    // record does not exist yet (it only gets written when
-    // completeSessionExchange runs after the confirmer confirms), but
-    // we want the proposer to see immediate feedback that their
-    // proposal is out and pending. state.pendingProposal carries
-    // value/direction/description plus partner info that
-    // generateProposal stamped on at submit time.
+    // === IN FLIGHT ===
+    // Holds anything still in motion -- before it settles into the
+    // Recent list. Two kinds of entries can appear here:
+    //
+    //   (a) Pending proposal -- the proposer just submitted; the
+    //       confirmer has not confirmed yet, so no chain record
+    //       exists. state.pendingProposal holds the data.
+    //
+    //   (b) Pending witness attestation -- a chain record exists
+    //       (so the cooperative act is on the chain), but the
+    //       witness round-trip has not completed. submitWitness
+    //       sets r.witnessAttestation on success, which calls
+    //       refreshHome and the row drops to Recent.
+    //
+    // Both render in the same accent-bordered card so the just-
+    // recorded entry shows up where the user is already looking.
+    // After witness attests (typically <1s), the row transitions
+    // out of In flight and into Recent, where it briefly fades in
+    // to mark the settle moment. After ~8s nothing animates --
+    // re-renders from tab switches stay quiet.
     var pp = state.pendingProposal;
-    if (pp && pp.details && pp._partnerName != null) {
-      var ppDesc = pp.details.description || pp.details.category || 'Exchange';
-      var ppIsProv = pp.details.energyState === 'provided';
-      var ppValColor = ppIsProv ? 'var(--green)' : 'var(--blue)';
-      var ppValSign = ppIsProv ? '+' : '\u2212';
-      var ppBgColor = ppIsProv ? 'var(--green-light)' : 'var(--blue-light)';
-      var ppArrow = ppIsProv
-        ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
-        : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
-      var ppPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + ppValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
-      var ppName = pp._partnerName ? esc(pp._partnerName) : '';
-      var ppStatus = ppName
-        ? 'Pending ' + ppName + '\u2019s confirmation'
-        : 'Pending their confirmation';
+    var hasPP = pp && pp.details && pp._partnerName != null;
+    var pendingRecords = ex.filter(function(r) { return !r.witnessAttestation; });
+    var settledRecords = ex.filter(function(r) { return !!r.witnessAttestation; });
+    var hasInFlight = hasPP || pendingRecords.length > 0;
+
+    if (hasInFlight) {
       html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">In flight</div>';
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow); margin-bottom:16px;">';
-      html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
-      html += '<div style="width:42px; height:32px; border-radius:8px; background:' + ppBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + ppArrow + ppPerson + '</div>';
-      html += '<div style="flex:1; min-width:0;">';
-      html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(ppDesc) + '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span></div>';
-      html += '<div style="font-size:var(--fs-sm); color:var(--accent);">' + ppStatus + '</div>';
-      html += '</div>';
-      html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + ppValColor + '; white-space:nowrap;">' + ppValSign + Number(pp.details.value).toLocaleString() + '</div>';
-      html += '</div>';
+      html += '<div class="in-flight-card" style="background:var(--bg-raised); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow); margin-bottom:16px;">';
+
+      var ifRows = [];
+
+      // (a) Pending proposal
+      if (hasPP) {
+        var ppDesc = pp.details.description || pp.details.category || 'Exchange';
+        var ppIsProv = pp.details.energyState === 'provided';
+        var ppValColor = ppIsProv ? 'var(--green)' : 'var(--blue)';
+        var ppValSign = ppIsProv ? '+' : '\u2212';
+        var ppBgColor = ppIsProv ? 'var(--green-light)' : 'var(--blue-light)';
+        var ppArrow = ppIsProv
+          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+        var ppPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + ppValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+        var ppName = pp._partnerName ? esc(pp._partnerName) : '';
+        var ppStatus = ppName
+          ? 'Pending ' + ppName + '\u2019s confirmation'
+          : 'Pending their confirmation';
+        var ppFresh = pp._submittedAt && (Date.now() - pp._submittedAt) < 8000;
+        var ppFreshClass = ppFresh ? ' fresh' : '';
+        var ppRow = '';
+        ppRow += '<div class="in-flight-row' + ppFreshClass + '" style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
+        ppRow += '<div style="width:42px; height:32px; border-radius:8px; background:' + ppBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + ppArrow + ppPerson + '</div>';
+        ppRow += '<div style="flex:1; min-width:0;">';
+        ppRow += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(ppDesc) + '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span></div>';
+        ppRow += '<div style="font-size:var(--fs-sm); color:var(--accent);">' + ppStatus + '</div>';
+        ppRow += '</div>';
+        ppRow += '<div style="font-size:var(--fs-md); font-weight:600; color:' + ppValColor + '; white-space:nowrap;">' + ppValSign + Number(pp.details.value).toLocaleString() + '</div>';
+        ppRow += '</div>';
+        ifRows.push(ppRow);
+      }
+
+      // (b) Pending records (in chain, awaiting witness). Show newest
+      // first to match the rest of the UI.
+      pendingRecords.slice().reverse().forEach(function(r) {
+        var rDesc = r.description || r.category || 'Exchange';
+        var rName = state.settings.hideNames ? '' : (r.counterpartyName || '');
+        var rIsProv = r.energyState === 'provided';
+        var rValColor = rIsProv ? 'var(--green)' : 'var(--blue)';
+        var rValSign = rIsProv ? '+' : '\u2212';
+        var rBgColor = rIsProv ? 'var(--green-light)' : 'var(--blue-light)';
+        var rArrow = rIsProv
+          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + rValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + rValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+        var rPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + rValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+        var rFresh = (Date.now() - r.timestamp) < 8000;
+        var rFreshClass = rFresh ? ' fresh' : '';
+        var rStatus = rName ? esc(rName) + ' \u00b7 Pending witness attestation' : 'Pending witness attestation';
+        var pendRow = '';
+        pendRow += '<div class="in-flight-row' + rFreshClass + '" style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
+        pendRow += '<div style="width:42px; height:32px; border-radius:8px; background:' + rBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + rArrow + rPerson + '</div>';
+        pendRow += '<div style="flex:1; min-width:0;">';
+        pendRow += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(rDesc) + '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span></div>';
+        pendRow += '<div style="font-size:var(--fs-sm); color:var(--accent);">' + rStatus + '</div>';
+        pendRow += '</div>';
+        pendRow += '<div style="font-size:var(--fs-md); font-weight:600; color:' + rValColor + '; white-space:nowrap;">' + rValSign + r.value + '</div>';
+        pendRow += '</div>';
+        ifRows.push(pendRow);
+      });
+
+      // Join with separators so multi-row in-flight cards (rare but
+      // possible) read like the recent list -- thin border between rows.
+      html += ifRows.join('<div style="height:1px; background:var(--border);"></div>');
+
       html += '</div>';
     }
 
-    // Recent transactions with filter — only if the chain has any
-    if (ex.length > 0) {
-      var recent = ex.slice().reverse().slice(0, 8);
+    // === RECENT (settled only) ===
+    if (settledRecords.length > 0) {
+      var recent = settledRecords.slice().reverse().slice(0, 8);
 
       html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">';
       html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent exchanges</div>';
@@ -8595,7 +8667,7 @@ function init() {
         html += '</div>';
       });
       html += '</div>';
-    } else {
+    } else if (!hasInFlight) {
       html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:30px 20px; text-align:center; box-shadow:var(--shadow);">';
       html += '<div style="font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">When you record your first cooperative exchange, it will appear here.</div>';
       html += '</div>';
