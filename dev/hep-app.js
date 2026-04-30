@@ -302,6 +302,14 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeModal(id) {
     const el = document.getElementById(id + '-overlay');
+    if (!el) {
+      // Defensive: a caller is asking to close a modal whose HTML no longer
+      // exists (e.g. v2.61.2 removed the settings-overlay element but a few
+      // dangling closeModal('settings') calls remained, silently throwing
+      // and aborting the rest of their containing functions). Return cleanly
+      // so the caller can continue.
+      return;
+    }
     el.classList.remove('active');
     setTimeout(() => { if (!el.classList.contains('active')) el.style.display = 'none'; }, 320);
     // Return to wallet if this was a child modal
@@ -4723,7 +4731,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Declarations Edit ---
   function openDeclarationsEdit() {
-    closeModal('settings'); showModal('declarations');
+    showModal('declarations');
     const p = document.getElementById('edit-photo-preview');
     if (state.declarations.photo) { p.innerHTML = '<img src="' + state.declarations.photo + '">'; p.classList.add('has-photo'); }
     else { p.innerHTML = '\u25ce'; p.classList.remove('has-photo'); }
@@ -5504,7 +5512,7 @@ const PAIR_CODE_LENGTH = 4;
       // Witness URL is a device setting, not a chain property — never import it
       state.settings.witnessUrl = DEFAULT_WITNESS_URL;
       state.pin = pin; await saveKeys(pin); save(); state.initialized = true; refreshHome();
-      showScreen('home'); closeModal('settings'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
+      showScreen('home'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
       handleIncomingPayload(); checkPingOnOpen(); checkPhotoNudge();
     } catch(e) { console.error('Import error:', e); toast('Import failed: ' + e.message); }
     event.target.value = '';
@@ -5621,7 +5629,6 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = { name: '', about: '', photo: null, photoDate: null };
     state.initialized = false;
 
-    closeModal('settings');
     showScreen('setup');
     toast('Everything deleted');
   }
