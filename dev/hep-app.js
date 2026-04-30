@@ -5273,12 +5273,31 @@ const PAIR_CODE_LENGTH = 4;
     if (returnPollEl) returnPollEl.style.display = 'none';
   }
 
+  // Compare two version strings of the form 'X.Y.Z'.
+  // Returns 1 if a > b, -1 if a < b, 0 if equal. Non-numeric or
+  // missing parts are treated as 0 so degenerate inputs do not throw.
+  function compareVersions(a, b) {
+    var pa = String(a || '0').split('.').map(function(x) { return parseInt(x, 10) || 0; });
+    var pb = String(b || '0').split('.').map(function(x) { return parseInt(x, 10) || 0; });
+    for (var i = 0; i < 3; i++) {
+      var na = pa[i] || 0, nb = pb[i] || 0;
+      if (na > nb) return 1;
+      if (na < nb) return -1;
+    }
+    return 0;
+  }
+
   async function checkForUpdates() {
     try {
       const resp = await fetch(VERSION_CHECK_URL, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
       if (!resp.ok) return;
       const data = await resp.json();
-      if (data.version && data.version !== APP_VERSION) {
+      // Only show the banner when the served version is actually NEWER than
+      // local. Stale service-worker caches can return an older version.json
+      // for a window after a fresh deploy; without this guard the banner
+      // would falsely advertise an "update" while the local app is in fact
+      // already on a higher version.
+      if (data.version && compareVersions(data.version, APP_VERSION) > 0) {
         showUpdateBanner('Version ' + data.version + ' is available.');
         // Trigger SW update check so new files are cached
         if ('serviceWorker' in navigator) {
@@ -5287,7 +5306,7 @@ const PAIR_CODE_LENGTH = 4;
           });
         }
       } else {
-        // Versions match -- dismiss any stale banner
+        // Local is current or ahead -- dismiss any stale banner.
         var banner = document.getElementById('update-banner');
         if (banner) banner.classList.remove('show');
         _pendingUpdateMsg = null;
@@ -5317,6 +5336,16 @@ const PAIR_CODE_LENGTH = 4;
       showUpdateBanner(_pendingUpdateMsg);
       _pendingUpdateMsg = null;
     }
+  }
+
+  // Dismiss the update banner without reloading. Useful when the banner
+  // is stuck (e.g. stale-cache false positive) or the user just wants
+  // to defer the update. Does not suppress future banners on subsequent
+  // version checks.
+  function dismissUpdateBanner() {
+    var banner = document.getElementById('update-banner');
+    if (banner) banner.classList.remove('show');
+    _pendingUpdateMsg = null;
   }
 
   // --- Settings ---
@@ -10216,7 +10245,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
-    changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
+    changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
 })();

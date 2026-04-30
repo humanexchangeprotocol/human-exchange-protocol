@@ -617,6 +617,8 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .update-banner { position: fixed; top: 0; left: 0; right: 0; background: #FFFFFF; color: var(--text); padding: 14px 20px; z-index: 300; display: none; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; border-bottom: 2px solid var(--green); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .update-banner.show { display: flex; }
 .update-banner .ub-btn { padding: 8px 20px; background: var(--green); color: #FFFFFF; border-radius: var(--radius-sm); font-weight: 600; font-size: 13px; }
+.update-banner .ub-dismiss { width: 32px; height: 32px; border: none; background: transparent; color: var(--text-faint); font-size: 22px; line-height: 1; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); }
+.update-banner .ub-dismiss:hover { color: var(--text); background: var(--bg-raised); }
 
 /* === INSTALL BANNER === */
 .install-banner { position: fixed; bottom: 56px; left: 0; right: 0; background: var(--bg-raised); border-top: 1px solid var(--border); padding: 14px 20px; padding-bottom: calc(14px + var(--safe-bottom)); z-index: 101; display: none; align-items: center; gap: 12px; box-shadow: 0 -2px 8px rgba(0,0,0,0.06); }
@@ -808,7 +810,10 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
 <div id="update-banner" class="update-banner">
   <span id="update-banner-text">A new version is available.</span>
-  <button id="update-banner-btn" class="ub-btn" onclick="location.reload()">Update now</button>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <button id="update-banner-btn" class="ub-btn" onclick="location.reload()">Update now</button>
+    <button class="ub-dismiss" aria-label="Dismiss" onclick="App.dismissUpdateBanner()">&times;</button>
+  </div>
 </div>
 
 <!-- ========== SETUP ========== -->
