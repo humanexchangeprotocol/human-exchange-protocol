@@ -8538,6 +8538,7 @@ function init() {
         var desc = r.description || r.category || 'Exchange';
         var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
         var isProv = r.energyState === 'provided';
         // Pending = record exists in chain but witness attestation has not
         // arrived yet. submitWitness sets r.witnessAttestation on success
@@ -8545,6 +8546,12 @@ function init() {
         // pending on Home -- a small pill next to the title plus a
         // 'pending witness' status line below.
         var isPending = !r.witnessAttestation;
+        // Fresh = timestamp is recent enough to mean "this exchange just
+        // happened during this session of the app". Triggers a brief
+        // background-fade animation on the row so the user's eye finds
+        // it after the modal closes. 8s window covers normal cases
+        // including the witness round-trip.
+        var isFresh = (Date.now() - r.timestamp) < 8000;
         // Bite 2 of language audit: row valence neutralized. Received is not
         // bad in HEP; provided and received are two roles in a cooperative
         // act, both honest. Green for provided, blue for received -- both
@@ -8558,7 +8565,8 @@ function init() {
           : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
         var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
         var border = idx < recent.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
-        html += '<div class="home-row" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+        var freshClass = isFresh ? ' fresh' : '';
+        html += '<div class="home-row' + freshClass + '" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
         html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
         html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
         html += '<div style="flex:1; min-width:0;">';
@@ -8568,7 +8576,7 @@ function init() {
         html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + pendingPill + '</div>';
         var subtitleText = isPending
           ? (name ? esc(name) + ' \u00b7 ' : '') + 'Pending witness attestation'
-          : (name ? esc(name) + ' \u00b7 ' : '') + ds;
+          : (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts;
         var subtitleColor = isPending ? 'var(--accent)' : 'var(--text-faint)';
         html += '<div style="font-size:var(--fs-sm); color:' + subtitleColor + ';">' + subtitleText + '</div>';
         html += '</div>';

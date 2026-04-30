@@ -163,6 +163,16 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .ex4-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; margin-bottom: 16px; transition: background 0.3s ease; }
 .ex4-line.done { background: var(--ind-color); }
 
+/* === FRESH HOME ROW === */
+/* Briefly highlights a row whose record is < 8s old. Runs once on
+   render so the user's eye finds the just-recorded exchange after
+   the modal closes. The pending-row variant on the proposer's
+   "In flight" card uses a separate selector since it lives outside
+   the home-row list. */
+@keyframes hepFreshRow { 0% { background-color: var(--accent-light); } 100% { background-color: transparent; } }
+.home-row.fresh { animation: hepFreshRow 2.5s ease-out; }
+@media (prefers-reduced-motion: reduce) { .home-row.fresh { animation: none; } }
+
 /* === SETUP === */
 #setup { align-items: center; justify-content: flex-start; padding: 24px; padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #setup h1 { font-size: 26px; font-weight: 600; color: var(--accent); margin-bottom: 2px; flex-shrink: 0; }
