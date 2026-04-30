@@ -6973,6 +6973,18 @@ function init() {
     }
     reviewContainer.style.display = 'block';
     reviewContainer.innerHTML = html;
+
+    // Advance the indicator to step 2 (Read). The SAS confirmation is
+    // the actual Connect -> Read hand-off from the user's standpoint:
+    // the visible content has just swapped from SAS codes to the
+    // counterparty review (chain shape + POH). The user is still on
+    // the 'verify' hs-step in the modal (the modern path injects the
+    // review here rather than navigating to the legacy texture step),
+    // but the indicator should reflect what they're actually doing.
+    // Idempotent on re-invoke (e.g. when a late snapshot triggers a
+    // re-render through the exOnConnected snapshot-poll callback).
+    var roleNow = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
+    renderIndicator(2, roleNow);
   }
 
   function exReviewConfirm() {
