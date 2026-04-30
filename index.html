@@ -36,6 +36,7 @@
   --red: #CC4444;
   --red-light: rgba(204, 68, 68, 0.08);
   --blue: #2A5A8F;
+  --blue-light: rgba(42, 90, 143, 0.08);
   /* Structure */
   --border: #E0DCD7;
   --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
@@ -56,7 +57,7 @@
 html { height: 100%; width: 100%; overflow: hidden; }
 body {
   height: 100vh; /* fallback */
-  height: calc(var(--vh, 1vh) * 100);
+  height: 100dvh;
   width: 100%;
   overflow: hidden;
   font-family: var(--font);
@@ -379,9 +380,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .wallet-display { padding: 20px 0 24px; }
 .wallet-label { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
 .wallet-amount { font-size: 56px; font-weight: 300; letter-spacing: -1px; }
-.wallet-amount.surplus { color: var(--green); }
-.wallet-amount.deficit { color: var(--red); }
-.wallet-amount.zero { color: var(--text-dim); }
+.wallet-amount.surplus { color: var(--text); }
+.wallet-amount.deficit { color: var(--text); }
+.wallet-amount.zero { color: var(--text); }
 .wallet-position { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
 .wallet-detail { background: var(--bg-raised); border-radius: var(--radius); padding: 12px 16px; border: 1px solid var(--border); }
 
@@ -409,7 +410,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === MODAL === */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0); z-index: 100; display: none; align-items: flex-end; justify-content: center; transition: background 0.3s; overflow: hidden; }
 .modal-overlay.active { background: rgba(0,0,0,0.5); }
-.modal { background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: calc(var(--vh, 1vh) * 100); display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
+.modal { background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: 100dvh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
 .modal-overlay.active .modal { transform: translateY(0); }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; padding-top: calc(16px + var(--safe-top)); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .modal-header h2 { font-size: 20px; font-weight: 600; }
@@ -498,13 +499,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .payload-area { width: 100%; min-height: 100px; padding: 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-mono); font-size: 13px; resize: none; margin-bottom: 12px; }
 
 /* === SETTINGS === */
-.setting-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
-.setting-row .label { font-size: 16px; }
-.setting-row .desc { font-size: 14px; color: var(--text-dim); margin-top: 2px; }
-.setting-action { padding: 14px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
-.setting-action .label { font-size: 16px; color: var(--text); }
-.setting-action .desc { font-size: 14px; color: var(--text-dim); margin-top: 2px; }
-.setting-action:active .label { color: var(--accent); }
 .switch { width: 48px; height: 28px; background: var(--bg-input); border-radius: 14px; position: relative; border: 1px solid var(--border); flex-shrink: 0; }
 .switch.on { background: var(--green); border-color: var(--green); }
 .switch::after { content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%; background: white; top: 2px; left: 2px; transition: transform 0.2s; }
@@ -624,6 +618,8 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .update-banner { position: fixed; top: 0; left: 0; right: 0; background: #FFFFFF; color: var(--text); padding: 14px 20px; z-index: 300; display: none; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; border-bottom: 2px solid var(--green); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .update-banner.show { display: flex; }
 .update-banner .ub-btn { padding: 8px 20px; background: var(--green); color: #FFFFFF; border-radius: var(--radius-sm); font-weight: 600; font-size: 13px; }
+.update-banner .ub-dismiss { width: 32px; height: 32px; border: none; background: transparent; color: var(--text-faint); font-size: 22px; line-height: 1; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); }
+.update-banner .ub-dismiss:hover { color: var(--text); background: var(--bg-raised); }
 
 /* === INSTALL BANNER === */
 .install-banner { position: fixed; bottom: 56px; left: 0; right: 0; background: var(--bg-raised); border-top: 1px solid var(--border); padding: 14px 20px; padding-bottom: calc(14px + var(--safe-bottom)); z-index: 101; display: none; align-items: center; gap: 12px; box-shadow: 0 -2px 8px rgba(0,0,0,0.06); }
@@ -815,7 +811,10 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
 <div id="update-banner" class="update-banner">
   <span id="update-banner-text">A new version is available.</span>
-  <button id="update-banner-btn" class="ub-btn" onclick="location.reload()">Update now</button>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <button id="update-banner-btn" class="ub-btn" onclick="location.reload()">Update now</button>
+    <button class="ub-dismiss" aria-label="Dismiss" onclick="App.dismissUpdateBanner()">&times;</button>
+  </div>
 </div>
 
 <!-- ========== SETUP ========== -->
@@ -1260,11 +1259,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <!-- Top bar -->
   <div class="home-top-bar">
     <div class="home-identity">
-      <div class="greeting" id="home-greeting">Your Thread</div>
+      <div class="greeting" id="home-greeting">Your Chain</div>
     </div>
     <div class="home-top-icons">
-      <button class="top-icon-btn" onclick="App.openWallet()" aria-label="Wallet">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" fill="currentColor"/><path d="M2 10h20"/><path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg>
+      <button class="top-icon-btn" onclick="App.openWallet()" aria-label="My chain">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 1 0-6.364l2.121-2.122a4.5 4.5 0 0 1 6.364 6.364l-1.06 1.06"/><path d="M14 10a4.5 4.5 0 0 1 0 6.364l-2.121 2.122a4.5 4.5 0 0 1-6.364-6.364l1.06-1.06"/></svg>
       </button>
     </div>
   </div>
@@ -1333,12 +1332,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="wallet-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>My Thread</h2>
+      <h2>My Chain</h2>
       <button class="modal-close" onclick="App.closeModal('wallet')">&#10005;</button>
     </div>
     <div class="modal-body wallet-body">
       <div class="wallet-display">
-        <div class="wallet-label">Current Position</div>
+        <div class="wallet-label">Balance</div>
         <div class="wallet-amount" id="wallet-amount">0</div>
         <div class="wallet-position" id="wallet-position">balanced</div>
       </div>
@@ -1353,7 +1352,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div id="wallet-ratio-bar" style="margin-top:8px;"></div>
       </div>
 
-      <!-- Chain Health + Pricing History + Full Thread -->
+      <!-- Chain Health + Pricing History + Full Chain -->
       <div style="margin-top:20px;">
         <div style="display:flex; align-items:center; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyTextureFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Chain health</span>
@@ -1362,22 +1361,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
         <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyPricingFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Pricing history</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and rates</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and prices</span>
           <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
         </div>
         <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openChainViewerFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Full thread</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">All transaction data</span>
-          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
-        </div>
-        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showMyPhotos();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">My photos</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Show to verify in person</span>
+          <span style="font-size:14px; font-weight:500; color:var(--text);">Full chain</span>
+          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Every recorded act</span>
           <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
         </div>
       </div>
 
-      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared thread data.</p>
+      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared chain data.</p>
 
       <!-- Standing content moved here from the (now-removed) Standing tab.
            Renders identity panel, POH verdict, categories, stats, and
@@ -1817,7 +1811,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="hs-success">
           <div class="hs-check">&#10003;</div>
           <h3>Act Recorded</h3>
-          <p>Both threads are written. The cooperative act is memorialized.</p>
+          <p>Both chains are written. The cooperative act is memorialized.</p>
           <button class="btn btn-primary" onclick="App.closeConfirm()">Done</button>
         </div>
       </div>
@@ -1830,7 +1824,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="chain-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>My Thread</h2>
+      <h2>My Chain</h2>
       <button class="modal-close" onclick="App.closeModal('chain')">&#10005;</button>
     </div>
     <div class="tabs">
@@ -1845,11 +1839,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="chainshare-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>Share Thread</h2>
+      <h2>Share Chain</h2>
       <button class="modal-close" onclick="App.closeModal('chainshare')">&#10005;</button>
     </div>
     <div class="modal-body" id="chainshare-body">
-      <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your thread for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
+      <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your chain for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
       <div class="review-panel" id="chainshare-summary"></div>
       <div class="hs-qr"><canvas id="chainshare-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('chainshare')">&#x26F6; Make bigger for scanning</button></div>
       <textarea class="payload-area" id="chainshare-payload" readonly></textarea>
@@ -1863,7 +1857,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="chainview-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2>Their Thread</h2>
+      <h2>Their Chain</h2>
       <button class="modal-close" onclick="App.closeModal('chainview')">&#10005;</button>
     </div>
     <div class="tabs">
@@ -1949,7 +1943,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9776;</div>
         <div class="lt-info">
           <div class="lt-title">Foundations</div>
-          <div class="lt-desc">How exchanges work, what your thread is, and what you can build</div>
+          <div class="lt-desc">How exchanges work, what your chain is, and what you can build</div>
         </div>
         <div class="lt-arrow">&#8250;</div>
       </div>
@@ -1965,7 +1959,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-icon" style="background:rgba(204,68,68,0.12);">&#8644;</div>
         <div class="lt-info">
           <div class="lt-title">Exchange &amp; Parity</div>
-          <div class="lt-desc">Exchange ratios, purchasing power, and cross-thread trust</div>
+          <div class="lt-desc">Exchange ratios, purchasing power, and cross-chain trust</div>
         </div>
         <div class="lt-arrow">&#8250;</div>
       </div>
@@ -2007,106 +2001,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 </div>
 
-
-<!-- ========== SETTINGS MODAL ========== -->
-<div class="modal-overlay" id="settings-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Settings</h2>
-      <button class="modal-close" onclick="App.closeModal('settings')">&#10005;</button>
-    </div>
-    <div class="modal-body">
-      <div class="setting-action" onclick="App.openDeclarationsEdit()">
-        <div class="label">Your Declarations</div>
-        <div class="desc">Photo, name, and what you do</div>
-      </div>
-      <div class="setting-action" onclick="App.closeModal('settings'); App.openLearn()">
-        <div class="label">Learn about HEP</div>
-        <div class="desc">How the protocol works and what it can do</div>
-      </div>
-      <div class="setting-action" onclick="App.closeModal('settings'); App.openShare()">
-        <div class="label">Share App</div>
-        <div class="desc">Invite someone to install HEP on their phone</div>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Privacy</h3>
-      <div class="setting-row">
-        <div>
-          <div class="label">Hide Counterparty Names</div>
-          <div class="desc">Others viewing your thread won't see names</div>
-        </div>
-        <button class="switch on" id="switch-hide-names" onclick="App.togglePrivacy('hideNames')"></button>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="label">Hide Locations</div>
-          <div class="desc">Strip street, city, state from shared views</div>
-        </div>
-        <button class="switch on" id="switch-hide-location" onclick="App.togglePrivacy('hideLocations')"></button>
-      </div>
-      <p class="privacy-info">These settings control what others see when you share your thread for negotiation. Your own thread view always shows full detail. Counterparty names are never shared by default.</p>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Proof of Human</h3>
-      <p class="privacy-info" style="margin-bottom:12px;">These sensors help prove your chain belongs to a real person. Your phone captures a snapshot of physical reality during each exchange. Only hashes are stored -- raw sensor data never leaves your device.</p>
-      <div class="setting-row">
-        <div>
-          <div class="label">Motion sensors</div>
-          <div class="desc">Accelerometer and gyroscope prove a real hand holds a real phone</div>
-        </div>
-        <button class="switch" id="switch-motion" onclick="App.toggleMotion()"></button>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="label">Location</div>
-          <div class="desc">GPS proves your chain exists across real places over time</div>
-        </div>
-        <button class="switch" id="switch-location" onclick="App.toggleLocation()"></button>
-      </div>
-      <div id="sensor-status" style="font-size:12px; color:var(--text-faint); padding:8px 0; line-height:1.6;"></div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Network</h3>
-      <div style="padding: 0 0 12px;">
-        <div class="label" style="margin-bottom: 6px;">Witness Server</div>
-        <div class="desc" style="margin-bottom: 10px;">Your exchanges receive signed timestamps from an independent witness server. Connection is automatic.</div>
-        <div id="witness-status" style="font-size:13px; color:var(--text-dim); margin-top:8px;">Checking...</div>
-        <div id="witness-url-display" style="font-size:11px; color:var(--text-dim); margin-top:4px; word-break:break-all;"></div>
-        <button class="btn btn-secondary" style="margin-top:8px; padding:10px 14px; font-size:14px;" onclick="App.testWitnessConnection()">Test Connection</button>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Data</h3>
-      <div class="setting-action" onclick="App.exportBackup()">
-        <div class="label">Export Backup</div>
-        <div class="desc">Save encrypted backup of your thread and keys</div>
-      </div>
-      <div class="setting-action" onclick="App.importBackup()">
-        <div class="label">Import Backup</div>
-        <div class="desc">Restore from a backup file</div>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; padding:16px 0 8px;">Device</h3>
-      <div class="setting-action" onclick="App.changePIN()">
-        <div class="label">Change PIN</div>
-        <div class="desc">Update your encryption PIN</div>
-      </div>
-      <div class="setting-action" onclick="App.installFromSettings()">
-        <div class="label">Add to Home Screen</div>
-        <div class="desc">Install the app for quick access</div>
-      </div>
-
-      <h3 style="font-size: 13px; color:var(--red); text-transform:uppercase; letter-spacing:1px; padding:20px 0 8px;">Danger Zone</h3>
-      <div class="setting-action" onclick="App.deleteChain()">
-        <div class="label" style="color:var(--red);">Delete My Thread</div>
-        <div class="desc">You will be offered a backup before anything is erased. Deletion removes your thread, keys, and all data from this device permanently.</div>
-      </div>
-
-      <div style="padding: 20px 0; text-align: center;">
-        <div style="font-size: 13px; color: var(--text-dim);">Human Exchange Protocol</div>
-        <div style="font-size: 13px; color: var(--text-faint);" id="settings-version"></div>
-        <div style="font-size: 13px; color: var(--text-faint); margin-top: 8px; font-family: var(--font-mono);" id="settings-fp"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ========== DECLARATIONS EDIT MODAL ========== -->
 <div class="modal-overlay" id="declarations-overlay"> 

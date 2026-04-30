@@ -14,7 +14,7 @@ const PAIR_CODE_LENGTH = 4;
     settings: 'Settings',
     exchangeTitle: 'Exchange',
     confirmTitle: 'Confirm',
-    shareChain: 'Share My Thread',
+    shareChain: 'Share My Chain',
     providing: "I'm providing",
     receiving: "I'm receiving",
     description: 'Description',
@@ -225,7 +225,7 @@ const PAIR_CODE_LENGTH = 4;
     fingerprint: '',
     pin: '',
     declarations: { name: '', about: '', photo: null, photoDate: null, skills: [] },
-    settings: { locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
+    settings: { locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
     direction: 'provided',
     pendingHandshake: null,
     proposalPath: 'inperson',
@@ -257,7 +257,7 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = Object.assign({ name: '', about: '', photo: null, photoDate: null, skills: [], rangeSimpleVal: 0, rangeComplexVal: 0, rangeDailyVal: 0, valTagsSimple: [], valTagsComplex: [], valTagsDaily: [] }, d.declarations || {});
     if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
     if (!state.declarations.skills) state.declarations.skills = [];
-    state.settings = Object.assign({ locationAuto: false, hideNames: true, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
+    state.settings = Object.assign({ locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
     if (!state.settings.witnessUrl) state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     return true;
   }
@@ -302,6 +302,14 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeModal(id) {
     const el = document.getElementById(id + '-overlay');
+    if (!el) {
+      // Defensive: a caller is asking to close a modal whose HTML no longer
+      // exists (e.g. v2.61.2 removed the settings-overlay element but a few
+      // dangling closeModal('settings') calls remained, silently throwing
+      // and aborting the rest of their containing functions). Return cleanly
+      // so the caller can continue.
+      return;
+    }
     el.classList.remove('active');
     setTimeout(() => { if (!el.classList.contains('active')) el.style.display = 'none'; }, 320);
     // Return to wallet if this was a child modal
@@ -1166,7 +1174,7 @@ const PAIR_CODE_LENGTH = 4;
     const name = state.declarations.name || '';
     var hour = new Date().getHours();
     var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    document.getElementById('home-greeting').textContent = name ? greeting + ', ' + name : 'Your Thread';
+    document.getElementById('home-greeting').textContent = name ? greeting + ', ' + name : 'Your Chain';
     // Re-render Home tab (primary landing) so totals + recent list reflect
     // the latest chain state after any change. renderStandingTab still
     // gets called here so an open wallet modal also refreshes in place.
@@ -1863,7 +1871,7 @@ const PAIR_CODE_LENGTH = 4;
       statusEl.className = 'pair-status resolved';
       document.getElementById('pair-status-icon').innerHTML = '&#10003;';
       document.getElementById('pair-status-text').textContent =
-        'Exchange resolved. Both threads are written.';
+        'Exchange resolved. Both chains are written.';
     }
 
     // If we're still on the pair step, show done
@@ -2275,9 +2283,9 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function renderThreadSnapshot(ts) {
-    if (!ts) return '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">No thread data shared</span></div></div>';
+    if (!ts) return '<div class="session-thread"><div class="st-title">Their chain</div><div class="st-row"><span class="st-label">No chain data shared</span></div></div>';
     let html = '<div class="session-thread">' +
-      '<div class="st-title">Their thread</div>' +
+      '<div class="st-title">Their chain</div>' +
       '<div class="st-row"><span class="st-label">Acts recorded</span><span class="st-val">' + (ts.n || 0) + '</span></div>' +
       '<div class="st-row"><span class="st-label">Provided</span><span class="st-val">' + (ts.g || 0) + '</span></div>' +
       '<div class="st-row"><span class="st-label">Received</span><span class="st-val">' + (ts.r || 0) + '</span></div>' +
@@ -2322,14 +2330,14 @@ const PAIR_CODE_LENGTH = 4;
 
   function renderSessionTabContent(tab) {
     const ts = sessionPartner ? sessionPartner.thread_snapshot : null;
-    if (!ts || !ts.n) return '<div class="empty-state">No thread data shared.</div>';
+    if (!ts || !ts.n) return '<div class="empty-state">No chain data shared.</div>';
 
     if (tab === 'texture') {
       let h = '<div class="review-panel">';
       h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + ts.n + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + ts.d + ' u/act</span></div>';
       h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + ts.g + ' / ' + ts.r + '</span></div>';
-      h += '<div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">' + (ts.t0 ? new Date(ts.t0).toLocaleDateString() + ' \u2014 ' + (ts.t1 ? new Date(ts.t1).toLocaleDateString() : 'now') : '\u2014') + '</span></div>';
+      h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (ts.t0 ? new Date(ts.t0).toLocaleDateString() + ' \u2014 ' + (ts.t1 ? new Date(ts.t1).toLocaleDateString() : 'now') : '\u2014') + '</span></div>';
       h += '</div>';
       // Integrity signals
       var ig = ts.integrity;
@@ -2467,7 +2475,7 @@ const PAIR_CODE_LENGTH = 4;
     var theirDensity = ts.d || 1;
 
     if (!mySnap || myDensity === 0) {
-      return '<div class="empty-state">You need at least one act in your thread to calculate exchange rates.</div>' +
+      return '<div class="empty-state">You need at least one act in your chain to calculate exchange rates.</div>' +
         '<p style="font-size: 13px;color:var(--text-faint);margin-top:8px;line-height:1.5;">Their density: ' + theirDensity + ' u/act. Once you have exchange history, you\'ll see how your valuations compare.</p>';
     }
 
@@ -2590,9 +2598,9 @@ const PAIR_CODE_LENGTH = 4;
       html += '</div>';
     } else if (!sessionPartner._snapshotDecrypted) {
       // Snapshot not yet received -- show loading state
-      html += '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">Loading encrypted thread data...</span></div></div>';
+      html += '<div class="session-thread"><div class="st-title">Their chain</div><div class="st-row"><span class="st-label">Loading encrypted chain data...</span></div></div>';
     } else {
-      html += '<div class="session-thread"><div class="st-title">Their thread</div><div class="st-row"><span class="st-label">No thread data shared</span></div></div>';
+      html += '<div class="session-thread"><div class="st-title">Their chain</div><div class="st-row"><span class="st-label">No chain data shared</span></div></div>';
     }
 
     if (sessionRole === 'proposer') {
@@ -2609,7 +2617,7 @@ const PAIR_CODE_LENGTH = 4;
       if (ts && ts.n) {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       } else if (!sessionPartner._snapshotDecrypted) {
-        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their thread data before you can send...</div>';
+        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their chain data before you can send...</div>';
       } else {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       }
@@ -2617,7 +2625,7 @@ const PAIR_CODE_LENGTH = 4;
     } else {
       html += '<div class="pair-status resolving" style="margin-top:16px;" id="session-waiting-proposal">' +
         '<div class="ps-icon">&#9203;</div>' +
-        '<div class="ps-text">Exploring their thread. Their proposal will appear here when they send it.</div></div>';
+        '<div class="ps-text">Exploring their chain. Their proposal will appear here when they send it.</div></div>';
       content.innerHTML = html;
       startSessionPoll();
     }
@@ -2790,6 +2798,7 @@ const PAIR_CODE_LENGTH = 4;
       if (sessionRole === 'confirmer' && data.proposal && data.proposal.status === 'pending') {
         stopSessionPoll();
         sessionProposal = data.proposal;
+        console.log('[diag-confirmer-recv] hasEncrypted=' + !!sessionProposal.encrypted_exchange + ' hasKey=' + !!sessionSharedKey + ' rawDesc=' + JSON.stringify(sessionProposal.description) + ' rawValue=' + sessionProposal.value);
         // Decrypt exchange content if encrypted
         if (sessionProposal.encrypted_exchange && sessionSharedKey) {
           try {
@@ -2800,8 +2809,10 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.category = dec.category;
             sessionProposal.duration = dec.duration;
             sessionProposal.proposer_photo = dec.photo;
+            console.log('[diag-confirmer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
           } catch(de) { console.log('[session] Decrypt failed:', de.message); }
         }
+        console.log('[diag-confirmer-post] desc=' + JSON.stringify(sessionProposal.description) + ' value=' + sessionProposal.value);
         if (exFlowActive) {
           // Don't auto-render — show a button so receiver can finish browsing
           exShowProposalReady();
@@ -2942,7 +2953,7 @@ const PAIR_CODE_LENGTH = 4;
     // Full interactive thread viewer below for exploration
     if (sessionPartner && sessionPartner.thread_snapshot && sessionPartner.thread_snapshot.n) {
       html += '<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">';
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Explore their thread</div>';
+      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Explore their chain</div>';
       html += buildSessionTabBar();
       html += '<div class="sess-tab-content" id="sess-tab-body">' + renderSessionTabContent(sessionActiveTab) + '</div>';
       html += '</div>';
@@ -3019,6 +3030,7 @@ const PAIR_CODE_LENGTH = 4;
   async function completeSessionExchange(data) {
     // Proposer: the confirmer has confirmed. Write proposer's chain.
     if (!data.proposal || !sessionPartner) return;
+    console.log('[diag-proposer-recv] hasEncrypted=' + !!data.proposal.encrypted_exchange + ' hasKey=' + !!sessionSharedKey + ' rawDesc=' + JSON.stringify(data.proposal.description) + ' rawValue=' + data.proposal.value);
     // Decrypt exchange content if encrypted
     if (data.proposal.encrypted_exchange && sessionSharedKey) {
       try {
@@ -3049,7 +3061,9 @@ const PAIR_CODE_LENGTH = 4;
         data.proposal.category = dec.category;
         data.proposal.duration = dec.duration;
         data.proposal.proposer_photo = dec.photo;
+        console.log('[diag-proposer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
       } catch(de) {
+        console.log('[diag-proposer-decrypt-fail] err=' + de.message + ' usingPendingFallback=' + !!state.pendingProposal);
         // Fallback: use local pending proposal values
         if (state.pendingProposal) {
           data.proposal.value = state.pendingProposal.details.value;
@@ -3060,12 +3074,22 @@ const PAIR_CODE_LENGTH = 4;
         }
       }
     }
+    console.log('[diag-proposer-post] desc=' + JSON.stringify(data.proposal.description) + ' value=' + data.proposal.value);
     sessionSetState('done');
     await writeSessionRecord('proposer', data, '');
   }
 
   async function writeSessionRecord(role, data) {
-    const p = data.proposal || sessionProposal;
+    // Source of proposal content depends on role.
+    //   Confirmer: sessionProposal was populated and decrypted when the proposal
+    //   arrived on this device. data.proposal in the /confirm response only carries
+    //   the placeholder zeros that the proposer sent in the encrypted-path body
+    //   (real content lived in encrypted_exchange and was decrypted INTO sessionProposal).
+    //   Using data.proposal here drops description, value, and direction.
+    //
+    //   Proposer: completeSessionExchange populated data.proposal.* directly (decrypt
+    //   or pendingProposal fallback). sessionProposal is null on this side.
+    const p = (role === 'confirmer' && sessionProposal) ? sessionProposal : data.proposal;
     if (!p) return;
 
     // Determine direction and counterparty based on role
@@ -3091,11 +3115,30 @@ const PAIR_CODE_LENGTH = 4;
       cpDeviceHash = (data.proposal && data.proposal.confirmer_device_hash) || undefined;
     }
 
+    // Counterparty's declared name from their thread snapshot. Both sides have
+    // each other's snapshot before either writes their record, so this is
+    // symmetric: each chain records what the other side declared. Empty/missing
+    // is fine -- record.counterpartyName stays undefined in that case.
+    var cpName;
+    try {
+      if (sessionPartner && sessionPartner.thread_snapshot) {
+        var _ts = typeof sessionPartner.thread_snapshot === 'string'
+          ? JSON.parse(sessionPartner.thread_snapshot)
+          : sessionPartner.thread_snapshot;
+        cpName = (_ts && _ts._name) || undefined;
+      }
+    } catch (e) {
+      cpName = undefined;
+    }
+
+    console.log('[diag-write] role=' + role + ' desc=' + JSON.stringify(p.description) + ' value=' + p.value + ' direction=' + myDirection + ' cpName=' + JSON.stringify(cpName) + ' myDeclName=' + JSON.stringify(state.declarations && state.declarations.name));
+
     const record = HCP.createRecord({
       type: 'exchange',
       value: p.value,
       energyState: myDirection,
       counterparty: counterpartyFp,
+      counterpartyName: cpName,
       description: p.description,
       category: p.category || undefined,
       duration: p.duration || undefined,
@@ -3487,7 +3530,7 @@ const PAIR_CODE_LENGTH = 4;
       <div class="review-row"><span class="rlbl">Acts</span><span class="rval">${snap.n}</span></div>
       <div class="review-row"><span class="rlbl">Density</span><span class="rval">${snap.d}</span></div>
       <div class="review-row"><span class="rlbl">Give/Receive</span><span class="rval">${snap.g}/${snap.r}</span></div>
-      <div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">${snap.t0?new Date(snap.t0).toLocaleDateString():'\u2014'}</span></div>
+      <div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">${snap.t0?new Date(snap.t0).toLocaleDateString():'\u2014'}</span></div>
       ${Object.entries(snap.cats).map(([k,v])=>`<div class="review-row"><span class="rlbl">${esc(k)}</span><span class="rval">${v.n} acts \u00b7 avg ${v.avg}</span></div>`).join('')}
     `;
 
@@ -3525,7 +3568,7 @@ const PAIR_CODE_LENGTH = 4;
   function renderIncomingTab(tab) {
     const body = document.getElementById('chainview-body');
     const s = incomingSnap;
-    if (!s || !s.n) { body.innerHTML = '<div class="empty-state">No thread data received.</div>'; return; }
+    if (!s || !s.n) { body.innerHTML = '<div class="empty-state">No chain data received.</div>'; return; }
 
     if (tab === 'texture') {
       let h = '<div class="review-panel">';
@@ -3533,7 +3576,7 @@ const PAIR_CODE_LENGTH = 4;
       h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + s.n + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + s.d + ' u/act</span></div>';
       h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + s.g + ' / ' + s.r + '</span></div>';
-      h += '<div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
+      h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
       h += '</div>';
       h += '<h3 style="margin:16px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
       const cats = s.cats || {};
@@ -3861,7 +3904,7 @@ const PAIR_CODE_LENGTH = 4;
     if (parsed.exchange.description) h += '<div class="cf-ctx-row"><span class="cl">Their description</span><span class="cv">' + esc(parsed.exchange.description) + '</span></div>';
     if (parsed.exchange.category) h += '<div class="cf-ctx-row"><span class="cl">Category</span><span class="cv">' + esc(parsed.exchange.category) + '</span></div>';
     h += '<div class="cf-ctx-row"><span class="cl">Their density</span><span class="cv">' + parsed.density.toFixed(1) + '</span></div>';
-    h += '<div class="cf-ctx-row"><span class="cl">Their thread</span><span class="cv">' + parsed.chainLen + ' acts</span></div>';
+    h += '<div class="cf-ctx-row"><span class="cl">Their chain</span><span class="cv">' + parsed.chainLen + ' acts</span></div>';
     h += '</div>';
     h += '<div class="field"><label>Their name (for your records)</label><input type="text" id="cf-name" placeholder="Optional"></div>';
     h += '<button class="btn btn-primary" onclick="App.confirmAndSign()">Confirm & Sign</button>';
@@ -3998,7 +4041,7 @@ const PAIR_CODE_LENGTH = 4;
     const mySurplus = HCP.walletBalance(state.chain) || 0;
     const afterBal = mySurplus - fieldAdj;
 
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What does each thread record?</div>';
+    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What does each chain record?</div>';
 
     if (cfAdjVal && cfAdjVal !== cfOrigVal) {
       h += '<div class="cf-revised">Revised from ' + cfOrigVal + ' to ' + cfAdjVal + ' \u2014 they\u2019ll confirm the new value.</div>';
@@ -4006,9 +4049,9 @@ const PAIR_CODE_LENGTH = 4;
 
     // Record cards
     h += '<div class="cf-record-cards">';
-    h += '<div class="cf-rec prov"><div class="cfr-label">Their thread</div><div class="cfr-val" style="color:var(--green);">' + val + '</div><div class="cfr-unit">provided</div></div>';
+    h += '<div class="cf-rec prov"><div class="cfr-label">Their chain</div><div class="cfr-val" style="color:var(--green);">' + val + '</div><div class="cfr-unit">provided</div></div>';
     h += '<div class="cf-rec arrow">\u21c4</div>';
-    h += '<div class="cf-rec recv"><div class="cfr-label">Your thread</div><div class="cfr-val" style="color:var(--blue);">' + fieldAdj + '</div><div class="cfr-unit">received</div></div>';
+    h += '<div class="cf-rec recv"><div class="cfr-label">Your chain</div><div class="cfr-val" style="color:var(--blue);">' + fieldAdj + '</div><div class="cfr-unit">received</div></div>';
     h += '</div>';
 
     // Cost
@@ -4040,7 +4083,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="field"><label>Their name (for your records)</label><input type="text" id="cf-name" placeholder="Optional display name"></div>';
 
     // View chain link
-    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size:13px;color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full thread data \u203a</button></div>';
+    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size:13px;color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full chain \u203a</button></div>';
 
     h += '<button class="btn btn-primary" onclick="App.confirmAndSign()">Confirm & Sign</button>';
     h += '<button class="btn btn-secondary" onclick="App.cancelConfirm()">Decline</button>';
@@ -4048,7 +4091,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="cf-note"><strong>What happens next:</strong> ' +
       (cfAdjVal && cfAdjVal !== cfOrigVal ?
         'Your revised value will be sent to them for confirmation. They\u2019ll see ' + cfAdjVal + ' instead of ' + cfOrigVal + '. If they confirm, the three-touch settlement proceeds normally.' :
-        'Your confirmation is sent back. They complete the settlement. Both threads record the exchange in their own units.') +
+        'Your confirmation is sent back. They complete the settlement. Both chains record the exchange in their own units.') +
       '</div>';
 
     document.getElementById('cf-page-record').innerHTML = h;
@@ -4542,9 +4585,9 @@ const PAIR_CODE_LENGTH = 4;
           emptyHtml += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size:14px; color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
         }
         emptyHtml += '</div>';
-        emptyHtml += '<div class="empty-state">Your scale is set. Your thread will grow from your first exchange.</div>';
+        emptyHtml += '<div class="empty-state">Your scale is set. Your chain will grow from your first exchange.</div>';
       } else {
-        emptyHtml = '<div class="empty-state">Your thread is empty. Your first exchange will appear here.</div>';
+        emptyHtml = '<div class="empty-state">Your chain is empty. Your first exchange will appear here.</div>';
       }
       body.innerHTML = emptyHtml; filter.innerHTML = ''; return;
     }
@@ -4598,7 +4641,7 @@ const PAIR_CODE_LENGTH = 4;
         h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + s.n + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + s.d + ' u/act</span></div>';
         h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + s.g + ' / ' + s.r + '</span></div>';
-        h += '<div class="review-row"><span class="rlbl">Thread Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
+        h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
         if (s.pings > 0) {
           h += '<div class="review-row"><span class="rlbl">Heartbeats</span><span class="rval">' + s.pings + '</span></div>';
         }
@@ -4688,7 +4731,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Declarations Edit ---
   function openDeclarationsEdit() {
-    closeModal('settings'); showModal('declarations');
+    showModal('declarations');
     const p = document.getElementById('edit-photo-preview');
     if (state.declarations.photo) { p.innerHTML = '<img src="' + state.declarations.photo + '">'; p.classList.add('has-photo'); }
     else { p.innerHTML = '\u25ce'; p.classList.remove('has-photo'); }
@@ -5238,23 +5281,18 @@ const PAIR_CODE_LENGTH = 4;
     if (returnPollEl) returnPollEl.style.display = 'none';
   }
 
-  async function testWitnessConnection() {
-    const statusEl = document.getElementById('witness-status');
-    const urlEl = document.getElementById('witness-url-display');
-    if (!statusEl) return;
-    const url = getWitnessUrl();
-    if (urlEl) urlEl.textContent = url || '';
-    if (!url) { statusEl.textContent = 'No server configured'; statusEl.style.color = 'var(--text-dim)'; return; }
-    statusEl.textContent = 'Connecting...';
-    statusEl.style.color = 'var(--text-dim)';
-    try {
-      const resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(5000) });
-      if (!resp.ok) throw new Error('Status ' + resp.status);
-      const data = await resp.json();
-      statusEl.innerHTML = '<span style="color:var(--green)">Connected</span> &middot; v' + data.version + ' &middot; ' + data.witnessed_total + ' witnesses';
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:var(--red)">Failed</span> &middot; ' + (e.message || 'Could not reach server');
+  // Compare two version strings of the form 'X.Y.Z'.
+  // Returns 1 if a > b, -1 if a < b, 0 if equal. Non-numeric or
+  // missing parts are treated as 0 so degenerate inputs do not throw.
+  function compareVersions(a, b) {
+    var pa = String(a || '0').split('.').map(function(x) { return parseInt(x, 10) || 0; });
+    var pb = String(b || '0').split('.').map(function(x) { return parseInt(x, 10) || 0; });
+    for (var i = 0; i < 3; i++) {
+      var na = pa[i] || 0, nb = pb[i] || 0;
+      if (na > nb) return 1;
+      if (na < nb) return -1;
     }
+    return 0;
   }
 
   async function checkForUpdates() {
@@ -5262,7 +5300,12 @@ const PAIR_CODE_LENGTH = 4;
       const resp = await fetch(VERSION_CHECK_URL, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
       if (!resp.ok) return;
       const data = await resp.json();
-      if (data.version && data.version !== APP_VERSION) {
+      // Only show the banner when the served version is actually NEWER than
+      // local. Stale service-worker caches can return an older version.json
+      // for a window after a fresh deploy; without this guard the banner
+      // would falsely advertise an "update" while the local app is in fact
+      // already on a higher version.
+      if (data.version && compareVersions(data.version, APP_VERSION) > 0) {
         showUpdateBanner('Version ' + data.version + ' is available.');
         // Trigger SW update check so new files are cached
         if ('serviceWorker' in navigator) {
@@ -5271,7 +5314,7 @@ const PAIR_CODE_LENGTH = 4;
           });
         }
       } else {
-        // Versions match -- dismiss any stale banner
+        // Local is current or ahead -- dismiss any stale banner.
         var banner = document.getElementById('update-banner');
         if (banner) banner.classList.remove('show');
         _pendingUpdateMsg = null;
@@ -5303,58 +5346,23 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
-  // --- Settings ---
-  function openSettings() {
-    showModal('settings');
-    document.getElementById('settings-fp').textContent = state.fingerprint;
-    var sv = document.getElementById('settings-version');
-    if (sv) sv.textContent = 'v' + APP_VERSION + ' \u00b7 The value trust creates';
-    document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
-    document.getElementById('switch-hide-names').classList.toggle('on', state.settings.hideNames);
-    document.getElementById('switch-hide-location').classList.toggle('on', state.settings.hideLocations);
-    var motionSwitch = document.getElementById('switch-motion');
-    if (motionSwitch) motionSwitch.classList.toggle('on', state.settings.sensorMotion);
-    updateSensorStatus();
-    testWitnessConnection();
+  // Dismiss the update banner without reloading. Useful when the banner
+  // is stuck (e.g. stale-cache false positive) or the user just wants
+  // to defer the update. Does not suppress future banners on subsequent
+  // version checks.
+  function dismissUpdateBanner() {
+    var banner = document.getElementById('update-banner');
+    if (banner) banner.classList.remove('show');
+    _pendingUpdateMsg = null;
   }
 
+  // --- Settings ---
   function togglePrivacy(key) {
     if (!key) key = 'hideNames'; // default for tab toggle
     state.settings[key] = !state.settings[key];
-    // Update both old modal and new tab switches if they exist
-    var el1 = document.getElementById('switch-hide-names');
-    if (el1) el1.classList.toggle('on', state.settings.hideNames);
-    var el2 = document.getElementById('switch-hide-names-tab');
-    if (el2) el2.classList.toggle('on', state.settings.hideNames);
-    var el3 = document.getElementById('switch-hide-location');
-    if (el3) el3.classList.toggle('on', state.settings.hideLocations);
+    var el = document.getElementById('switch-hide-names-tab');
+    if (el) el.classList.toggle('on', state.settings.hideNames);
     save();
-  }
-
-  function toggleLocation() {
-    state.settings.locationAuto = !state.settings.locationAuto;
-    document.getElementById('switch-location').classList.toggle('on', state.settings.locationAuto);
-    save();
-    if (state.settings.locationAuto) navigator.geolocation?.getCurrentPosition(function() { toast('Location enabled'); updateSensorStatus(); }, function() { state.settings.locationAuto = false; document.getElementById('switch-location').classList.remove('on'); save(); toast('Location denied'); });
-    else updateSensorStatus();
-  }
-
-  async function toggleMotion() {
-    if (state.settings.sensorMotion) {
-      state.settings.sensorMotion = false;
-      document.getElementById('switch-motion').classList.remove('on');
-      save();
-      updateSensorStatus();
-      return;
-    }
-    var granted = await requestMotionPermission();
-    if (granted) {
-      document.getElementById('switch-motion').classList.add('on');
-      toast('Motion sensors enabled');
-    } else {
-      toast('Motion permission denied by browser');
-    }
-    updateSensorStatus();
   }
 
   async function toggleMotionTab() {
@@ -5504,7 +5512,7 @@ const PAIR_CODE_LENGTH = 4;
       // Witness URL is a device setting, not a chain property — never import it
       state.settings.witnessUrl = DEFAULT_WITNESS_URL;
       state.pin = pin; await saveKeys(pin); save(); state.initialized = true; refreshHome();
-      showScreen('home'); closeModal('settings'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
+      showScreen('home'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
       handleIncomingPayload(); checkPingOnOpen(); checkPhotoNudge();
     } catch(e) { console.error('Import error:', e); toast('Import failed: ' + e.message); }
     event.target.value = '';
@@ -5534,11 +5542,23 @@ const PAIR_CODE_LENGTH = 4;
     fetch(VERSION_CHECK_URL, { cache: 'no-store', signal: AbortSignal.timeout(5000) })
       .then(function(resp) { return resp.ok ? resp.json() : null; })
       .then(function(data) {
-        if (data && data.version && data.version !== APP_VERSION) {
-          toast('Version ' + data.version + ' found. Updating...');
-        } else if (data && data.version === APP_VERSION) {
-          toast('Already on latest version (v' + APP_VERSION + ')');
-          return;
+        if (data && data.version) {
+          var cmp = compareVersions(data.version, APP_VERSION);
+          if (cmp > 0) {
+            // Served version is genuinely newer.
+            toast('Version ' + data.version + ' found. Updating...');
+          } else if (cmp === 0) {
+            toast('Already on latest version (v' + APP_VERSION + ')');
+            return;
+          } else {
+            // Served version is older than local. This happens when the SW is
+            // still caching a stale version.json after a fresh deploy, or in
+            // any window where the cache is behind. Tell the user the truth:
+            // they are already on a higher version. Do NOT proceed to reload,
+            // because reloading would not change anything yet.
+            toast('Already on v' + APP_VERSION + ' (cache catching up)');
+            return;
+          }
         }
         // Step 2: Tell SW to check for new version
         if ('serviceWorker' in navigator) {
@@ -5589,7 +5609,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function proceedWithDelete() {
-    if (!confirm('Your thread will be permanently erased from this device. If you have not saved a backup, it is gone forever.\n\nContinue?')) return;
+    if (!confirm('Your chain will be permanently erased from this device. If you have not saved a backup, it is gone forever.\n\nContinue?')) return;
     const typed = prompt('Type DELETE to confirm:');
     if (typed !== 'DELETE') { toast('Deletion cancelled'); return; }
 
@@ -5621,7 +5641,6 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = { name: '', about: '', photo: null, photoDate: null };
     state.initialized = false;
 
-    closeModal('settings');
     showScreen('setup');
     toast('Everything deleted');
   }
@@ -5797,10 +5816,10 @@ const PAIR_CODE_LENGTH = 4;
           body: '<p>When you provide something \u2014 mow a lawn, fix a pipe, teach a lesson, share a skill \u2014 <span class="highlight">you name the value.</span> A number that represents the energy you spent.</p><p>No institution tells you what your work is worth. No algorithm decides. You declare it, and the other person either agrees or you have a conversation.</p><p>This is how valuation worked before anyone decided for everyone.</p>' },
         { icon: '&#128587;', title: 'Both sides honest',
           body: '<p>Every act has a provider and a receiver. <span class="highlight">Both are honest positions.</span></p><p>A teacher provides for years before receiving. A student receives for years before giving. A person in crisis receives care. None of this is a burden \u2014 it\u2019s honest receiving.</p><p>The words are simple: <span class="highlight">provided</span> and <span class="highlight">received</span>. No moral weight. Just honest direction.</p>' },
-        { icon: '&#128200;', title: 'Your thread is your reference',
-          body: '<p>Over time your thread builds a record of what you\u2019ve valued and what others have valued when working with you. <span class="highlight">Your own history becomes your pricing guide.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your context for the next one. The pattern is yours. Nobody else sets it.</p><p>Price discovery emerges naturally from honest history. No authority required.</p>' },
+        { icon: '&#128200;', title: 'Your chain is your reference',
+          body: '<p>Over time your chain builds a record of what you\u2019ve valued and what others have valued when working with you. <span class="highlight">Your own history becomes your pricing guide.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your context for the next one. The pattern is yours. Nobody else sets it.</p><p>Price discovery emerges naturally from honest history. No authority required.</p>' },
         { icon: '&#128161;', title: 'No wrong number',
-          body: '<p>A haircut might be worth 10 in one context and 25 in another. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>There is no correct price for anything. There is only what two people honestly agreed happened between them. The thread doesn\u2019t judge. It records the cooperative reality.</p><p>That\u2019s the point. The value is yours.</p>' },
+          body: '<p>A haircut might be worth 10 in one context and 25 in another. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>There is no correct price for anything. There is only what two people honestly agreed happened between them. The chain doesn\u2019t judge. It records the cooperative reality.</p><p>That\u2019s the point. The value is yours.</p>' },
       ]
     },
     beyond: {
@@ -5810,10 +5829,10 @@ const PAIR_CODE_LENGTH = 4;
           body: '<p>You fix your neighbor\u2019s sink. She\u2019s grateful, but she can\u2019t help you right now \u2014 and what you actually need is someone to tutor your kid.</p><p><span class="highlight">This is the oldest problem in cooperation.</span> Economists call it the coincidence of wants: both people need to want what the other has, at the same time, in the right proportion.</p><p>For most of human history, communities solved this with memory. Everyone knew who contributed and who received. That memory was the ledger.</p>' },
         { icon: '&#127759;', title: 'What money solved',
           body: '<p>Community memory worked, but it had limits. <span class="highlight">It couldn\u2019t scale beyond the people who knew you.</span></p><p>Money solved this by creating a universal token \u2014 help someone, receive a coin, spend that coin with a stranger across town. You no longer needed the same person to help you back. The timing problem was solved.</p><p>But money solved it by creating a permission system. If the system doesn\u2019t recognize your work, you don\u2019t get the token. No token, no participation. The solution created its own exclusions.</p>' },
-        { icon: '&#128241;', title: 'What your thread solves',
-          body: '<p>Your thread is a portable record of your cooperative history. When someone who\u2019s never met you reads it, <span class="highlight">they can see the shape of who you are</span> \u2014 what you\u2019ve done, how consistently, in what categories.</p><p>You fix the sink. Your thread records it. Next week you meet a tutor. She doesn\u2019t know your neighbor. She doesn\u2019t need to. She reads your thread and sees a real person with a real history of honest cooperation.</p><p>The timing problem is solved. No universal token required.</p>' },
+        { icon: '&#128241;', title: 'What your chain solves',
+          body: '<p>Your chain is a portable record of your cooperative history. When someone who\u2019s never met you reads it, <span class="highlight">they can see the shape of who you are</span> \u2014 what you\u2019ve done, how consistently, in what categories.</p><p>You fix the sink. Your chain records it. Next week you meet a tutor. She doesn\u2019t know your neighbor. She doesn\u2019t need to. She reads your chain and sees a real person with a real history of honest cooperation. A thread forms between you.</p><p>The timing problem is solved. No universal token required.</p>' },
         { icon: '&#9878;', title: 'No one is excluded',
-          body: '<p>Here\u2019s the difference: <span class="highlight">you don\u2019t need a balance or a surplus to participate.</span> Your thread doesn\u2019t check your account before letting you cooperate.</p><p>A person who has received far more than they\u2019ve provided \u2014 a student, an elder, someone recovering from crisis \u2014 still has a readable thread. Still has a history. Still can cooperate with anyone willing.</p><p>Money solved the coincidence of wants but created gatekeeping. The thread solves it without the gate.</p>' },
+          body: '<p>Here\u2019s the difference: <span class="highlight">you don\u2019t need a balance or a surplus to participate.</span> Your chain doesn\u2019t check your account before letting you cooperate.</p><p>A person who has received far more than they\u2019ve provided \u2014 a student, an elder, someone recovering from crisis \u2014 still has a readable chain. Still has a history. Still can cooperate with anyone willing.</p><p>Money solved the coincidence of wants but created gatekeeping. The fabric of cooperation forms without the gate.</p>' },
       ]
     },
     calibrate: {
@@ -5853,7 +5872,7 @@ const PAIR_CODE_LENGTH = 4;
           body: '<p>Here\u2019s the internal map you just built \u2014 <span class="highlight">your own sense of relative value.</span></p>' +
             '<div id="cal-summary"></div>' +
             '<p>This isn\u2019t a price list. It\u2019s a compass. When you do your first real exchange and someone asks <span class="highlight">\u201cwhat\u2019s this worth?\u201d</span> \u2014 you already have an answer that\u2019s yours.</p>' +
-            '<div class="cal-note">Your thread will grow from here. Every real exchange refines your sense of value. This was just the starting point.</div>' },
+            '<div class="cal-note">Your chain will grow from here. Every real exchange refines your sense of value. This was just the starting point.</div>' },
       ]
     },
 
@@ -5862,11 +5881,11 @@ const PAIR_CODE_LENGTH = 4;
       title: 'Foundations',
       slides: [
         { icon: '&#8644;', title: 'How does an exchange work?',
-          body: '<p>One person provides a service, a product, or help. The other person receives it. Both agree on a value \u2014 a number that represents what just happened.</p><p><span class="highlight">You declare the value of your own work.</span> Nobody tells you what it\u2019s worth. The other person agrees or you negotiate.</p><p>The act gets recorded on both threads. That\u2019s it. No money changed hands. Real work got recorded.</p>' },
-        { icon: '&#9776;', title: 'What\u2019s a thread?',
-          body: '<p>Your thread is your complete history of cooperative acts. Every exchange you\u2019ve ever done, in order, linked together so nothing can be changed after the fact.</p><p><span class="highlight">Your balance shows whether you\u2019ve provided more than you\u2019ve received, or the reverse.</span> Both are honest positions.</p><p>A teacher gives for years before receiving. A student receives for years before giving. The thread holds the full arc. Nobody owns your thread except you.</p>' },
+          body: '<p>One person provides a service, a product, or help. The other person receives it. Both agree on a value \u2014 a number that represents what just happened.</p><p><span class="highlight">You declare the value of your own work.</span> Nobody tells you what it\u2019s worth. The other person agrees or you negotiate.</p><p>The act gets recorded on both chains. That\u2019s it. No money changed hands. Real work got recorded.</p>' },
+        { icon: '&#9776;', title: 'Chain, thread, fabric',
+          body: '<p>Your <span class="highlight">chain</span> is your complete history of cooperative acts. Every exchange you\u2019ve ever done, in order, linked together so nothing can be changed after the fact. Your balance shows whether you\u2019ve provided more than you\u2019ve received, or the reverse. Both are honest positions.</p><p>Every time you cooperate with someone, a <span class="highlight">thread</span> is woven between your chain and theirs. The act sits on both, linking you. You might never see that person again, or you might exchange with them a hundred times. Each act is another thread.</p><p>When threads multiply across a community, they form a <span class="highlight">fabric</span> \u2014 the cooperation that was always there, now visible. Nobody owns the fabric. It emerges from the acts.</p><p>A teacher gives for years before receiving. A student receives for years before giving. The chain holds the full arc. The threads show who cooperated. The fabric is what a community is, made legible.</p>' },
         { icon: '&#128241;', title: 'Two phones, one exchange',
-          body: '<p>An exchange can happen several ways. If you are together, you exchange short pairing codes and your phones connect through the network. <span class="highlight">Both phones record the act. Both threads grow by one entry.</span></p><p>If there is no internet, you can use QR codes directly between phones. The record lives on your phone and theirs. Nobody else has a copy unless you choose to share it.</p>' },
+          body: '<p>An exchange can happen several ways. If you are together, you exchange short pairing codes and your phones connect through the network. <span class="highlight">Both phones record the act. Both chains grow by one entry.</span></p><p>If there is no internet, you can use QR codes directly between phones. The record lives on your phone and theirs. Nobody else has a copy unless you choose to share it.</p>' },
         { icon: '&#10024;', title: 'What can you imagine?',
           body: '<p>A neighborhood where every act of cooperation is visible. A community that can see what it\u2019s actually capable of. An elder whose lifetime of giving is finally recorded.</p><p><span class="highlight">Your imagination is the limit.</span> This tool records cooperative acts \u2014 what you build with it is up to you and your community.</p><p>Start by doing what you\u2019re already doing. Just record it this time.</p>' },
       ]
@@ -5874,23 +5893,23 @@ const PAIR_CODE_LENGTH = 4;
     pricing: {
       title: 'Price Discovery',
       slides: [
-        { icon: '&#128269;', title: 'Your thread is your reference',
-          body: '<p>Over time, your thread builds a record of what you\u2019ve charged and what you\u2019ve paid. When negotiating a new exchange, <span class="highlight">you can surface comparable acts from your own history.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your pricing context. The other person can see the pattern without seeing who those acts were with.</p><p>Price discovery emerges naturally from honest history.</p>' },
+        { icon: '&#128269;', title: 'Your chain is your reference',
+          body: '<p>Over time, your chain builds a record of what you\u2019ve provided and what you\u2019ve received. When negotiating a new exchange, <span class="highlight">you can surface comparable acts from your own history.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your pricing context. The other person can see the pattern without seeing who those acts were with.</p><p>Price discovery emerges naturally from honest history.</p>' },
         { icon: '&#9881;', title: 'Negotiation is human',
-          body: '<p>Two people might value the same work differently. That\u2019s not a flaw \u2014 it\u2019s how real exchange works. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>A haircut might be worth 10 in one context and 25 in another. The thread doesn\u2019t judge. It records the cooperative reality between two specific people at a specific moment.</p>' },
-        { icon: '&#128202;', title: 'The thread viewer',
-          body: '<p>When someone shares their thread with you before an exchange, <span class="highlight">you can see the shape of their work</span> \u2014 what categories they work in, how consistently they price, how active they\u2019ve been.</p><p>This is the context that makes negotiation informed rather than blind. You\u2019re not guessing. You\u2019re reading an honest record.</p>' },
+          body: '<p>Two people might value the same work differently. That\u2019s not a flaw \u2014 it\u2019s how real exchange works. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>A haircut might be worth 10 in one context and 25 in another. The chain doesn\u2019t judge. It records the cooperative reality between two specific people at a specific moment.</p>' },
+        { icon: '&#128202;', title: 'The chain viewer',
+          body: '<p>When someone shares their chain with you before an exchange, <span class="highlight">you can see the shape of their work</span> \u2014 what categories they work in, how consistently they price, how active they\u2019ve been.</p><p>This is the context that makes negotiation informed rather than blind. You\u2019re not guessing. You\u2019re reading an honest record.</p>' },
       ]
     },
     exchange: {
       title: 'Exchange & Parity',
       slides: [
         { icon: '&#8644;', title: 'The exchange rate',
-          body: '<p>Every person values their effort on their own scale. Your \u201c10\u201d and someone else\u2019s \u201c10\u201d might represent very different amounts of energy. <span class="highlight">The exchange rate translates between your scale and theirs.</span></p><p>Think of it the way currencies work between countries. A dollar and a euro measure differently. Neither is wrong. The exchange rate makes sure both sides are represented honestly.</p><p>Your rate comes from your thread\u2019s density compared to theirs. As both threads grow, the rate gets more precise.</p>' },
+          body: '<p>Every person values their effort on their own scale. Your \u201c10\u201d and someone else\u2019s \u201c10\u201d might represent very different amounts of energy. <span class="highlight">The exchange rate translates between your scale and theirs.</span></p><p>Think of it the way currencies work between countries. A dollar and a euro measure differently. Neither is wrong. The exchange rate makes sure both sides are represented honestly.</p><p>Your rate comes from your chain\u2019s density compared to theirs. As both chains grow, the rate gets more precise.</p>' },
         { icon: '&#9878;', title: 'How parity works',
-          body: '<p>When two people exchange, the rate between their threads adjusts prices so both sides are honestly represented. <span class="highlight">This happens automatically from the data. Nobody sets the rate.</span></p><p>Over time, your thread accumulates valuation data from everyone you have exchanged with. That accumulated data forms a basket, similar to what economists use to calculate purchasing power parity between countries, except nobody built or governs it.</p><p>Within specific categories of work, the rates are even more precise.</p>' },
-        { icon: '&#128279;', title: 'Trust across threads',
-          body: '<p>You don\u2019t need to know someone to exchange with them. You need to see their thread. <span class="highlight">A long, active, balanced thread is hard to fake and easy to trust.</span></p><p>The protocol doesn\u2019t vouch for anyone. The thread speaks for itself. A person with 500 confirmed acts over two years tells a different story than a person with 3 acts last week.</p><p>Trust is built honestly through cooperation. Fabrication is expensive to sustain.</p>' },
+          body: '<p>When two people exchange, the rate between their chains adjusts prices so both sides are honestly represented. <span class="highlight">This happens automatically from the data. Nobody sets the rate.</span></p><p>Over time, your chain accumulates valuation data from everyone you have exchanged with. That accumulated data forms a basket, similar to what economists use to calculate purchasing power parity between countries, except nobody built or governs it.</p><p>Within specific categories of work, the rates are even more precise.</p>' },
+        { icon: '&#128279;', title: 'Trust across chains',
+          body: '<p>You don\u2019t need to know someone to exchange with them. You need to see their chain. <span class="highlight">A long, active, balanced chain is hard to fake and easy to trust.</span></p><p>The protocol doesn\u2019t vouch for anyone. The chain speaks for itself. A person with 500 confirmed acts over two years tells a different story than a person with 3 acts last week.</p><p>Trust is built honestly through cooperation. Fabrication is expensive to sustain.</p>' },
       ]
     },
     community: {
@@ -5899,7 +5918,7 @@ const PAIR_CODE_LENGTH = 4;
         { icon: '&#127793;', title: 'Planting the first seeds',
           body: '<p>Every network starts with two people doing one honest exchange. <span class="highlight">You don\u2019t need critical mass. You need one real act.</span></p><p>Start with what\u2019s already happening \u2014 a neighbor who watches your kids, a friend who fixes your car, a colleague who covers your shift. Record what was already real.</p><p>The protocol doesn\u2019t create cooperation. It makes existing cooperation visible.</p>' },
         { icon: '&#127760;', title: 'The network grows naturally',
-          body: '<p>When your counterparties start recording their own acts with others, the network spreads without anyone managing it. <span class="highlight">There is no sign-up, no onboarding funnel, no growth team.</span></p><p>Each person\u2019s thread is independent. The connections form when people exchange. The community emerges from the acts themselves, not from a platform.</p>' },
+          body: '<p>When your counterparties start recording their own acts with others, the network spreads without anyone managing it. <span class="highlight">There is no sign-up, no onboarding funnel, no growth team.</span></p><p>Each person\u2019s chain is independent. Threads form when people exchange. As more people cooperate, the threads weave into a fabric \u2014 the community, made visible. The community emerges from the acts themselves, not from a platform.</p>' },
         { icon: '&#127919;', title: 'What communities can see',
           body: '<p>When enough people in a neighborhood are recording cooperative acts, <span class="highlight">the community can see what it\u2019s actually capable of.</span></p><p>How much tutoring happens every week. How many meals get shared. How much repair work circulates. The invisible economy becomes visible \u2014 not to surveil, but to understand and strengthen.</p><p>A community that can see its own cooperation can organize around it.</p>' },
       ]
@@ -5908,9 +5927,9 @@ const PAIR_CODE_LENGTH = 4;
       title: 'Your Phone, Your Server',
       slides: [
         { icon: '&#128241;', title: 'Offline by design',
-          body: '<p>This app works without the internet. Your thread lives on your device. Exchanges happen face-to-face. <span class="highlight">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>' },
+          body: '<p>This app works without the internet. Your chain lives on your device. Exchanges happen face-to-face. <span class="highlight">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>' },
         { icon: '&#128274;', title: 'Your data stays yours',
-          body: '<p>No one can access your thread without your PIN. No company stores a copy. No government has a backdoor. <span class="highlight">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>' },
+          body: '<p>No one can access your chain without your PIN. No company stores a copy. No government has a backdoor. <span class="highlight">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>' },
         { icon: '&#9889;', title: 'Resilience through simplicity',
           body: '<p>The entire application is a single file. It runs on any phone with a browser. <span class="highlight">There is no server to hack, no database to breach, no company to shut down.</span></p><p>If the website disappears tomorrow, every installed copy keeps working. The protocol lives wherever the people are. That\u2019s the point.</p>' },
       ]
@@ -5919,7 +5938,7 @@ const PAIR_CODE_LENGTH = 4;
       title: 'Privacy & Safety',
       slides: [
         { icon: '&#9737;', title: 'You control what others see',
-          body: '<p>When you share your thread for negotiation, <span class="highlight">no counterparty names are ever shown.</span> Only your work patterns, categories, and pricing history.</p><p>The person you\u2019re negotiating with can see the shape of your work without knowing who you worked with. Your competence travels with you. Your connections stay private.</p>' },
+          body: '<p>When you share your chain for negotiation, <span class="highlight">no counterparty names are ever shown.</span> Only your work patterns, categories, and pricing history.</p><p>The person you\u2019re negotiating with can see the shape of your work without knowing who you worked with. Your competence travels with you. Your connections stay private.</p>' },
         { icon: '&#128737;', title: 'Protection in dangerous places',
           body: '<p>If you\u2019re in a situation where revealing your network could be dangerous, <span class="highlight">the protocol protects you by design.</span></p><p>No central registry knows you exist. No list of members can be seized. Your thread is encrypted behind your PIN. To an outside observer, the app is just a file on your phone.</p><p>If you need to disappear, delete your thread. It\u2019s gone. No trace, no record, no recovery.</p>' },
         { icon: '&#128100;', title: 'Identity without identification',
@@ -6380,7 +6399,7 @@ function init() {
           btn.style.padding = '12px 24px';
           btn.style.borderRadius = '8px';
           btn.style.fontSize = '15px';
-          btn.textContent = 'Import an existing thread';
+          btn.textContent = 'Import an existing chain';
         });
       }
     }
@@ -6934,7 +6953,7 @@ function init() {
       // Estimate counterparty diversity from category data
       var catCount = Object.keys(ts.cats || {}).length;
       if (ts.n >= 3 && catCount <= 1) {
-        observations.push({ signal: 'single-cat', text: 'So far, all exchanges fall in one category. This is normal if this is what the person does for their work or daily life. As their thread grows, more variety may appear naturally.' });
+        observations.push({ signal: 'single-cat', text: 'So far, all exchanges fall in one category. This is normal if this is what the person does for their work or daily life. As their chain grows, more variety may appear naturally.' });
       }
       return { state: 'young', observations: observations };
     }
@@ -7036,7 +7055,7 @@ function init() {
         'This is not debt. No one will ever come for this balance. Human beings receive far more than they give for most of their early life, and when we get old, we will again. There are seasons of providing and seasons of receiving.' +
         '</div>' +
         '<div style="font-size:14px; color:var(--text-dim); line-height:1.7;">' +
-        'This number does not stop you from cooperating with anyone. You can provide, you can receive. Your thread continues to grow regardless of where this number sits.' +
+        'This number does not stop you from cooperating with anyone. You can provide, you can receive. Your chain continues to grow regardless of where this number sits.' +
         '</div>';
       document.getElementById('texture-detail-title').textContent = title;
       document.getElementById('texture-detail-body').innerHTML = body;
@@ -8319,12 +8338,17 @@ function init() {
       html += '<div id="home-list" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow);">';
       recent.forEach(function(r, idx) {
         var desc = r.description || r.category || 'Exchange';
-        var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
+        var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         var isProv = r.energyState === 'provided';
-        var valColor = isProv ? 'var(--green)' : 'var(--red)';
+        // Bite 2 of language audit: row valence neutralized. Received is not
+        // bad in HEP; provided and received are two roles in a cooperative
+        // act, both honest. Green for provided, blue for received -- both
+        // pleasant, neither valence-laden -- matches the Home totals pattern.
+        // Direction is still carried by the arrow icon and the +/- sign.
+        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
         var valSign = isProv ? '+' : '\u2212';
-        var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+        var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
         var arrowIcon = isProv
           ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
           : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
@@ -9699,10 +9723,20 @@ function init() {
     var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
     if (genesisRec) genesisPhoto = genesisRec.photoData;
     var currentPhoto = state.declarations.photo || '';
-    // Determine photo state: 'none', 'genesis', 'both'
+    // Determine photo state: 'none', 'genesis-only', 'current-only', 'both'
+    // genesis-only: chain has a genesis photo, user has not added a current
+    //   replacement yet (or current matches genesis). Show genesis filled,
+    //   current placeholder.
+    // current-only: chain has no genesis photo (anonymous-at-setup user),
+    //   user has since added a current. Genesis slot stays permanently empty
+    //   (chain is immutable, no retroactive genesis photo possible). Show
+    //   current filled, genesis placeholder.
+    // both: chain has a genesis photo AND user has added a different current.
+    //   Show both side by side.
     var photoState = 'none';
     if (genesisPhoto && currentPhoto && genesisPhoto !== currentPhoto) photoState = 'both';
-    else if (genesisPhoto || currentPhoto) photoState = 'genesis';
+    else if (genesisPhoto) photoState = 'genesis-only';
+    else if (currentPhoto) photoState = 'current-only';
     var displayPhoto = currentPhoto || genesisPhoto || '';
     var fp = state.fingerprint || '';
     var decls = [];
@@ -9712,7 +9746,7 @@ function init() {
     html += '<div style="display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer;" onclick="var p=this.nextElementSibling; p.style.display=p.style.display===\'block\'?\'none\':\'block\'; this.querySelector(\'.id-chev\').style.transform=p.style.display===\'block\'?\'rotate(90deg)\':\'\';">';
     if (displayPhoto) {
       html += '<div style="position:relative; flex-shrink:0;"><img src="' + displayPhoto + '" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);">';
-      if (photoState === 'genesis') html += '<div style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:rgba(180,83,9,0.15); border:2px solid var(--bg-raised); display:flex; align-items:center; justify-content:center; font-size:9px; color:#B45309;">!</div>';
+      if (photoState === 'genesis-only') html += '<div style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:rgba(180,83,9,0.15); border:2px solid var(--bg-raised); display:flex; align-items:center; justify-content:center; font-size:9px; color:#B45309;">!</div>';
       html += '</div>';
     } else {
       html += '<div style="position:relative; flex-shrink:0;"><div style="width:44px; height:44px; border-radius:50%; background:var(--accent-light); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--accent); flex-shrink:0;">' + name.charAt(0).toUpperCase() + '</div>';
@@ -9738,10 +9772,10 @@ function init() {
       html += '<button style="background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;" onclick="App.openDeclarationsEdit()">Take photo</button>';
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
-    } else if (photoState === 'genesis') {
-      // Show genesis photo circle + empty current circle
+    } else if (photoState === 'genesis-only') {
+      // Genesis photo exists, no separate current. Show genesis filled, current placeholder.
       html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
-      html += '<div style="text-align:center;"><img src="' + (genesisPhoto || currentPhoto) + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
+      html += '<div style="text-align:center;"><img src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--accent); background:var(--accent-light); display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="App.openDeclarationsEdit()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
       html += '</div>';
       html += '<div style="background:rgba(180,83,9,0.08); border-radius:var(--radius-sm); padding:12px 14px; display:flex; gap:12px; align-items:flex-start;">';
@@ -9752,6 +9786,14 @@ function init() {
       html += '<button style="background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;" onclick="App.openDeclarationsEdit()">Update photo</button>';
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
+    } else if (photoState === 'current-only') {
+      // No genesis photo (chain started anonymous, immutable so it stays empty),
+      // but a current photo has been added. Show current filled, genesis placeholder.
+      html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
+      html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--text-faint); background:var(--bg-input); display:flex; align-items:center; justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
+      html += '<div style="text-align:center;"><img src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
+      html += '</div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.5; padding:0 4px;">No genesis photo on this chain. Genesis is permanent and cannot be added later. Your current photo is what counterparties will see.</div>';
     } else if (photoState === 'both') {
       // Both photos - toggle view
       html += '<div style="display:flex; justify-content:center; gap:24px; margin:12px 0 16px; padding:4px 0 8px;">';
@@ -9818,7 +9860,8 @@ function init() {
       recent.forEach(function(r) {
         var desc = r.description || r.category || 'Exchange';
         var isProv = r.energyState === 'provided';
-        var valColor = isProv ? 'var(--green)' : 'var(--red)';
+        // See Bite 2 note in renderHomeTab.
+        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
         var valSign = isProv ? '+' : '-';
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0;' + (r !== recent[recent.length-1] ? ' border-bottom:1px solid var(--border);' : '') + '">';
@@ -9852,13 +9895,14 @@ function init() {
     html += '<div id="hist-list">';
     ex.forEach(function(r) {
       var desc = r.description || r.category || 'Exchange';
-      var name = state.settings.hideNames ? '' : (r.counterpartyName || (r.counterparty || '').substring(0, 8));
+      var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
       var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       var isProv = r.energyState === 'provided';
-      var valColor = isProv ? 'var(--green)' : 'var(--red)';
+      // See Bite 2 note in renderHomeTab: green for provided, blue for received.
+      var valColor = isProv ? 'var(--green)' : 'var(--blue)';
       var valSign = isProv ? '+' : '-';
-      var bgColor = isProv ? 'var(--green-light)' : 'var(--red-light)';
+      var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
       // Horizontal arrow (left) + person silhouette (right). Arrow toward person = received, away = provided.
       var arrowIcon = isProv
         ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
@@ -9986,16 +10030,8 @@ function init() {
     if (!el) return;
     var html = '';
 
-    // Privacy
+    // Proof of Human (top, prominent)
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; margin-top:4px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Hide counterparty names</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Names hidden in shared data</div></div>';
-    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
-    html += '</div></div>';
-
-    // Proof of Human
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Proof of Human</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:14px;">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</div>';
     // Motion toggle
@@ -10023,40 +10059,41 @@ function init() {
     html += '</div>';
     html += '</div>';
 
-    // Network
+    // Privacy
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="color:var(--text-dim);">Witness server</span><span style="color:var(--text); font-size:var(--fs-sm);">' + esc(getWitnessUrl() || 'None') + '</span></div>';
-    html += '<div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-bottom:8px;"></div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.testWitnessConnection()">Test connection</button>';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Privacy mode</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Hide counterparty names in your own lists</div></div>';
+    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
     html += '</div>';
-
-    // Data
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
-    html += '<div style="display:flex; gap:10px; margin-bottom:10px;">';
-    html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.exportBackup()">Export backup</button>';
-    html += '<button style="flex:1; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.importBackup()">Import backup</button>';
-    html += '</div>';
-    // Chain tools
-    html += '<div style="border-top:1px solid var(--border); padding-top:10px;">';
-    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openChainViewer()">';
-    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">View full chain</span>';
-    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
-    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openMyTexture()">';
-    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">Chain health</span>';
-    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
-    html += '<div style="display:flex; align-items:center; padding:10px 0; cursor:pointer;" onclick="App.openMyPricing()">';
-    html += '<span style="flex:1; font-size:var(--fs-md); color:var(--text);">Pricing history</span>';
-    html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span></div>';
+    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
+    html += 'Sovereign identity: you decide who knows what about your past. Past counterparty names are never sent to others by default. The chain shares only aggregate data. This setting hides them from your own device too, for when local visibility could put someone at risk or when you simply choose not to disclose. Tradeoff: harder to remember specific past work or offer references. Your chain still demonstrates the history.';
     html += '</div></div>';
 
-    // Security
+    // Network — connected / not connected, with small refresh icon
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Security</div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.changePIN()">Change PIN</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.installFromSettings()">Install to home screen</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-top:8px;" onclick="App.forceUpdate()">Check for updates</button>';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Witness server</div><div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Checking\u2026</div></div>';
+    html += '<button aria-label="Re-check connection" style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); padding:6px 12px; font-size:16px; cursor:pointer; line-height:1;" onclick="App.checkWitnessStatus()">\u21bb</button>';
+    html += '</div></div>';
+
+    // Install to home screen (prominent)
+    html += '<div style="margin-bottom:16px;">';
+    html += '<button style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer; box-shadow:var(--shadow);" onclick="App.installFromSettings()">Install to home screen</button>';
+    html += '</div>';
+
+    // Data (Export, Import, Change PIN)
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.exportBackup()">Export backup</button>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.importBackup()">Import backup</button>';
+    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.changePIN()">Change PIN</button>';
+    html += '</div>';
+
+    // Check for updates (low priority, small)
+    html += '<div style="text-align:center; padding:4px 0 16px;">';
+    html += '<button style="background:none; border:none; color:var(--text-faint); font-size:var(--fs-sm); cursor:pointer; text-decoration:underline;" onclick="App.forceUpdate()">Check for updates</button>';
     html += '</div>';
 
     // Danger zone
@@ -10070,6 +10107,31 @@ function init() {
     html += '<div style="text-align:center; padding:16px 0; color:var(--text-faint); font-size:var(--fs-sm);">HEP v' + APP_VERSION + '</div>';
 
     el.innerHTML = html;
+
+    // Auto-check witness status on render
+    checkWitnessStatus();
+  }
+
+  async function checkWitnessStatus() {
+    var el = document.getElementById('settings-witness-status');
+    if (!el) return;
+    var url = getWitnessUrl();
+    if (!url) {
+      el.textContent = 'Not configured';
+      el.style.color = 'var(--text-dim)';
+      return;
+    }
+    el.textContent = 'Checking\u2026';
+    el.style.color = 'var(--text-faint)';
+    try {
+      var resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) throw new Error();
+      el.textContent = 'Connected';
+      el.style.color = 'var(--green)';
+    } catch(e) {
+      el.textContent = 'Not connected';
+      el.style.color = 'var(--red)';
+    }
   }
 
   function shareApp() {
@@ -10222,12 +10284,12 @@ function init() {
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
-    openSettings, togglePrivacy, toggleLocation, toggleMotion, toggleMotionTab, toggleLocationTab,
+    togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
-    testWitnessConnection,
+    checkWitnessStatus,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
-    changePIN, installFromSettings, forceUpdate, deleteChain, closeModal,
+    changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
 })();
