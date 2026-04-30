@@ -156,9 +156,10 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .ex4-label { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; transition: color 0.3s ease; }
 .ex4-step.active .ex4-label { color: var(--ind-color); }
 .ex4-step.done .ex4-label { color: var(--ind-color); }
-.ex4-step.notify .ex4-num { background: var(--ind-color); color: #fff; animation: ex4Pulse 1.5s ease-in-out 3; }
+.ex4-step.notify .ex4-num { background: var(--ind-color); color: #fff; animation: ex4Pulse 1.8s ease-in-out infinite; }
 .ex4-step.notify .ex4-label { color: var(--ind-color); }
-@keyframes ex4Pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(43,140,62,0.4); } 50% { box-shadow: 0 0 0 8px rgba(43,140,62,0); } }
+@keyframes ex4Pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .ex4-step.notify .ex4-num { animation: none; } }
 .ex4-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; margin-bottom: 16px; transition: background 0.3s ease; }
 .ex4-line.done { background: var(--ind-color); }
 

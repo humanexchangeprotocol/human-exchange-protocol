@@ -7973,11 +7973,34 @@ function init() {
     var spinnerEl = document.getElementById('ex-rw-spinner');
     if (spinnerEl) spinnerEl.style.display = 'none';
 
-    // Pulse the Exchange step in the progress bar
+    // Pulse the Decide step in the indicator (was the Exchange step
+    // pre-v2.61.23). Swap the step number for a small document icon
+    // so the visual reads as "a proposal has arrived" rather than
+    // just "step 3 wants attention". The gentle opacity pulse comes
+    // from the CSS .ex4-step.notify rule.
     var indicator = document.getElementById('ex4-indicator');
     if (indicator) {
       var step3 = indicator.querySelector('[data-step="3"]');
-      if (step3) step3.classList.add('notify');
+      if (step3) {
+        step3.classList.add('notify');
+        var num3 = step3.querySelector('.ex4-num');
+        if (num3) {
+          num3.innerHTML = '<svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="#fff" stroke-width="1" stroke-linecap="round"><rect x="1.5" y="1" width="9" height="12" rx="1"/><line x1="3.5" y1="4.5" x2="8.5" y2="4.5"/><line x1="3.5" y1="7" x2="8.5" y2="7"/><line x1="3.5" y1="9.5" x2="6.5" y2="9.5"/></svg>';
+        }
+      }
+    }
+
+    // If the confirmer is still on the post-SAS Review screen (Read,
+    // step 2) when the proposal arrives, transform that screen's
+    // "Confirm" button into "Review proposal" so it carries the
+    // arrival signal where the user's eye already is. The handler
+    // (exReviewConfirm) is unchanged -- it advances to receiver-wait,
+    // which by this point has the proposal card already rendered
+    // below.
+    var reviewContainer = document.getElementById('ex-review-container');
+    if (reviewContainer && reviewContainer.style.display !== 'none') {
+      var reviewBtn = reviewContainer.querySelector('button[onclick*="exReviewConfirm"]');
+      if (reviewBtn) reviewBtn.textContent = 'Review proposal';
     }
 
     // Build proposal card
