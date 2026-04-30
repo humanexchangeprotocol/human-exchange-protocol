@@ -2162,7 +2162,7 @@ const PAIR_CODE_LENGTH = 4;
   function coopReceiveProposal() {
     closeModal('cooperate');
     openExchange();
-    document.getElementById('exchange-header').textContent = 'Receive a Proposal';
+    document.getElementById('exchange-header').textContent = 'Receive a proposal';
     sessionRole = 'confirmer';
     generateSessionCode();
     showExStep('session');
@@ -6465,7 +6465,7 @@ function init() {
     exConnectMode = 'start';
     cleanupSession();
     showModal('exchange');
-    document.getElementById('exchange-header').textContent = 'Cooperate';
+    document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
     // Generate the visible code
@@ -6517,7 +6517,7 @@ function init() {
     exInitiatorRole = null; // joiner — role determined by partner
     cleanupSession();
     showModal('exchange');
-    document.getElementById('exchange-header').textContent = 'Cooperate';
+    document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
     var html = '<div style="text-align:center; margin-bottom:16px;">';
@@ -10174,7 +10174,7 @@ function init() {
     exFlowActive = true;
     cleanupSession();
     showModal('exchange');
-    document.getElementById('exchange-header').textContent = 'New Exchange';
+    document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
     var html = '<div style="text-align:center; margin-bottom:24px; padding-top:8px;">';
