@@ -141,23 +141,26 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 @keyframes lessonFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lessonPopIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 
-/* === EXCHANGE 4-STEP INDICATOR === */
-.ex4-indicator { display: flex; align-items: center; padding: 12px 20px 8px; flex-shrink: 0; }
+/* === EXCHANGE STEP INDICATOR (role-aware 3-step) === */
+/* Color comes from --ind-color, set per role on the indicator container.
+   Default is proposer-green; .role-confirmer flips to accent (blue). */
+.ex4-indicator { display: flex; align-items: center; padding: 12px 20px 8px; flex-shrink: 0; --ind-color: var(--green); }
+.ex4-indicator.role-confirmer { --ind-color: var(--accent); }
 
 /* Scroll fade indicator for long modal content */
 /* Removed: was covering buttons on short screens. Revisit with JS-based scroll detection. */
 .ex4-step { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .ex4-num { width: 26px; height: 26px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text-faint); transition: all 0.3s ease; }
-.ex4-step.active .ex4-num { background: var(--accent); color: #FFFFFF; }
-.ex4-step.done .ex4-num { background: var(--green); color: #FFFFFF; }
+.ex4-step.active .ex4-num { background: var(--ind-color); color: #FFFFFF; }
+.ex4-step.done .ex4-num { background: var(--ind-color); color: #FFFFFF; }
 .ex4-label { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; transition: color 0.3s ease; }
-.ex4-step.active .ex4-label { color: var(--accent); }
-.ex4-step.done .ex4-label { color: var(--green); }
-.ex4-step.notify .ex4-num { background: var(--green); color: #fff; animation: ex4Pulse 1.5s ease-in-out 3; }
-.ex4-step.notify .ex4-label { color: var(--green); }
+.ex4-step.active .ex4-label { color: var(--ind-color); }
+.ex4-step.done .ex4-label { color: var(--ind-color); }
+.ex4-step.notify .ex4-num { background: var(--ind-color); color: #fff; animation: ex4Pulse 1.5s ease-in-out 3; }
+.ex4-step.notify .ex4-label { color: var(--ind-color); }
 @keyframes ex4Pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(43,140,62,0.4); } 50% { box-shadow: 0 0 0 8px rgba(43,140,62,0); } }
 .ex4-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; margin-bottom: 16px; transition: background 0.3s ease; }
-.ex4-line.done { background: var(--green); }
+.ex4-line.done { background: var(--ind-color); }
 
 /* === SETUP === */
 #setup { align-items: center; justify-content: flex-start; padding: 24px; padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -1426,15 +1429,14 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <h2 id="exchange-header">New exchange</h2>
       <button class="modal-close" id="exchange-close" onclick="App.closeExchange()">&#10005;</button>
     </div>
-    <!-- 4-step progress indicator -->
-    <div class="ex4-indicator" id="ex4-indicator">
+    <!-- 3-step progress indicator (role-aware: proposer=green, confirmer=blue).
+         JS rebuilds the labels and step states via renderIndicator(). -->
+    <div class="ex4-indicator role-proposer" id="ex4-indicator">
       <div class="ex4-step active" data-step="1"><div class="ex4-num">1</div><div class="ex4-label">Connect</div></div>
       <div class="ex4-line"></div>
-      <div class="ex4-step" data-step="2"><div class="ex4-num">2</div><div class="ex4-label">Review</div></div>
+      <div class="ex4-step" data-step="2"><div class="ex4-num">2</div><div class="ex4-label">Read</div></div>
       <div class="ex4-line"></div>
-      <div class="ex4-step" data-step="3"><div class="ex4-num">3</div><div class="ex4-label">Exchange</div></div>
-      <div class="ex4-line"></div>
-      <div class="ex4-step" data-step="4"><div class="ex4-num">4</div><div class="ex4-label">Done</div></div>
+      <div class="ex4-step" data-step="3"><div class="ex4-num">3</div><div class="ex4-label">Compose</div></div>
     </div>
     <div class="modal-body" id="exchange-body">
 

@@ -1283,30 +1283,53 @@ const PAIR_CODE_LENGTH = 4;
   function showExStep(step) {
     document.querySelectorAll('#exchange-body .hs-step').forEach(s => s.classList.remove('active'));
     document.getElementById('ex-step-' + step).classList.add('active');
-    // Sync 4-step indicator
-    var metaStep = 1;
-    if (step === 'connect') metaStep = 1;
-    else if (step === 'verify' || step === 'texture' || step === 'role') metaStep = 2;
-    else if (step === 'done') metaStep = 4;
-    else metaStep = 3; // form, receiver-wait, transport, pair, session, proposal, waiting, settle
+    // Sync 3-step indicator (role-aware).
+    // Mapping flow steps to indicator steps:
+    //   connect, verify    -> 1 (Connect: codes shown, codes match)
+    //   texture            -> 2 (Read: counterparty's chain + POH)
+    //   everything else    -> 3 (Compose for proposer / Decide for confirmer)
+    //   done, settle       -> 4 (renderIndicator marks every step done)
+    var metaStep;
+    if (step === 'connect' || step === 'verify') metaStep = 1;
+    else if (step === 'texture') metaStep = 2;
+    else if (step === 'done' || step === 'settle') metaStep = 4;
+    else metaStep = 3;
+    // Default to proposer when role is not yet set (e.g. on the initial Start/Join choice screen).
+    var role = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
+    renderIndicator(metaStep, role);
+  }
+
+  // Render the role-aware 3-step indicator. Called by showExStep and
+  // anywhere a role transition needs to be reflected immediately.
+  function renderIndicator(metaStep, role) {
     var indicator = document.getElementById('ex4-indicator');
-    if (indicator) {
-      indicator.querySelectorAll('.ex4-step').forEach(function(el) {
-        var s = parseInt(el.getAttribute('data-step'));
-        var numEl = el.querySelector('.ex4-num');
-        el.classList.remove('active', 'done');
-        if (s < metaStep) {
-          el.classList.add('done');
-          numEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-        } else {
-          el.classList.toggle('active', s === metaStep);
-          numEl.textContent = s;
-        }
-      });
-      indicator.querySelectorAll('.ex4-line').forEach(function(el, i) {
-        el.classList.toggle('done', i + 1 < metaStep);
-      });
+    if (!indicator) return;
+    indicator.classList.remove('role-proposer', 'role-confirmer');
+    indicator.classList.add('role-' + role);
+    var labels = role === 'confirmer'
+      ? ['Connect', 'Read', 'Decide']
+      : ['Connect', 'Read', 'Compose'];
+    var html = '';
+    for (var i = 1; i <= 3; i++) {
+      var stepCls = '';
+      if (i < metaStep) stepCls = ' done';
+      else if (i === metaStep) stepCls = ' active';
+      html += '<div class="ex4-step' + stepCls + '" data-step="' + i + '">';
+      html += '<div class="ex4-num">';
+      if (i < metaStep) {
+        html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      } else {
+        html += i;
+      }
+      html += '</div>';
+      html += '<div class="ex4-label">' + labels[i - 1] + '</div>';
+      html += '</div>';
+      if (i < 3) {
+        var lineCls = i < metaStep ? ' done' : '';
+        html += '<div class="ex4-line' + lineCls + '"></div>';
+      }
     }
+    indicator.innerHTML = html;
   }
 
   // --- Cooperate Flow (v2.13.0) ---
