@@ -6985,6 +6985,22 @@ function init() {
     // re-render through the exOnConnected snapshot-poll callback).
     var roleNow = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
     renderIndicator(2, roleNow);
+
+    // Start session polling now -- the confirmer needs to be able to
+    // detect an incoming proposal while still on Read, not only after
+    // advancing to receiver-wait. Pre-v2.61.27 the poll only started
+    // in exContinueFromTexture (when the user tapped through past
+    // Read), which meant the "proposal arrives while confirmer is
+    // browsing the counterparty's chain" path -- the entire reason
+    // for the on-Read pulse and button-transform -- never fired,
+    // because the client had no listener running yet. startSessionPoll
+    // is idempotent (calls stopSessionPoll first) so the later call
+    // in exContinueFromTexture is harmless. For the proposer this is
+    // also harmless: checkSessionState only acts on data.proposal
+    // status, and the proposer hasn't sent one yet at this point.
+    if (typeof startSessionPoll === 'function') {
+      try { startSessionPoll(); } catch(spe) { console.log('[ex-flow] Session poll start failed:', spe.message); }
+    }
   }
 
   function exReviewConfirm() {
