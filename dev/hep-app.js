@@ -7977,11 +7977,17 @@ function init() {
     // pre-v2.61.23). Swap the step number for a small document icon
     // so the visual reads as "a proposal has arrived" rather than
     // just "step 3 wants attention". The gentle opacity pulse comes
-    // from the CSS .ex4-step.notify rule.
+    // from the CSS .ex4-step.notify rule. If step 3 is already active
+    // (the user has already advanced to Decide / receiver-wait), skip
+    // the notify -- they don't need to be alerted to where they
+    // already are. exShowProposalReady gets called twice in the
+    // proposal-arrived-before-Read-confirm scenario: once from the
+    // poll while the user is still on Read, then again after
+    // exContinueFromTexture restarts the poll on receiver-wait.
     var indicator = document.getElementById('ex4-indicator');
     if (indicator) {
       var step3 = indicator.querySelector('[data-step="3"]');
-      if (step3) {
+      if (step3 && !step3.classList.contains('active')) {
         step3.classList.add('notify');
         var num3 = step3.querySelector('.ex4-num');
         if (num3) {
@@ -7996,9 +8002,12 @@ function init() {
     // arrival signal where the user's eye already is. The handler
     // (exReviewConfirm) is unchanged -- it advances to receiver-wait,
     // which by this point has the proposal card already rendered
-    // below.
+    // below. Gate on the verify hs-step actually being the active
+    // (visible) one so the second call from the post-navigation poll
+    // doesn't touch a button the user can no longer see.
+    var verifyStep = document.getElementById('ex-step-verify');
     var reviewContainer = document.getElementById('ex-review-container');
-    if (reviewContainer && reviewContainer.style.display !== 'none') {
+    if (verifyStep && verifyStep.classList.contains('active') && reviewContainer) {
       var reviewBtn = reviewContainer.querySelector('button[onclick*="exReviewConfirm"]');
       if (reviewBtn) reviewBtn.textContent = 'Review proposal';
     }
