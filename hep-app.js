@@ -5660,6 +5660,12 @@ const PAIR_CODE_LENGTH = 4;
   var CANONICAL_APP_URL = 'https://app.humanexchangeprotocol.org/';
 
   function getAppBase() {
+    // If running from the /dev/ staging branch, preserve that path so
+    // shared QR codes land on /dev/ on the second device. Otherwise
+    // always return the canonical production URL.
+    if (window.location.pathname.indexOf('/dev/') === 0) {
+      return CANONICAL_APP_URL + 'dev/';
+    }
     return CANONICAL_APP_URL;
   }
 
