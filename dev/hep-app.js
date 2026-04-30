@@ -1363,8 +1363,11 @@ const PAIR_CODE_LENGTH = 4;
       const card = document.createElement('div');
       card.className = 'coop-act';
       const dir = act.energyState === 'provided' ? '\u2191' : '\u2193';
-      const dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(204,68,68,0.15)';
-      const dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--red)';
+      // Bite 2 of language audit (continued in v2.61.14): valence neutralized.
+      // Provided and received are roles, not virtues. Green for provided,
+      // blue for received -- both pleasant, neither valence-laden.
+      const dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(42,90,143,0.15)';
+      const dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--blue)';
       const name = act.counterpartyName || '';
       const meta = [];
       if (name) meta.push(esc(name));
@@ -4064,10 +4067,16 @@ const PAIR_CODE_LENGTH = 4;
       const eqActs = d.myDensity > 0 ? (fieldAdj / d.myDensity).toFixed(1) : '\u2014';
       h += '<div class="cf-cost-row"><span class="cl">Equivalent avg acts</span><span class="cv">~' + eqActs + '</span></div>';
     }
-    h += '<div class="cf-cost-row"><span class="cl">Your current surplus</span><span class="cv" style="color:' + (mySurplus >= 0 ? 'var(--green)' : 'var(--red)') + '">' + mySurplus + '</span></div>';
-    h += '<div class="cf-cost-row"><span class="cl">After this exchange</span><span class="cv" style="color:' + (afterBal >= 0 ? 'var(--green)' : 'var(--red)') + '">' + afterBal + '</span></div>';
+    // Bite 2 (continued in v2.61.14): position-line valence neutralized.
+    // The copy below explicitly says "deficit is an honest position" so the
+    // colors above must not contradict that. Positive position is green
+    // (gentle affirmation that you have provided more than received in the
+    // categories captured by the chain). Negative position is blue rather
+    // than red -- a valid honest position, not an alarm.
+    h += '<div class="cf-cost-row"><span class="cl">Your current position</span><span class="cv" style="color:' + (mySurplus >= 0 ? 'var(--green)' : 'var(--blue)') + '">' + mySurplus + '</span></div>';
+    h += '<div class="cf-cost-row"><span class="cl">After this exchange</span><span class="cv" style="color:' + (afterBal >= 0 ? 'var(--green)' : 'var(--blue)') + '">' + afterBal + '</span></div>';
     if (afterBal < 0) {
-      h += '<div class="cf-deficit">You\u2019d enter deficit. This is not blocked \u2014 deficit is an honest position. It records that you received something valuable.</div>';
+      h += '<div class="cf-deficit">You\u2019d move into deficit. This is not blocked \u2014 deficit is an honest position. It records that you received something valuable.</div>';
     }
     h += '</div>';
 
@@ -7043,7 +7052,10 @@ function init() {
     if (key === 'wallet-position-explain') {
       var bal = HCP.walletBalance(state.chain);
       var balStr = (bal >= 0 ? '+' : '') + bal.toFixed(0);
-      var balClass = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)';
+      // Bite 2 (continued in v2.61.14): the body copy below says "this number
+      // does not mean you have received less or more than others." The colors
+      // must agree. Positive green, negative blue, zero text-dim. No red.
+      var balClass = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--blue)' : 'var(--text-dim)';
       title = 'What this number means';
       body = '<div style="text-align:center; margin-bottom:16px;">' +
         '<div style="font-size:36px; font-weight:600; color:' + balClass + ';">' + balStr + '</div>' +
@@ -7744,8 +7756,9 @@ function init() {
       var card = document.createElement('div');
       card.className = 'coop-act';
       var dir = act.energyState === 'provided' ? '\u2191' : '\u2193';
-      var dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(204,68,68,0.15)';
-      var dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--red)';
+      // See Bite 2 note in pending-items render. Same pattern.
+      var dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(42,90,143,0.15)';
+      var dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--blue)';
       var meta = [];
       if (act.category) meta.push(esc(act.category));
       if (act.count > 1) meta.push(act.count + ' times');
