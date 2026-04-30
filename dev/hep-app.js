@@ -2790,6 +2790,7 @@ const PAIR_CODE_LENGTH = 4;
       if (sessionRole === 'confirmer' && data.proposal && data.proposal.status === 'pending') {
         stopSessionPoll();
         sessionProposal = data.proposal;
+        console.log('[diag-confirmer-recv] hasEncrypted=' + !!sessionProposal.encrypted_exchange + ' hasKey=' + !!sessionSharedKey + ' rawDesc=' + JSON.stringify(sessionProposal.description) + ' rawValue=' + sessionProposal.value);
         // Decrypt exchange content if encrypted
         if (sessionProposal.encrypted_exchange && sessionSharedKey) {
           try {
@@ -2800,8 +2801,10 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.category = dec.category;
             sessionProposal.duration = dec.duration;
             sessionProposal.proposer_photo = dec.photo;
+            console.log('[diag-confirmer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
           } catch(de) { console.log('[session] Decrypt failed:', de.message); }
         }
+        console.log('[diag-confirmer-post] desc=' + JSON.stringify(sessionProposal.description) + ' value=' + sessionProposal.value);
         if (exFlowActive) {
           // Don't auto-render — show a button so receiver can finish browsing
           exShowProposalReady();
@@ -3019,6 +3022,7 @@ const PAIR_CODE_LENGTH = 4;
   async function completeSessionExchange(data) {
     // Proposer: the confirmer has confirmed. Write proposer's chain.
     if (!data.proposal || !sessionPartner) return;
+    console.log('[diag-proposer-recv] hasEncrypted=' + !!data.proposal.encrypted_exchange + ' hasKey=' + !!sessionSharedKey + ' rawDesc=' + JSON.stringify(data.proposal.description) + ' rawValue=' + data.proposal.value);
     // Decrypt exchange content if encrypted
     if (data.proposal.encrypted_exchange && sessionSharedKey) {
       try {
@@ -3049,7 +3053,9 @@ const PAIR_CODE_LENGTH = 4;
         data.proposal.category = dec.category;
         data.proposal.duration = dec.duration;
         data.proposal.proposer_photo = dec.photo;
+        console.log('[diag-proposer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
       } catch(de) {
+        console.log('[diag-proposer-decrypt-fail] err=' + de.message + ' usingPendingFallback=' + !!state.pendingProposal);
         // Fallback: use local pending proposal values
         if (state.pendingProposal) {
           data.proposal.value = state.pendingProposal.details.value;
@@ -3060,6 +3066,7 @@ const PAIR_CODE_LENGTH = 4;
         }
       }
     }
+    console.log('[diag-proposer-post] desc=' + JSON.stringify(data.proposal.description) + ' value=' + data.proposal.value);
     sessionSetState('done');
     await writeSessionRecord('proposer', data, '');
   }
@@ -3106,6 +3113,8 @@ const PAIR_CODE_LENGTH = 4;
     } catch (e) {
       cpName = undefined;
     }
+
+    console.log('[diag-write] role=' + role + ' desc=' + JSON.stringify(p.description) + ' value=' + p.value + ' direction=' + myDirection + ' cpName=' + JSON.stringify(cpName) + ' myDeclName=' + JSON.stringify(state.declarations && state.declarations.name));
 
     const record = HCP.createRecord({
       type: 'exchange',
