@@ -1294,21 +1294,39 @@ const PAIR_CODE_LENGTH = 4;
     else if (step === 'texture') metaStep = 2;
     else if (step === 'done' || step === 'settle') metaStep = 4;
     else metaStep = 3;
-    // Default to proposer when role is not yet set (e.g. on the initial Start/Join choice screen).
-    var role = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
+    // Role-aware coloring is held back at the Connect step.
+    // Even though the user has tapped Start or Join (so we know
+    // the role internally), surfacing role identity in the
+    // indicator before they advance past Connect feels premature
+    // -- the role becomes meaningful when they move into Read.
+    // Pass 'neutral' here; renderIndicator uses gray. The
+    // sessionRole variable stays set so later steps render
+    // correctly as soon as metaStep advances.
+    var role;
+    if (metaStep === 1) {
+      role = 'neutral';
+    } else {
+      role = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
+    }
     renderIndicator(metaStep, role);
   }
 
   // Render the role-aware 3-step indicator. Called by showExStep and
   // anywhere a role transition needs to be reflected immediately.
+  // role values: 'proposer' (green), 'confirmer' (blue), 'neutral' (gray
+  // — used during Connect when role identity is held back).
   function renderIndicator(metaStep, role) {
     var indicator = document.getElementById('ex4-indicator');
     if (!indicator) return;
-    indicator.classList.remove('role-proposer', 'role-confirmer');
+    indicator.classList.remove('role-proposer', 'role-confirmer', 'role-neutral');
     indicator.classList.add('role-' + role);
-    var labels = role === 'confirmer'
-      ? ['Connect', 'Read', 'Decide']
-      : ['Connect', 'Read', 'Compose'];
+    // Neutral mode hides the role-specific third label too (Compose
+    // vs Decide). 'Record' is the umbrella term -- both proposer and
+    // confirmer end the flow by recording the cooperative act.
+    var labels;
+    if (role === 'confirmer') labels = ['Connect', 'Read', 'Decide'];
+    else if (role === 'proposer') labels = ['Connect', 'Read', 'Compose'];
+    else labels = ['Connect', 'Read', 'Record'];
     var html = '';
     for (var i = 1; i <= 3; i++) {
       var stepCls = '';

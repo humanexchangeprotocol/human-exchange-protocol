@@ -143,9 +143,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
 /* === EXCHANGE STEP INDICATOR (role-aware 3-step) === */
 /* Color comes from --ind-color, set per role on the indicator container.
-   Default is proposer-green; .role-confirmer flips to accent (blue). */
+   Default is proposer-green; .role-confirmer flips to accent (blue).
+   .role-neutral keeps the indicator gray during the Connect step --
+   role identity is committed only after the user advances past Connect. */
 .ex4-indicator { display: flex; align-items: center; padding: 12px 20px 8px; flex-shrink: 0; --ind-color: var(--green); }
 .ex4-indicator.role-confirmer { --ind-color: var(--accent); }
+.ex4-indicator.role-neutral { --ind-color: var(--text-faint); }
 
 /* Scroll fade indicator for long modal content */
 /* Removed: was covering buttons on short screens. Revisit with JS-based scroll detection. */
