@@ -1,6 +1,6 @@
 // HEP Service Worker — DEV BUILD
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.61.34';
+const CACHE_VERSION = '2.61.35';
 const CACHE_NAME = 'hep-dev-v' + CACHE_VERSION;
 
 // Files to cache on install

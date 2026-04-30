@@ -8534,13 +8534,23 @@ function init() {
     // changes to 'Witness attested' green-check the moment attestation
     // arrives, then drops to Recent at the end of the hold window.
     var IN_FLIGHT_HOLD_MS = 4000;
+    // Chain records use ISO-string timestamps (now() in hep-core.js
+    // returns new Date().toISOString()), so subtracting them from a
+    // numeric Date.now() returns NaN and breaks every comparison
+    // silently. Coerce here so all the age math is well-defined.
+    function recordAgeMs(r) {
+      if (!r || r.timestamp == null) return Infinity;
+      var ts = typeof r.timestamp === 'number' ? r.timestamp : new Date(r.timestamp).getTime();
+      if (!isFinite(ts)) return Infinity;
+      return Date.now() - ts;
+    }
     var pendingRecords = ex.filter(function(r) {
       if (!r.witnessAttestation) return true;
-      return (Date.now() - r.timestamp) < IN_FLIGHT_HOLD_MS;
+      return recordAgeMs(r) < IN_FLIGHT_HOLD_MS;
     });
     var settledRecords = ex.filter(function(r) {
       if (!r.witnessAttestation) return false;
-      return (Date.now() - r.timestamp) >= IN_FLIGHT_HOLD_MS;
+      return recordAgeMs(r) >= IN_FLIGHT_HOLD_MS;
     });
     var hasInFlight = hasPP || pendingRecords.length > 0;
 
@@ -8593,7 +8603,7 @@ function init() {
           ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + rValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
           : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + rValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
         var rPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + rValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
-        var rFresh = (Date.now() - r.timestamp) < 8000;
+        var rFresh = recordAgeMs(r) < 8000;
         var rFreshClass = rFresh ? ' fresh' : '';
         // Three sub-states inside In flight:
         //   not attested           -> 'Pending' pill, accent subtitle
@@ -8666,7 +8676,7 @@ function init() {
         // background-fade animation on the row so the user's eye finds
         // it after the modal closes. 8s window covers normal cases
         // including the witness round-trip.
-        var isFresh = (Date.now() - r.timestamp) < 8000;
+        var isFresh = recordAgeMs(r) < 8000;
         // Bite 2 of language audit: row valence neutralized. Received is not
         // bad in HEP; provided and received are two roles in a cooperative
         // act, both honest. Green for provided, blue for received -- both
