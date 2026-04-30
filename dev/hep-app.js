@@ -5542,11 +5542,23 @@ const PAIR_CODE_LENGTH = 4;
     fetch(VERSION_CHECK_URL, { cache: 'no-store', signal: AbortSignal.timeout(5000) })
       .then(function(resp) { return resp.ok ? resp.json() : null; })
       .then(function(data) {
-        if (data && data.version && data.version !== APP_VERSION) {
-          toast('Version ' + data.version + ' found. Updating...');
-        } else if (data && data.version === APP_VERSION) {
-          toast('Already on latest version (v' + APP_VERSION + ')');
-          return;
+        if (data && data.version) {
+          var cmp = compareVersions(data.version, APP_VERSION);
+          if (cmp > 0) {
+            // Served version is genuinely newer.
+            toast('Version ' + data.version + ' found. Updating...');
+          } else if (cmp === 0) {
+            toast('Already on latest version (v' + APP_VERSION + ')');
+            return;
+          } else {
+            // Served version is older than local. This happens when the SW is
+            // still caching a stale version.json after a fresh deploy, or in
+            // any window where the cache is behind. Tell the user the truth:
+            // they are already on a higher version. Do NOT proceed to reload,
+            // because reloading would not change anything yet.
+            toast('Already on v' + APP_VERSION + ' (cache catching up)');
+            return;
+          }
         }
         // Step 2: Tell SW to check for new version
         if ('serviceWorker' in navigator) {
