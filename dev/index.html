@@ -166,21 +166,27 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .ex4-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; margin-bottom: 16px; transition: background 0.3s ease; }
 .ex4-line.done { background: var(--ind-color); }
 
-/* === FRESH ROW FADE-IN === */
-/* A subtle entry animation that runs once when a row first appears
-   in either the In flight card or the Recent list. Triggered via
-   the .fresh class, applied by renderHomeTab when a row's timestamp
-   is < 8s old. The same row gets the animation in two phases: when
-   it lands in In flight (just-recorded), and again when it drops to
-   Recent after witness attests. After 8s, refreshes from tab
-   switches stay quiet -- no animation. The animation is small
-   (slight upward translate + opacity) so it reads as a settle, not
-   a flash. */
+/* === FRESH ROW ENTRY === */
+/* Two-stage animation that fires once on row creation. Stage 1
+   (0-15%, ~300ms) is the entry: row slides 8px down with opacity
+   fade and an accent-light background tint. Stage 2 (15-100%,
+   ~1700ms) holds and decays the tint to transparent so the user's
+   eye finds the just-recorded row even after the modal is gone.
+   Triggered via the .fresh class, applied by renderHomeTab when a
+   row's timestamp (or pendingProposal._submittedAt) is < 8s old.
+   The same row gets the animation in two phases: when it lands in
+   In flight (just-recorded), and again when it drops to Recent
+   after witness attests. After 8s, refreshes from tab switches stay
+   quiet -- no animation. Reduced-motion preference is honored. */
 @keyframes hepFreshFade {
-  from { opacity: 0.4; transform: translateY(-3px); }
-  to   { opacity: 1;   transform: none; }
+  0%   { opacity: 0; transform: translateY(-8px); background-color: var(--accent-light); }
+  15%  { opacity: 1; transform: translateY(0);    background-color: var(--accent-light); }
+  100% { opacity: 1; transform: none;             background-color: transparent; }
 }
-.in-flight-row.fresh, .home-row.fresh { animation: hepFreshFade 0.6s ease-out; }
+.in-flight-row.fresh, .home-row.fresh {
+  animation: hepFreshFade 2s ease-out;
+  border-radius: 6px;
+}
 @media (prefers-reduced-motion: reduce) {
   .in-flight-row.fresh, .home-row.fresh { animation: none; }
 }
