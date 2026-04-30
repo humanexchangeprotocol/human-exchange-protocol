@@ -3340,26 +3340,16 @@ const PAIR_CODE_LENGTH = 4;
     var witnessUrl = getWitnessUrl();
     if (witnessUrl) recordServerSuccess(witnessUrl);
 
-    // Show done
-    var _cfPartnerName = '';
-    if (sessionPartner && sessionPartner.thread_snapshot) {
-      var _cpts = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
-      _cfPartnerName = (_cpts && _cpts._name) || '';
-    }
-    state.doneDetails = {
-      partner: _cfPartnerName,
-      direction: myDirection === 'provided' ? 'You provided' : 'You received',
-      description: p.description || '',
-      category: p.category || '',
-      value: p.value,
-      witnessed: !!(getWitnessUrl())
-    };
-    state.doneSummary = (myDirection === 'provided' ? 'Provided' : 'Received') + ': ' + (p.description || '') + ' -- ' + p.value + ' units';
-    exRenderDoneCard();
-    showExStep('done');
-
-    refreshHome();
-    toast('Exchange complete');
+    // Close the modal directly. The new exchange now lives in the
+    // chain and will appear at the top of Home as a Pending row
+    // (witnessAttestation absent on the record until submitWitness
+    // returns). closeExchange() handles cleanupSession, modal close,
+    // refreshHome, and the 'Exchange complete' toast (gated on
+    // _sessionWritten which is true by this point). The legacy
+    // 'Exchange recorded' Done screen with its 'Return to home'
+    // button is no longer shown -- the user lands directly on Home
+    // with the new exchange visible.
+    closeExchange();
   }
 
   function cleanupSession() {
@@ -5030,6 +5020,11 @@ const PAIR_CODE_LENGTH = 4;
           rtt_ms: rttMs,
         };
         save();
+        // Refresh Home so the row that was just rendered as Pending
+        // (no witnessAttestation) re-renders without the Pending pill
+        // and with its normal timestamp subtitle. This is the visible
+        // settle moment for the user.
+        try { if (typeof refreshHome === 'function') refreshHome(); } catch(rhe) {}
         console.log('[witness] Attestation received:', mintHash.substring(0, 16) + '...');
         return true;
       }
@@ -8488,6 +8483,12 @@ function init() {
         var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         var isProv = r.energyState === 'provided';
+        // Pending = record exists in chain but witness attestation has not
+        // arrived yet. submitWitness sets r.witnessAttestation on success
+        // and triggers a re-render. Until then, this record reads as
+        // pending on Home -- a small pill next to the title plus a
+        // 'pending witness' status line below.
+        var isPending = !r.witnessAttestation;
         // Bite 2 of language audit: row valence neutralized. Received is not
         // bad in HEP; provided and received are two roles in a cooperative
         // act, both honest. Green for provided, blue for received -- both
@@ -8505,8 +8506,15 @@ function init() {
         html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
         html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
         html += '<div style="flex:1; min-width:0;">';
-        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
-        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + '</div>';
+        var pendingPill = isPending
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span>'
+          : '';
+        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + pendingPill + '</div>';
+        var subtitleText = isPending
+          ? (name ? esc(name) + ' \u00b7 ' : '') + 'Pending witness attestation'
+          : (name ? esc(name) + ' \u00b7 ' : '') + ds;
+        var subtitleColor = isPending ? 'var(--accent)' : 'var(--text-faint)';
+        html += '<div style="font-size:var(--fs-sm); color:' + subtitleColor + ';">' + subtitleText + '</div>';
         html += '</div>';
         html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
         html += '</div>';
