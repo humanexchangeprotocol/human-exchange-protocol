@@ -2989,7 +2989,7 @@ const PAIR_CODE_LENGTH = 4;
         const err = await resp.json().catch(() => ({}));
         toast(err.error || 'Confirmation failed');
         _sessionWritten = false;
-        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Accept'; acceptBtn.style.opacity = '1'; }
+        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; }
         return;
       }
 
@@ -3003,7 +3003,7 @@ const PAIR_CODE_LENGTH = 4;
       toast('Confirmation failed -- try again');
       _sessionWritten = false;
       var acceptBtn2 = document.getElementById('btn-session-accept');
-      if (acceptBtn2) { acceptBtn2.disabled = false; acceptBtn2.textContent = 'Accept'; acceptBtn2.style.opacity = '1'; }
+      if (acceptBtn2) { acceptBtn2.disabled = false; acceptBtn2.textContent = 'Confirm exchange'; acceptBtn2.style.opacity = '1'; }
     }
   }
 
