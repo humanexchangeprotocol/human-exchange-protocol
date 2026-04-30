@@ -855,16 +855,51 @@ const PAIR_CODE_LENGTH = 4;
   // --- Home ---
   function openWallet() {
     // v2.61.19: balance demoted from 56px headline to a row in the
-    // breakdown card. Verdict-pin alignment -- the net is one statistic
-    // among others, not a verdict on the person. Per-direction totals
-    // also lose their +/- signs since the signed Net balance row now
-    // carries direction; the totals read as plain magnitudes.
+    // breakdown card. v2.61.21: Participation card consolidated INTO
+    // this same breakdown card -- People, Repeat counterparties,
+    // Categories, Chain age, and Witnessed share now sit alongside
+    // the value totals as a single source of truth for chain stats.
+    // Per-direction totals (Total provided / Total received) read as
+    // plain magnitudes; the signed Net balance row carries direction.
     const bal = HCP.walletBalance(state.chain);
+    const ex = state.chain.filter(HCP.isAct);
     let totalP = 0, totalR = 0, actsP = 0, actsR = 0;
-    state.chain.forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
+    var cpCounts = {};
+    var cats = {};
+    var witnessedCount = 0;
+    ex.forEach(function(r) {
+      if (r.energyState === 'provided') { totalP += r.value; actsP++; }
+      else if (r.energyState === 'received') { totalR += r.value; actsR++; }
+      if (r.counterparty) cpCounts[r.counterparty] = (cpCounts[r.counterparty] || 0) + 1;
+      var k = r.category || 'uncategorized';
+      cats[k] = (cats[k] || 0) + 1;
+      if (r.witnessAttestation) witnessedCount++;
+    });
+    var peopleCount = Object.keys(cpCounts).length;
+    var repeatCount = 0;
+    Object.keys(cpCounts).forEach(function(k) { if (cpCounts[k] >= 2) repeatCount++; });
+    var catCount = Object.keys(cats).length;
     document.getElementById('wallet-provided').textContent = totalP.toFixed(0);
     document.getElementById('wallet-received').textContent = totalR.toFixed(0);
-    document.getElementById('wallet-acts').textContent = state.chain.filter(HCP.isAct).length;
+    document.getElementById('wallet-acts').textContent = ex.length;
+    document.getElementById('wallet-people').textContent = peopleCount;
+    document.getElementById('wallet-repeat').textContent = repeatCount;
+    document.getElementById('wallet-categories').textContent = catCount;
+    // Chain age -- compact format matching the previous Participation card.
+    var ageEl = document.getElementById('wallet-age');
+    if (ageEl) {
+      if (state.chain.length > 0) {
+        var genesis = new Date(state.chain[0].timestamp);
+        var days = Math.floor((Date.now() - genesis.getTime()) / 86400000);
+        var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
+        ageEl.textContent = ageStr;
+      } else {
+        ageEl.textContent = '\u2014';
+      }
+    }
+    // Witnessed: "N / total" preserves context without inviting percentage gaming.
+    var witEl = document.getElementById('wallet-witnessed');
+    if (witEl) witEl.textContent = ex.length > 0 ? (witnessedCount + ' / ' + ex.length) : '\u2014';
     var netEl = document.getElementById('wallet-net-balance');
     if (netEl) netEl.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
     // Render participation ratio
@@ -9847,25 +9882,10 @@ function init() {
     // is available but not enabled.
     html += renderPOHVerdict({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() });
 
-    // Participation card (no position/balance shown - person can check via wallet)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Participation</div>';
-    html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
-    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Provided</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--green);">' + provided.length + '</div></div>';
-    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Received</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--accent);">' + received.length + '</div></div>';
-    html += '</div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">People</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(counterparties).length + '</span></div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Categories</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(cats).length + '</span></div>';
-    html += '<div style="display:flex; justify-content:space-between;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Total exchanges</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ex.length + '</span></div>';
-    // Chain age
-    if (state.chain.length > 0) {
-      var genesis = new Date(state.chain[0].timestamp);
-      var now = new Date();
-      var days = Math.floor((now - genesis) / 86400000);
-      var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
-      html += '<div style="display:flex; justify-content:space-between; margin-top:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Chain age</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ageStr + '</span></div>';
-    }
-    html += '</div>';
+    // Participation card removed in v2.61.21: People / Repeat counterparties /
+    // Categories / Chain age / Witnessed are now rows in the consolidated
+    // wallet-detail breakdown card above. Single source of truth for chain
+    // stats, no duplication.
 
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
