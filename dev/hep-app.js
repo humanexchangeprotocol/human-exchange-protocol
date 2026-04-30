@@ -1654,17 +1654,37 @@ const PAIR_CODE_LENGTH = 4;
 
     // New flow: already connected via session — send proposal directly
     if (exFlowActive && sessionPartner && sessionCode) {
+      // Capture partner info onto the pendingProposal so Home can
+      // render it as a pending row even before the chain record
+      // exists. The proposer's record only gets written when the
+      // confirmer confirms (via completeSessionExchange), which can
+      // be seconds away. Until then, pendingProposal IS the row.
+      var pSnap = null;
+      try {
+        pSnap = typeof sessionPartner.thread_snapshot === 'string'
+          ? JSON.parse(sessionPartner.thread_snapshot)
+          : sessionPartner.thread_snapshot;
+      } catch(_) {}
+      state.pendingProposal._partnerName = (pSnap && pSnap._name) || '';
+      state.pendingProposal._partnerFp = sessionPartner.fingerprint || '';
+      state.pendingProposal._submittedAt = Date.now();
+      try { localStorage.setItem('hcp_dev_pending_proposal', JSON.stringify(state.pendingProposal)); } catch(_) {}
+
+      // Send the proposal to the witness server and start the
+      // confirmation poll (handled inside submitSessionProposal).
       sendSessionProposal();
-      showExStep('session');
-      document.getElementById('session-code-input').style.display = 'none';
-      document.getElementById('session-connect-btn').style.display = 'none';
-      document.getElementById('session-status-line').textContent = 'Proposal sent — waiting for their review';
-      document.getElementById('session-content').style.display = 'block';
-      document.getElementById('session-content').innerHTML =
-        '<div class="pair-status resolving" style="margin-top:16px;">' +
-        '<div class="ps-icon">&#128230;</div>' +
-        '<div class="ps-text">Your proposal is with them. You\'ll see their response here.</div></div>';
-      startSessionPoll();
+
+      // Modal closes directly. We deliberately do NOT call
+      // closeExchange() here -- that would clear state.pendingProposal
+      // and call cleanupSession (which stops the poll), both of which
+      // would defeat the new flow. The session stays alive in the
+      // background; when completeSessionExchange runs after the
+      // confirmer confirms, it writes the proposer's record and
+      // closeExchange (called from writeSessionRecord) clears
+      // pendingProposal -- the row transitions from "pending
+      // confirmation" to a settled chain record.
+      closeModal('exchange');
+      refreshHome();
       return;
     }
 
@@ -8456,6 +8476,42 @@ function init() {
       html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-align:center; padding:4px 0;">No exchanges yet. Tap the + button below to start one.</div>';
     }
     html += '</div>';
+
+    // Pending proposal row -- the proposer just submitted a proposal
+    // and the confirmer has not yet confirmed. The proposer's chain
+    // record does not exist yet (it only gets written when
+    // completeSessionExchange runs after the confirmer confirms), but
+    // we want the proposer to see immediate feedback that their
+    // proposal is out and pending. state.pendingProposal carries
+    // value/direction/description plus partner info that
+    // generateProposal stamped on at submit time.
+    var pp = state.pendingProposal;
+    if (pp && pp.details && pp._partnerName != null) {
+      var ppDesc = pp.details.description || pp.details.category || 'Exchange';
+      var ppIsProv = pp.details.energyState === 'provided';
+      var ppValColor = ppIsProv ? 'var(--green)' : 'var(--blue)';
+      var ppValSign = ppIsProv ? '+' : '\u2212';
+      var ppBgColor = ppIsProv ? 'var(--green-light)' : 'var(--blue-light)';
+      var ppArrow = ppIsProv
+        ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+        : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+      var ppPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + ppValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+      var ppName = pp._partnerName ? esc(pp._partnerName) : '';
+      var ppStatus = ppName
+        ? 'Pending ' + ppName + '\u2019s confirmation'
+        : 'Pending their confirmation';
+      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">In flight</div>';
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow); margin-bottom:16px;">';
+      html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
+      html += '<div style="width:42px; height:32px; border-radius:8px; background:' + ppBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + ppArrow + ppPerson + '</div>';
+      html += '<div style="flex:1; min-width:0;">';
+      html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(ppDesc) + '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span></div>';
+      html += '<div style="font-size:var(--fs-sm); color:var(--accent);">' + ppStatus + '</div>';
+      html += '</div>';
+      html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + ppValColor + '; white-space:nowrap;">' + ppValSign + Number(pp.details.value).toLocaleString() + '</div>';
+      html += '</div>';
+      html += '</div>';
+    }
 
     // Recent transactions with filter — only if the chain has any
     if (ex.length > 0) {
