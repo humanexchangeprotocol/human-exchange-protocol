@@ -857,17 +857,14 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <!-- WELCOME: Brief intro -->
   <div id="setup-welcome1" class="step active">
     <span class="welcome-icon" style="font-size:48px;">&#129309;</span>
-    <div class="guidance" style="text-align:center; font-size:18px; color:var(--accent); font-weight:600; margin-bottom:4px;">
-      Human Exchange Protocol
+    <div class="guidance" style="text-align:center; font-size:24px; color:var(--accent); font-weight:600; margin-top:8px; margin-bottom:12px;">
+      Welcome to HEP
     </div>
-    <div class="guidance" style="text-align:center; line-height:1.7;">
-      Record cooperative acts between people. When you help someone or they help you, both of you record it here. The record belongs to you, lives on your device, and builds over time into a tamper-evident history of who you are in relation to others.
+    <div class="guidance" style="text-align:center; font-size:17px; line-height:1.6; color:var(--text); margin-bottom:32px;">
+      An ancient practice, with a modern memory.
     </div>
-    <div class="guidance" style="text-align:center; color:var(--text-dim); line-height:1.7;">
-      No bank. No platform. No permission needed. Just two people agreeing that something real happened.
-    </div>
-    <button class="btn btn-primary" onclick="App.setupStep('pin')" style="margin-top:12px;">Get Started</button>
-    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous thread? Import here</button></div>
+    <button class="btn btn-primary" onclick="App.setupStep('pin')">Get Started</button>
+    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous chain? Import here</button></div>
   </div>
 
   <!-- INSTALL FIRST (iOS) -->
