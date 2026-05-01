@@ -6464,10 +6464,45 @@ const PAIR_CODE_LENGTH = 4;
     return isIOS && !isStandalone;
   }
 
+  // Returns 'installed' (already in standalone), 'ios', 'android', or 'desktop'
+  function detectInstallPlatform() {
+    const ua = navigator.userAgent;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isStandalone) return 'installed';
+    if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) return 'ios';
+    if (/Android/.test(ua)) return 'android';
+    return 'desktop';
+  }
+
+  // Populates the install-first instructions block based on the user's platform.
+  function renderInstallInstructions() {
+    const el = document.getElementById('install-instructions');
+    if (!el) return;
+    const platform = detectInstallPlatform();
+    if (platform === 'ios') {
+      el.innerHTML = '<strong>iPhone or iPad:</strong> Tap the <strong>Share</strong> button at the bottom of your screen, then tap <strong>"Add to Home Screen."</strong> Once installed, open HEP from your home screen and start setup there.';
+    } else if (platform === 'android') {
+      el.innerHTML = '<strong>Android:</strong> Open your browser menu (the three dots), then tap <strong>"Install app"</strong> or <strong>"Add to Home screen."</strong> Once installed, open HEP from your home screen and start setup there.';
+    } else {
+      el.innerHTML = '<strong>Desktop:</strong> Look for an install icon in your address bar, or open your browser menu and find <strong>"Install Human Exchange Protocol."</strong> If your browser does not offer install, you can continue in the browser instead.';
+    }
+  }
+
+  // Welcome screen Get Started routing: install-first if installable and not skipped, otherwise straight to PIN.
+  function goToInstallOrPin() {
+    const platform = detectInstallPlatform();
+    if (platform === 'installed' || localStorage.getItem('hcp_dev_skip_install')) {
+      setupStep('pin');
+    } else {
+      document.querySelectorAll('#setup .step').forEach(s => s.classList.remove('active'));
+      document.getElementById('setup-install-first').classList.add('active');
+      renderInstallInstructions();
+    }
+  }
+
   function skipInstallFirst() {
     localStorage.setItem('hcp_dev_skip_install', '1');
-    document.querySelectorAll('#setup .step').forEach(s => s.classList.remove('active'));
-    document.getElementById('setup-welcome1').classList.add('active');
+    setupStep('pin');
   }
 
   // --- Init ---
@@ -6503,11 +6538,6 @@ function init() {
       showLockScreen();
     } else {
       showScreen('setup');
-      // If iOS browser and no existing data, show install-first prompt
-      if (isIOSBrowser() && !localStorage.getItem('hcp_dev_skip_install')) {
-        document.querySelectorAll('#setup .step').forEach(s => s.classList.remove('active'));
-        document.getElementById('setup-install-first').classList.add('active');
-      }
       // Desktop: make import prominent
       if (isDesktopBrowser()) {
         var importBtns = document.querySelectorAll('#setup .step button[onclick*="importBackup"]');
@@ -10568,7 +10598,7 @@ function init() {
   }
 
   return {
-    init, setupStep, completeSetup: completeSetupWrapped,
+    init, setupStep, completeSetup: completeSetupWrapped, goToInstallOrPin,
     switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,

@@ -863,17 +863,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="guidance" style="text-align:center; font-size:17px; line-height:1.6; color:var(--text); margin-bottom:32px;">
       An ancient practice, with a modern memory.
     </div>
-    <button class="btn btn-primary" onclick="App.setupStep('pin')">Get Started</button>
+    <button class="btn btn-primary" onclick="App.goToInstallOrPin()">Get Started</button>
     <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous chain? Import here</button></div>
   </div>
 
-  <!-- INSTALL FIRST (iOS) -->
+  <!-- INSTALL FIRST (any installable platform) -->
   <div id="setup-install-first" class="step">
-    <p style="color:var(--accent); font-weight:500; margin-bottom:16px;">Install to your home screen first</p>
-    <p>On iPhone, your data is stored separately for apps on your home screen. If you set up here in the browser, your thread won't be accessible from the home screen version.</p>
-    <p><span style="color:var(--text); font-weight:500;">Tap the share button</span> at the bottom of your screen, then tap <span style="color:var(--text); font-weight:500;">"Add to Home Screen."</span> Once installed, open it from there and set up.</p>
+    <p style="color:var(--accent); font-weight:500; font-size:18px; margin-bottom:16px;">Install to your home screen</p>
+    <p>Your chain lives on this device. Adding HEP to your home screen gives it a stable place to live: faster to open, available offline, and your chain stays put if you ever clear your browser data.</p>
+    <div id="install-instructions" style="background:var(--bg-raised); padding:14px; border-radius:var(--radius); border:1px solid var(--border); margin-top:12px; line-height:1.6;"></div>
     <button class="btn btn-secondary" onclick="App.skipInstallFirst()" style="margin-top:20px;">Continue in browser anyway</button>
-    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous thread? Import here</button></div>
+    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous chain? Import here</button></div>
   </div>
 
   <!-- PIN -->
