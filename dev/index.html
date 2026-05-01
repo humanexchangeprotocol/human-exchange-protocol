@@ -885,6 +885,54 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <polyline points="21 15 21 21 15 21"/>
       <polyline points="3 9 3 3 9 3"/>
     </symbol>
+    <symbol id="icon-cooperation" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="9" cy="12" r="6" fill-opacity="0.55"/>
+      <circle cx="15" cy="12" r="6" fill-opacity="0.55"/>
+    </symbol>
+    <symbol id="icon-scale" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="12" y1="3" x2="12" y2="21"/>
+        <line x1="3" y1="7" x2="21" y2="7"/>
+        <line x1="6" y1="20" x2="18" y2="20"/>
+      </g>
+      <g fill="currentColor">
+        <path d="M3 7 L9 7 L6 13 z"/>
+        <path d="M15 7 L21 7 L18 13 z"/>
+      </g>
+    </symbol>
+    <symbol id="icon-radiating" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="12" r="3"/>
+      <circle cx="5" cy="6" r="1.8" fill-opacity="0.6"/>
+      <circle cx="19" cy="6" r="1.8" fill-opacity="0.6"/>
+      <circle cx="5" cy="18" r="1.8" fill-opacity="0.6"/>
+      <circle cx="19" cy="18" r="1.8" fill-opacity="0.6"/>
+    </symbol>
+    <symbol id="icon-calibrate" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="11" width="18" height="2" rx="1"/>
+      <circle cx="9" cy="12" r="3.5"/>
+    </symbol>
+    <symbol id="icon-foundations" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="17" width="18" height="3" rx="0.5"/>
+      <rect x="6" y="11" width="12" height="3" rx="0.5" fill-opacity="0.75"/>
+      <rect x="9" y="5" width="6" height="3" rx="0.5" fill-opacity="0.55"/>
+    </symbol>
+    <symbol id="icon-magnifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10" cy="10" r="6.5"/>
+      <line x1="15" y1="15" x2="20" y2="20"/>
+    </symbol>
+    <symbol id="icon-parity" viewBox="0 0 24 24" fill="currentColor">
+      <line x1="10.5" y1="12" x2="13.5" y2="12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="6" cy="12" r="4.5"/>
+      <circle cx="18" cy="12" r="4.5"/>
+    </symbol>
+    <symbol id="icon-network" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.55">
+      <circle cx="6" cy="12" r="5"/>
+      <circle cx="12" cy="12" r="5"/>
+      <circle cx="18" cy="12" r="5"/>
+    </symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 3 L20 6 V12 c0 5 -4 8 -8 9 c-4 -1 -8 -4 -8 -9 V6 z"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -1794,7 +1842,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="modal-body learn-menu" id="learn-menu">
       <div class="learn-section-hdr">Start Here</div>
       <div class="learn-topic" onclick="App.learnOpen('act')">
-        <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9741;</div>
+        <div class="lt-icon" style="background:rgba(42,90,143,0.12); color:var(--accent);"><svg class="icon icon-xl"><use href="#icon-cooperation"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">The Cooperative Act</div>
           <div class="lt-desc">What actually happens when two people help each other — and why it matters</div>
@@ -1802,7 +1850,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('value')">
-        <div class="lt-icon" style="background:rgba(43,140,62,0.12);">&#9878;</div>
+        <div class="lt-icon" style="background:rgba(43,140,62,0.12); color:var(--green);"><svg class="icon icon-xl"><use href="#icon-scale"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Value Is Yours</div>
           <div class="lt-desc">You decide what your work is worth — nobody else</div>
@@ -1810,7 +1858,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('beyond')">
-        <div class="lt-icon" style="background:rgba(204,68,68,0.12);">&#8644;</div>
+        <div class="lt-icon" style="background:rgba(204,68,68,0.12); color:var(--red);"><svg class="icon icon-xl"><use href="#icon-radiating"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Beyond the Moment</div>
           <div class="lt-desc">How your record lets you cooperate with anyone — not just the person you helped</div>
@@ -1818,7 +1866,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('calibrate')">
-        <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9881;</div>
+        <div class="lt-icon" style="background:rgba(42,90,143,0.12); color:var(--accent);"><svg class="icon icon-xl"><use href="#icon-calibrate"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Find Your Unit</div>
           <div class="lt-desc">A thought exercise to calibrate your own sense of value before your first exchange</div>
@@ -1829,7 +1877,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="learn-section-divider"></div>
       <div class="learn-section-hdr">Go Deeper</div>
       <div class="learn-topic" onclick="App.learnOpen('foundations')">
-        <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9776;</div>
+        <div class="lt-icon" style="background:rgba(42,90,143,0.12); color:var(--accent);"><svg class="icon icon-xl"><use href="#icon-foundations"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Foundations</div>
           <div class="lt-desc">How exchanges work, what your chain is, and what you can build</div>
@@ -1837,7 +1885,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('pricing')">
-        <div class="lt-icon" style="background:rgba(43,140,62,0.12);">&#128269;</div>
+        <div class="lt-icon" style="background:rgba(43,140,62,0.12); color:var(--green);"><svg class="icon icon-xl"><use href="#icon-magnifier"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Price Discovery</div>
           <div class="lt-desc">How pricing emerges from your history and negotiation</div>
@@ -1845,7 +1893,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('exchange')">
-        <div class="lt-icon" style="background:rgba(204,68,68,0.12);">&#8644;</div>
+        <div class="lt-icon" style="background:rgba(204,68,68,0.12); color:var(--red);"><svg class="icon icon-xl"><use href="#icon-parity"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Exchange &amp; Parity</div>
           <div class="lt-desc">Exchange ratios, purchasing power, and cross-chain trust</div>
@@ -1853,7 +1901,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('community')">
-        <div class="lt-icon" style="background:rgba(130,160,220,0.12);">&#9784;</div>
+        <div class="lt-icon" style="background:rgba(130,160,220,0.12); color:rgb(110,140,200);"><svg class="icon icon-xl"><use href="#icon-network"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Building Community</div>
           <div class="lt-desc">Seeding networks, growing trust, and collective strength</div>
@@ -1861,7 +1909,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('sovereignty')">
-        <div class="lt-icon" style="background:rgba(180,140,220,0.12);"><svg class="icon icon-md"><use href="#icon-lightning"/></svg></div>
+        <div class="lt-icon" style="background:rgba(180,140,220,0.12); color:rgb(150,110,200);"><svg class="icon icon-xl"><use href="#icon-lightning"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Your Phone, Your Server</div>
           <div class="lt-desc">Offline-first design, data sovereignty, and no dependencies</div>
@@ -1869,7 +1917,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('privacy')">
-        <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9737;</div>
+        <div class="lt-icon" style="background:rgba(42,90,143,0.12); color:var(--accent);"><svg class="icon icon-xl"><use href="#icon-shield"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Privacy &amp; Safety</div>
           <div class="lt-desc">Controlling what others see, protecting yourself, deleting everything</div>
