@@ -141,23 +141,55 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 @keyframes lessonFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lessonPopIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 
-/* === EXCHANGE 4-STEP INDICATOR === */
-.ex4-indicator { display: flex; align-items: center; padding: 12px 20px 8px; flex-shrink: 0; }
+/* === EXCHANGE STEP INDICATOR (role-aware 3-step) === */
+/* Color comes from --ind-color, set per role on the indicator container.
+   Default is proposer-green; .role-confirmer flips to accent (blue).
+   .role-neutral keeps the indicator gray during the Connect step --
+   role identity is committed only after the user advances past Connect. */
+.ex4-indicator { display: flex; align-items: center; padding: 12px 20px 8px; flex-shrink: 0; --ind-color: var(--green); }
+.ex4-indicator.role-confirmer { --ind-color: var(--accent); }
+.ex4-indicator.role-neutral { --ind-color: var(--text-faint); }
 
 /* Scroll fade indicator for long modal content */
 /* Removed: was covering buttons on short screens. Revisit with JS-based scroll detection. */
 .ex4-step { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .ex4-num { width: 26px; height: 26px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text-faint); transition: all 0.3s ease; }
-.ex4-step.active .ex4-num { background: var(--accent); color: #FFFFFF; }
-.ex4-step.done .ex4-num { background: var(--green); color: #FFFFFF; }
+.ex4-step.active .ex4-num { background: var(--ind-color); color: #FFFFFF; }
+.ex4-step.done .ex4-num { background: var(--ind-color); color: #FFFFFF; }
 .ex4-label { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; transition: color 0.3s ease; }
-.ex4-step.active .ex4-label { color: var(--accent); }
-.ex4-step.done .ex4-label { color: var(--green); }
-.ex4-step.notify .ex4-num { background: var(--green); color: #fff; animation: ex4Pulse 1.5s ease-in-out 3; }
-.ex4-step.notify .ex4-label { color: var(--green); }
-@keyframes ex4Pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(43,140,62,0.4); } 50% { box-shadow: 0 0 0 8px rgba(43,140,62,0); } }
+.ex4-step.active .ex4-label { color: var(--ind-color); }
+.ex4-step.done .ex4-label { color: var(--ind-color); }
+.ex4-step.notify .ex4-num { background: var(--ind-color); color: #fff; animation: ex4Pulse 1.8s ease-in-out infinite; }
+.ex4-step.notify .ex4-label { color: var(--ind-color); }
+@keyframes ex4Pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .ex4-step.notify .ex4-num { animation: none; } }
 .ex4-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; margin-bottom: 16px; transition: background 0.3s ease; }
-.ex4-line.done { background: var(--green); }
+.ex4-line.done { background: var(--ind-color); }
+
+/* === FRESH ROW ENTRY === */
+/* Two-stage animation that fires once on row creation. Stage 1
+   (0-25%, ~700ms) is the entry: row slides 10px down with opacity
+   fade and an accent-light background tint. Stage 2 (25-100%,
+   ~2100ms) holds and decays the tint to transparent so the user's
+   eye finds the just-recorded row even after the modal is gone.
+   Triggered via the .fresh class, applied by renderHomeTab when a
+   row's timestamp (or pendingProposal._submittedAt) is < 8s old.
+   The same row gets the animation in two phases: when it lands in
+   In flight (just-recorded), and again when it drops to Recent
+   after the In flight hold. After 8s, refreshes from tab switches
+   stay quiet -- no animation. Reduced-motion preference is honored. */
+@keyframes hepFreshFade {
+  0%   { opacity: 0; transform: translateY(-10px); background-color: var(--accent-light); }
+  25%  { opacity: 1; transform: translateY(0);     background-color: var(--accent-light); }
+  100% { opacity: 1; transform: none;              background-color: transparent; }
+}
+.in-flight-row.fresh, .home-row.fresh {
+  animation: hepFreshFade 2.8s ease-out;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .in-flight-row.fresh, .home-row.fresh { animation: none; }
+}
 
 /* === SETUP === */
 #setup { align-items: center; justify-content: flex-start; padding: 24px; padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -1336,20 +1368,19 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <button class="modal-close" onclick="App.closeModal('wallet')">&#10005;</button>
     </div>
     <div class="modal-body wallet-body">
-      <div class="wallet-display">
-        <div class="wallet-label">Balance</div>
-        <div class="wallet-amount" id="wallet-amount">0</div>
-        <div class="wallet-position" id="wallet-position">balanced</div>
-      </div>
-      <div style="text-align:center; margin-bottom:16px;">
-        <button id="wallet-learn-btn" style="background:none; border:none; color:var(--accent); font-size:14px; cursor:pointer; text-decoration:underline; padding:0;" onclick="App.showTextureDetail('wallet-position-explain')">Learn what this number means</button>
-      </div>
+      <div id="wallet-identity-panel"></div>
       <div class="wallet-detail">
         <div class="review-row"><span class="rlbl">Total provided</span><span class="rval" id="wallet-provided">0</span></div>
         <div class="review-row"><span class="rlbl">Total received</span><span class="rval" id="wallet-received">0</span></div>
         <div class="review-row"><span class="rlbl">Acts</span><span class="rval" id="wallet-acts">0</span></div>
+        <div class="review-row"><span class="rlbl">People</span><span class="rval" id="wallet-people">0</span></div>
+        <div class="review-row"><span class="rlbl">Repeat counterparties</span><span class="rval" id="wallet-repeat">0</span></div>
+        <div class="review-row"><span class="rlbl">Categories</span><span class="rval" id="wallet-categories">0</span></div>
+        <div class="review-row"><span class="rlbl">Chain age</span><span class="rval" id="wallet-age">&mdash;</span></div>
+        <div class="review-row"><span class="rlbl">Witnessed</span><span class="rval" id="wallet-witnessed">0</span></div>
         <div class="review-row"><span class="rlbl">Participation ratio</span><span class="rval" id="wallet-ratio-text"></span></div>
-        <div id="wallet-ratio-bar" style="margin-top:8px;"></div>
+        <div id="wallet-ratio-bar" style="margin-top:8px; margin-bottom:8px;"></div>
+        <div class="review-row" style="border-top:1px solid var(--border); padding-top:10px;"><span class="rlbl">Net balance <button style="background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; text-decoration:underline; padding:0 0 0 6px;" onclick="App.showTextureDetail('wallet-position-explain')">what is this</button></span><span class="rval" id="wallet-net-balance">0</span></div>
       </div>
 
       <!-- Chain Health + Pricing History + Full Chain -->
@@ -1371,7 +1402,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
       </div>
 
-      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your balance is private. It never appears in shared chain data.</p>
+      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your totals are private. They never appear in shared chain data.</p>
 
       <!-- Standing content moved here from the (now-removed) Standing tab.
            Renders identity panel, POH verdict, categories, stats, and
@@ -1424,18 +1455,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <div class="modal-overlay" id="exchange-overlay">
   <div class="modal">
     <div class="modal-header">
-      <h2 id="exchange-header">New Act</h2>
+      <h2 id="exchange-header">New exchange</h2>
       <button class="modal-close" id="exchange-close" onclick="App.closeExchange()">&#10005;</button>
     </div>
-    <!-- 4-step progress indicator -->
-    <div class="ex4-indicator" id="ex4-indicator">
+    <!-- 3-step progress indicator (role-aware: proposer=green, confirmer=blue).
+         JS rebuilds the labels and step states via renderIndicator(). -->
+    <div class="ex4-indicator role-proposer" id="ex4-indicator">
       <div class="ex4-step active" data-step="1"><div class="ex4-num">1</div><div class="ex4-label">Connect</div></div>
       <div class="ex4-line"></div>
-      <div class="ex4-step" data-step="2"><div class="ex4-num">2</div><div class="ex4-label">Review</div></div>
+      <div class="ex4-step" data-step="2"><div class="ex4-num">2</div><div class="ex4-label">Read</div></div>
       <div class="ex4-line"></div>
-      <div class="ex4-step" data-step="3"><div class="ex4-num">3</div><div class="ex4-label">Exchange</div></div>
-      <div class="ex4-line"></div>
-      <div class="ex4-step" data-step="4"><div class="ex4-num">4</div><div class="ex4-label">Done</div></div>
+      <div class="ex4-step" data-step="3"><div class="ex4-num">3</div><div class="ex4-label">Compose</div></div>
     </div>
     <div class="modal-body" id="exchange-body">
 
@@ -1443,14 +1473,6 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- STEP 1: Connect -->
       <div class="hs-step" id="ex-step-connect">
-        <div class="ex-progress" id="ex-progress">
-          <div class="ex-progress-seg active"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-          <div class="ex-progress-seg"></div>
-        </div>
         <div id="ex-connect-content">
           <!-- Populated dynamically: choice, start mode, or join mode -->
         </div>
@@ -1714,7 +1736,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
         <div id="ex-done-card" style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:24px;"></div>
         <p id="ex-done-summary" style="display:none;"></p>
-        <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="App.closeExchange()">Return to Standing</button>
+        <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="App.closeExchange()">Return to home</button>
         <div style="text-align:center;">
           <span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.closeExchange(); setTimeout(function(){ App.fabNew(); }, 400);">Start another exchange</span>
         </div>

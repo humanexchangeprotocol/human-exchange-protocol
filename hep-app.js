@@ -854,16 +854,61 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Home ---
   function openWallet() {
+    // v2.61.19: balance demoted from 56px headline to a row in the
+    // breakdown card. v2.61.21: Participation card consolidated INTO
+    // this same breakdown card -- People, Repeat counterparties,
+    // Categories, Chain age, and Witnessed share now sit alongside
+    // the value totals as a single source of truth for chain stats.
+    // Per-direction totals (Total provided / Total received) read as
+    // plain magnitudes; the signed Net balance row carries direction.
     const bal = HCP.walletBalance(state.chain);
-    const el = document.getElementById('wallet-amount');
-    el.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
-    el.className = 'wallet-amount ' + (bal > 0 ? 'surplus' : bal < 0 ? 'deficit' : 'zero');
-    document.getElementById('wallet-position').textContent = bal > 0 ? 'provided more than received' : bal < 0 ? 'received more than provided' : 'balanced';
+    const ex = state.chain.filter(HCP.isAct);
     let totalP = 0, totalR = 0, actsP = 0, actsR = 0;
-    state.chain.forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
-    document.getElementById('wallet-provided').textContent = '+' + totalP.toFixed(0);
-    document.getElementById('wallet-received').textContent = '\u2212' + totalR.toFixed(0);
-    document.getElementById('wallet-acts').textContent = state.chain.filter(HCP.isAct).length;
+    var cpCounts = {};
+    var cats = {};
+    var witnessedCount = 0;
+    ex.forEach(function(r) {
+      if (r.energyState === 'provided') { totalP += r.value; actsP++; }
+      else if (r.energyState === 'received') { totalR += r.value; actsR++; }
+      if (r.counterparty) cpCounts[r.counterparty] = (cpCounts[r.counterparty] || 0) + 1;
+      var k = r.category || 'uncategorized';
+      cats[k] = (cats[k] || 0) + 1;
+      if (r.witnessAttestation) witnessedCount++;
+    });
+    var peopleCount = Object.keys(cpCounts).length;
+    var repeatCount = 0;
+    Object.keys(cpCounts).forEach(function(k) { if (cpCounts[k] >= 2) repeatCount++; });
+    var catCount = Object.keys(cats).length;
+    document.getElementById('wallet-provided').textContent = totalP.toFixed(0);
+    document.getElementById('wallet-received').textContent = totalR.toFixed(0);
+    document.getElementById('wallet-acts').textContent = ex.length;
+    document.getElementById('wallet-people').textContent = peopleCount;
+    document.getElementById('wallet-repeat').textContent = repeatCount;
+    document.getElementById('wallet-categories').textContent = catCount;
+    // Chain age -- compact format matching the previous Participation card.
+    var ageEl = document.getElementById('wallet-age');
+    if (ageEl) {
+      if (state.chain.length > 0) {
+        var genesis = new Date(state.chain[0].timestamp);
+        var days = Math.floor((Date.now() - genesis.getTime()) / 86400000);
+        var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
+        ageEl.textContent = ageStr;
+      } else {
+        ageEl.textContent = '\u2014';
+      }
+    }
+    // Witnessed: "N / total" preserves context without inviting percentage gaming.
+    var witEl = document.getElementById('wallet-witnessed');
+    if (witEl) witEl.textContent = ex.length > 0 ? (witnessedCount + ' / ' + ex.length) : '\u2014';
+    var netEl = document.getElementById('wallet-net-balance');
+    if (netEl) netEl.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
+
+    // v2.61.22: identity panel rendered at the TOP of the modal body
+    // (above the stats card) so the user reads "this is you" before
+    // the chain stats. Was previously buried halfway down the modal
+    // inside renderStandingTab.
+    var idEl = document.getElementById('wallet-identity-panel');
+    if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
     // Render participation ratio
     var ratioBar = document.getElementById('wallet-ratio-bar');
     var ratioText = document.getElementById('wallet-ratio-text');
@@ -876,7 +921,7 @@ const PAIR_CODE_LENGTH = 4;
       if (ratioBar) {
         ratioBar.innerHTML = '<div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-faint); margin-bottom:4px;"><span>provided ' + actsP + '</span><span>received ' + actsR + '</span></div>' +
           '<div style="height:14px; border-radius:7px; overflow:hidden; display:flex; background:var(--bg-input);">' +
-          (pPct > 0 ? '<div style="width:' + pPct + '%; background:var(--accent); border-radius:7px 0 0 7px;"></div>' : '') +
+          (pPct > 0 ? '<div style="width:' + pPct + '%; background:var(--green); border-radius:7px 0 0 7px;"></div>' : '') +
           (rPct > 0 ? '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 7px 7px 0;"></div>' : '') +
           '</div>';
       }
@@ -1238,30 +1283,57 @@ const PAIR_CODE_LENGTH = 4;
   function showExStep(step) {
     document.querySelectorAll('#exchange-body .hs-step').forEach(s => s.classList.remove('active'));
     document.getElementById('ex-step-' + step).classList.add('active');
-    // Sync 4-step indicator
-    var metaStep = 1;
-    if (step === 'connect') metaStep = 1;
-    else if (step === 'verify' || step === 'texture' || step === 'role') metaStep = 2;
-    else if (step === 'done') metaStep = 4;
-    else metaStep = 3; // form, receiver-wait, transport, pair, session, proposal, waiting, settle
+    // Sync 3-step indicator (role-aware).
+    // Mapping flow steps to indicator steps:
+    //   connect, verify    -> 1 (Connect: codes shown, codes match)
+    //   texture            -> 2 (Read: counterparty's chain + POH)
+    //   everything else    -> 3 (Compose for proposer / Decide for confirmer)
+    //   done, settle       -> 4 (renderIndicator marks every step done)
+    var metaStep;
+    if (step === 'connect' || step === 'verify') metaStep = 1;
+    else if (step === 'texture') metaStep = 2;
+    else if (step === 'done' || step === 'settle') metaStep = 4;
+    else metaStep = 3;
+    // Tapping Start sets sessionRole='proposer' in exBeginStart;
+    // tapping Join sets sessionRole='confirmer' in exJoinExchange.
+    // By the time showExStep('connect') runs, that selection has
+    // happened, so the indicator colors up immediately on the
+    // Connect view -- green for proposer, blue for confirmer.
+    var role = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
+    renderIndicator(metaStep, role);
+  }
+
+  // Render the role-aware 3-step indicator. Called by showExStep and
+  // anywhere a role transition needs to be reflected immediately.
+  function renderIndicator(metaStep, role) {
     var indicator = document.getElementById('ex4-indicator');
-    if (indicator) {
-      indicator.querySelectorAll('.ex4-step').forEach(function(el) {
-        var s = parseInt(el.getAttribute('data-step'));
-        var numEl = el.querySelector('.ex4-num');
-        el.classList.remove('active', 'done');
-        if (s < metaStep) {
-          el.classList.add('done');
-          numEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-        } else {
-          el.classList.toggle('active', s === metaStep);
-          numEl.textContent = s;
-        }
-      });
-      indicator.querySelectorAll('.ex4-line').forEach(function(el, i) {
-        el.classList.toggle('done', i + 1 < metaStep);
-      });
+    if (!indicator) return;
+    indicator.classList.remove('role-proposer', 'role-confirmer', 'role-neutral');
+    indicator.classList.add('role-' + role);
+    var labels = role === 'confirmer'
+      ? ['Connect', 'Read', 'Decide']
+      : ['Connect', 'Read', 'Compose'];
+    var html = '';
+    for (var i = 1; i <= 3; i++) {
+      var stepCls = '';
+      if (i < metaStep) stepCls = ' done';
+      else if (i === metaStep) stepCls = ' active';
+      html += '<div class="ex4-step' + stepCls + '" data-step="' + i + '">';
+      html += '<div class="ex4-num">';
+      if (i < metaStep) {
+        html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      } else {
+        html += i;
+      }
+      html += '</div>';
+      html += '<div class="ex4-label">' + labels[i - 1] + '</div>';
+      html += '</div>';
+      if (i < 3) {
+        var lineCls = i < metaStep ? ' done' : '';
+        html += '<div class="ex4-line' + lineCls + '"></div>';
+      }
     }
+    indicator.innerHTML = html;
   }
 
   // --- Cooperate Flow (v2.13.0) ---
@@ -1363,8 +1435,11 @@ const PAIR_CODE_LENGTH = 4;
       const card = document.createElement('div');
       card.className = 'coop-act';
       const dir = act.energyState === 'provided' ? '\u2191' : '\u2193';
-      const dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(204,68,68,0.15)';
-      const dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--red)';
+      // Bite 2 of language audit (continued in v2.61.14): valence neutralized.
+      // Provided and received are roles, not virtues. Green for provided,
+      // blue for received -- both pleasant, neither valence-laden.
+      const dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(42,90,143,0.15)';
+      const dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--blue)';
       const name = act.counterpartyName || '';
       const meta = [];
       if (name) meta.push(esc(name));
@@ -1441,7 +1516,15 @@ const PAIR_CODE_LENGTH = 4;
     if (subOpts) subOpts.classList.remove('open');
     if (chevron) chevron.classList.remove('open');
     refreshHome();
-    if (wasDone) toast('Exchange complete');
+    // On a successful exchange, route the user to Home so the In flight
+    // card is in view. Without this the user stays on whatever tab they
+    // launched the exchange from (Settings, Learn, etc.) and never sees
+    // the witness-attestation transition. On a cancel (wasDone=false)
+    // we leave them where they were.
+    if (wasDone) {
+      try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
+      toast('Exchange complete');
+    }
   }
 
   // === Exchange form v2 ===
@@ -1583,17 +1666,42 @@ const PAIR_CODE_LENGTH = 4;
 
     // New flow: already connected via session — send proposal directly
     if (exFlowActive && sessionPartner && sessionCode) {
+      // Capture partner info onto the pendingProposal so Home can
+      // render it as a pending row even before the chain record
+      // exists. The proposer's record only gets written when the
+      // confirmer confirms (via completeSessionExchange), which can
+      // be seconds away. Until then, pendingProposal IS the row.
+      var pSnap = null;
+      try {
+        pSnap = typeof sessionPartner.thread_snapshot === 'string'
+          ? JSON.parse(sessionPartner.thread_snapshot)
+          : sessionPartner.thread_snapshot;
+      } catch(_) {}
+      state.pendingProposal._partnerName = (pSnap && pSnap._name) || '';
+      state.pendingProposal._partnerFp = sessionPartner.fingerprint || '';
+      state.pendingProposal._submittedAt = Date.now();
+      try { localStorage.setItem('hcp_pending_proposal', JSON.stringify(state.pendingProposal)); } catch(_) {}
+
+      // Send the proposal to the witness server and start the
+      // confirmation poll (handled inside submitSessionProposal).
       sendSessionProposal();
-      showExStep('session');
-      document.getElementById('session-code-input').style.display = 'none';
-      document.getElementById('session-connect-btn').style.display = 'none';
-      document.getElementById('session-status-line').textContent = 'Proposal sent — waiting for their review';
-      document.getElementById('session-content').style.display = 'block';
-      document.getElementById('session-content').innerHTML =
-        '<div class="pair-status resolving" style="margin-top:16px;">' +
-        '<div class="ps-icon">&#128230;</div>' +
-        '<div class="ps-text">Your proposal is with them. You\'ll see their response here.</div></div>';
-      startSessionPoll();
+
+      // Modal closes directly. We deliberately do NOT call
+      // closeExchange() here -- that would clear state.pendingProposal
+      // and call cleanupSession (which stops the poll), both of which
+      // would defeat the new flow. The session stays alive in the
+      // background; when completeSessionExchange runs after the
+      // confirmer confirms, it writes the proposer's record and
+      // closeExchange (called from writeSessionRecord) clears
+      // pendingProposal -- the row transitions from "pending
+      // confirmation" to a settled chain record.
+      closeModal('exchange');
+      refreshHome();
+      // Route to Home so the In flight pending-proposal card is in
+      // view immediately. Same reason as the closeExchange case:
+      // without this, a proposer who started the exchange from
+      // another tab stays there and doesn't see the pending row.
+      try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
       return;
     }
 
@@ -2159,7 +2267,7 @@ const PAIR_CODE_LENGTH = 4;
   function coopReceiveProposal() {
     closeModal('cooperate');
     openExchange();
-    document.getElementById('exchange-header').textContent = 'Receive a Proposal';
+    document.getElementById('exchange-header').textContent = 'Receive a proposal';
     sessionRole = 'confirmer';
     generateSessionCode();
     showExStep('session');
@@ -2986,7 +3094,7 @@ const PAIR_CODE_LENGTH = 4;
         const err = await resp.json().catch(() => ({}));
         toast(err.error || 'Confirmation failed');
         _sessionWritten = false;
-        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Accept'; acceptBtn.style.opacity = '1'; }
+        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; }
         return;
       }
 
@@ -3000,7 +3108,7 @@ const PAIR_CODE_LENGTH = 4;
       toast('Confirmation failed -- try again');
       _sessionWritten = false;
       var acceptBtn2 = document.getElementById('btn-session-accept');
-      if (acceptBtn2) { acceptBtn2.disabled = false; acceptBtn2.textContent = 'Accept'; acceptBtn2.style.opacity = '1'; }
+      if (acceptBtn2) { acceptBtn2.disabled = false; acceptBtn2.textContent = 'Confirm exchange'; acceptBtn2.style.opacity = '1'; }
     }
   }
 
@@ -3269,26 +3377,26 @@ const PAIR_CODE_LENGTH = 4;
     var witnessUrl = getWitnessUrl();
     if (witnessUrl) recordServerSuccess(witnessUrl);
 
-    // Show done
-    var _cfPartnerName = '';
-    if (sessionPartner && sessionPartner.thread_snapshot) {
-      var _cpts = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
-      _cfPartnerName = (_cpts && _cpts._name) || '';
-    }
-    state.doneDetails = {
-      partner: _cfPartnerName,
-      direction: myDirection === 'provided' ? 'You provided' : 'You received',
-      description: p.description || '',
-      category: p.category || '',
-      value: p.value,
-      witnessed: !!(getWitnessUrl())
-    };
-    state.doneSummary = (myDirection === 'provided' ? 'Provided' : 'Received') + ': ' + (p.description || '') + ' -- ' + p.value + ' units';
-    exRenderDoneCard();
-    showExStep('done');
+    // Close the modal directly. The new exchange now lives in the
+    // chain and will appear at the top of Home in the In flight card
+    // (as a Pending witness row). closeExchange() handles
+    // cleanupSession, modal close, refreshHome, and the 'Exchange
+    // complete' toast (gated on _sessionWritten which is true by this
+    // point). The legacy 'Exchange recorded' Done screen with its
+    // 'Return to home' button is no longer shown -- the user lands
+    // directly on Home with the new exchange visible.
+    closeExchange();
 
-    refreshHome();
-    toast('Exchange complete');
+    // Schedule a follow-up refresh so the row exits the In flight
+    // hold and drops to Recent at the right moment. Without this,
+    // refreshHome only fires when state changes (witness attestation,
+    // tab switches), and the row could sit in In flight indefinitely
+    // even after the hold window has elapsed. The 4100ms matches the
+    // IN_FLIGHT_HOLD_MS in renderHomeTab plus a small margin to make
+    // the filter cleanly switch sides.
+    setTimeout(function() {
+      try { if (typeof refreshHome === 'function') refreshHome(); } catch(_) {}
+    }, 4100);
   }
 
   function cleanupSession() {
@@ -4064,10 +4172,16 @@ const PAIR_CODE_LENGTH = 4;
       const eqActs = d.myDensity > 0 ? (fieldAdj / d.myDensity).toFixed(1) : '\u2014';
       h += '<div class="cf-cost-row"><span class="cl">Equivalent avg acts</span><span class="cv">~' + eqActs + '</span></div>';
     }
-    h += '<div class="cf-cost-row"><span class="cl">Your current surplus</span><span class="cv" style="color:' + (mySurplus >= 0 ? 'var(--green)' : 'var(--red)') + '">' + mySurplus + '</span></div>';
-    h += '<div class="cf-cost-row"><span class="cl">After this exchange</span><span class="cv" style="color:' + (afterBal >= 0 ? 'var(--green)' : 'var(--red)') + '">' + afterBal + '</span></div>';
+    // Bite 2 (continued in v2.61.14): position-line valence neutralized.
+    // The copy below explicitly says "deficit is an honest position" so the
+    // colors above must not contradict that. Positive position is green
+    // (gentle affirmation that you have provided more than received in the
+    // categories captured by the chain). Negative position is blue rather
+    // than red -- a valid honest position, not an alarm.
+    h += '<div class="cf-cost-row"><span class="cl">Your current position</span><span class="cv" style="color:' + (mySurplus >= 0 ? 'var(--green)' : 'var(--blue)') + '">' + mySurplus + '</span></div>';
+    h += '<div class="cf-cost-row"><span class="cl">After this exchange</span><span class="cv" style="color:' + (afterBal >= 0 ? 'var(--green)' : 'var(--blue)') + '">' + afterBal + '</span></div>';
     if (afterBal < 0) {
-      h += '<div class="cf-deficit">You\u2019d enter deficit. This is not blocked \u2014 deficit is an honest position. It records that you received something valuable.</div>';
+      h += '<div class="cf-deficit">You\u2019d move into deficit. This is not blocked \u2014 deficit is an honest position. It records that you received something valuable.</div>';
     }
     h += '</div>';
 
@@ -4953,6 +5067,11 @@ const PAIR_CODE_LENGTH = 4;
           rtt_ms: rttMs,
         };
         save();
+        // Refresh Home so the row that was just rendered as Pending
+        // (no witnessAttestation) re-renders without the Pending pill
+        // and with its normal timestamp subtitle. This is the visible
+        // settle moment for the user.
+        try { if (typeof refreshHome === 'function') refreshHome(); } catch(rhe) {}
         console.log('[witness] Attestation received:', mintHash.substring(0, 16) + '...');
         return true;
       }
@@ -6455,8 +6574,14 @@ function init() {
     exFlowActive = true;
     exConnectMode = 'start';
     cleanupSession();
+    // Set the role provisionally so the indicator renders in the
+    // proposer's green from the moment Connect appears. The
+    // authoritative role assignment still happens in exOnConnected
+    // once partner data is exchanged; this just keeps the indicator
+    // honest during the wait-for-partner phase.
+    sessionRole = 'proposer';
     showModal('exchange');
-    document.getElementById('exchange-header').textContent = 'Cooperate';
+    document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
     // Generate the visible code
@@ -6507,8 +6632,14 @@ function init() {
     exConnectMode = 'join';
     exInitiatorRole = null; // joiner — role determined by partner
     cleanupSession();
+    // Set the role provisionally so the indicator renders in
+    // confirmer-blue from the moment the Join screen appears.
+    // exOnConnected will reaffirm or overwrite based on the
+    // partner's announced role; this just keeps the indicator
+    // correct during the code-entry phase.
+    sessionRole = 'confirmer';
     showModal('exchange');
-    document.getElementById('exchange-header').textContent = 'Cooperate';
+    document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
     var html = '<div style="text-align:center; margin-bottom:16px;">';
@@ -6896,6 +7027,34 @@ function init() {
     }
     reviewContainer.style.display = 'block';
     reviewContainer.innerHTML = html;
+
+    // Advance the indicator to step 2 (Read). The SAS confirmation is
+    // the actual Connect -> Read hand-off from the user's standpoint:
+    // the visible content has just swapped from SAS codes to the
+    // counterparty review (chain shape + POH). The user is still on
+    // the 'verify' hs-step in the modal (the modern path injects the
+    // review here rather than navigating to the legacy texture step),
+    // but the indicator should reflect what they're actually doing.
+    // Idempotent on re-invoke (e.g. when a late snapshot triggers a
+    // re-render through the exOnConnected snapshot-poll callback).
+    var roleNow = (typeof sessionRole !== 'undefined' && sessionRole === 'confirmer') ? 'confirmer' : 'proposer';
+    renderIndicator(2, roleNow);
+
+    // Start session polling now -- the confirmer needs to be able to
+    // detect an incoming proposal while still on Read, not only after
+    // advancing to receiver-wait. Pre-v2.61.27 the poll only started
+    // in exContinueFromTexture (when the user tapped through past
+    // Read), which meant the "proposal arrives while confirmer is
+    // browsing the counterparty's chain" path -- the entire reason
+    // for the on-Read pulse and button-transform -- never fired,
+    // because the client had no listener running yet. startSessionPoll
+    // is idempotent (calls stopSessionPoll first) so the later call
+    // in exContinueFromTexture is harmless. For the proposer this is
+    // also harmless: checkSessionState only acts on data.proposal
+    // status, and the proposer hasn't sent one yet at this point.
+    if (typeof startSessionPoll === 'function') {
+      try { startSessionPoll(); } catch(spe) { console.log('[ex-flow] Session poll start failed:', spe.message); }
+    }
   }
 
   function exReviewConfirm() {
@@ -7043,7 +7202,10 @@ function init() {
     if (key === 'wallet-position-explain') {
       var bal = HCP.walletBalance(state.chain);
       var balStr = (bal >= 0 ? '+' : '') + bal.toFixed(0);
-      var balClass = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)';
+      // Bite 2 (continued in v2.61.14): the body copy below says "this number
+      // does not mean you have received less or more than others." The colors
+      // must agree. Positive green, negative blue, zero text-dim. No red.
+      var balClass = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--blue)' : 'var(--text-dim)';
       title = 'What this number means';
       body = '<div style="text-align:center; margin-bottom:16px;">' +
         '<div style="font-size:36px; font-weight:600; color:' + balClass + ';">' + balStr + '</div>' +
@@ -7744,8 +7906,9 @@ function init() {
       var card = document.createElement('div');
       card.className = 'coop-act';
       var dir = act.energyState === 'provided' ? '\u2191' : '\u2193';
-      var dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(204,68,68,0.15)';
-      var dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--red)';
+      // See Bite 2 note in pending-items render. Same pattern.
+      var dirColor = act.energyState === 'provided' ? 'rgba(43,140,62,0.15)' : 'rgba(42,90,143,0.15)';
+      var dirTextColor = act.energyState === 'provided' ? 'var(--green)' : 'var(--blue)';
       var meta = [];
       if (act.category) meta.push(esc(act.category));
       if (act.count > 1) meta.push(act.count + ' times');
@@ -7880,11 +8043,43 @@ function init() {
     var spinnerEl = document.getElementById('ex-rw-spinner');
     if (spinnerEl) spinnerEl.style.display = 'none';
 
-    // Pulse the Exchange step in the progress bar
+    // Pulse the Decide step in the indicator (was the Exchange step
+    // pre-v2.61.23). Swap the step number for a small document icon
+    // so the visual reads as "a proposal has arrived" rather than
+    // just "step 3 wants attention". The gentle opacity pulse comes
+    // from the CSS .ex4-step.notify rule. If step 3 is already active
+    // (the user has already advanced to Decide / receiver-wait), skip
+    // the notify -- they don't need to be alerted to where they
+    // already are. exShowProposalReady gets called twice in the
+    // proposal-arrived-before-Read-confirm scenario: once from the
+    // poll while the user is still on Read, then again after
+    // exContinueFromTexture restarts the poll on receiver-wait.
     var indicator = document.getElementById('ex4-indicator');
     if (indicator) {
       var step3 = indicator.querySelector('[data-step="3"]');
-      if (step3) step3.classList.add('notify');
+      if (step3 && !step3.classList.contains('active')) {
+        step3.classList.add('notify');
+        var num3 = step3.querySelector('.ex4-num');
+        if (num3) {
+          num3.innerHTML = '<svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="#fff" stroke-width="1" stroke-linecap="round"><rect x="1.5" y="1" width="9" height="12" rx="1"/><line x1="3.5" y1="4.5" x2="8.5" y2="4.5"/><line x1="3.5" y1="7" x2="8.5" y2="7"/><line x1="3.5" y1="9.5" x2="6.5" y2="9.5"/></svg>';
+        }
+      }
+    }
+
+    // If the confirmer is still on the post-SAS Review screen (Read,
+    // step 2) when the proposal arrives, transform that screen's
+    // "Confirm" button into "Review proposal" so it carries the
+    // arrival signal where the user's eye already is. The handler
+    // (exReviewConfirm) is unchanged -- it advances to receiver-wait,
+    // which by this point has the proposal card already rendered
+    // below. Gate on the verify hs-step actually being the active
+    // (visible) one so the second call from the post-navigation poll
+    // doesn't touch a button the user can no longer see.
+    var verifyStep = document.getElementById('ex-step-verify');
+    var reviewContainer = document.getElementById('ex-review-container');
+    if (verifyStep && verifyStep.classList.contains('active') && reviewContainer) {
+      var reviewBtn = reviewContainer.querySelector('button[onclick*="exReviewConfirm"]');
+      if (reviewBtn) reviewBtn.textContent = 'Review proposal';
     }
 
     // Build proposal card
@@ -8294,20 +8489,26 @@ function init() {
 
     var html = '';
 
-    // Totals card — the basic standing numbers Michael asked to keep visible
-    // on the landing screen without forcing users into the wallet every time.
+    // Totals card -- Bite 3 verdict-pin alignment (April 30, 2026): the
+    // previous side-by-side amount totals (+totalP / -totalR) were a
+    // balance presentation by implication -- the user's eye computed the
+    // net even without an explicit balance number. Replaced with act
+    // counts (Provided 12 / Received 10) which preserve the activity
+    // sense without the implicit subtraction. Value-totals still live
+    // in the chain modal breakdown card.
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
     html += '<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:14px;">';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">+' + totalP + '</div><div style="font-size:var(--fs-xs); color:var(--text-faint);">' + actsP + ' act' + (actsP === 1 ? '' : 's') + '</div></div>';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">\u2212' + totalR + '</div><div style="font-size:var(--fs-xs); color:var(--text-faint);">' + actsR + ' act' + (actsR === 1 ? '' : 's') + '</div></div>';
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">' + actsP + '</div></div>';
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">' + actsR + '</div></div>';
     html += '</div>';
 
-    // Participation ratio bar — same visual as the wallet's ratio bar so
-    // the two read consistently.
+    // Participation ratio bar -- same visual as the wallet's ratio bar so
+    // the two read consistently. v2.61.18: provided half now uses --green
+    // (was --accent, which equals --blue, so the bar rendered all-blue).
     if (totalActs > 0) {
       html += '<div style="display:flex; justify-content:space-between; font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:4px;"><span>participation ratio</span><span style="color:var(--text-dim); font-weight:500;">' + ratioStr + '</span></div>';
       html += '<div style="height:10px; border-radius:5px; overflow:hidden; display:flex; background:var(--bg-input);">';
-      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--accent); border-radius:5px 0 0 5px;"></div>';
+      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--green); border-radius:5px 0 0 5px;"></div>';
       if (rPct > 0) html += '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 5px 5px 0;"></div>';
       html += '</div>';
     } else {
@@ -8315,9 +8516,149 @@ function init() {
     }
     html += '</div>';
 
-    // Recent transactions with filter — only if the chain has any
-    if (ex.length > 0) {
-      var recent = ex.slice().reverse().slice(0, 8);
+    // === IN FLIGHT ===
+    // Holds anything still in motion -- before it settles into the
+    // Recent list. Two kinds of entries can appear here:
+    //
+    //   (a) Pending proposal -- the proposer just submitted; the
+    //       confirmer has not confirmed yet, so no chain record
+    //       exists. state.pendingProposal holds the data.
+    //
+    //   (b) Pending witness attestation -- a chain record exists
+    //       (so the cooperative act is on the chain), but the
+    //       witness round-trip has not completed. submitWitness
+    //       sets r.witnessAttestation on success, which calls
+    //       refreshHome and the row drops to Recent.
+    //
+    // Both render in the same accent-bordered card so the just-
+    // recorded entry shows up where the user is already looking.
+    // After witness attests (typically <1s), the row transitions
+    // out of In flight and into Recent, where it briefly fades in
+    // to mark the settle moment. After ~8s nothing animates --
+    // re-renders from tab switches stay quiet.
+    var pp = state.pendingProposal;
+    var hasPP = pp && pp.details && pp._partnerName != null;
+    // Hold just-recorded records in the In flight zone for a brief
+    // window even after witness has attested. The witness round-trip
+    // is typically <1s, much faster than a person can perceive the
+    // 'pending witness' state, so without a hold the row appears to
+    // skip In flight entirely. With the hold, the user sees a clear
+    // transition: the row appears in In flight as 'Pending witness',
+    // changes to 'Witness attested' green-check the moment attestation
+    // arrives, then drops to Recent at the end of the hold window.
+    var IN_FLIGHT_HOLD_MS = 4000;
+    // Chain records use ISO-string timestamps (now() in hep-core.js
+    // returns new Date().toISOString()), so subtracting them from a
+    // numeric Date.now() returns NaN and breaks every comparison
+    // silently. Coerce here so all the age math is well-defined.
+    function recordAgeMs(r) {
+      if (!r || r.timestamp == null) return Infinity;
+      var ts = typeof r.timestamp === 'number' ? r.timestamp : new Date(r.timestamp).getTime();
+      if (!isFinite(ts)) return Infinity;
+      return Date.now() - ts;
+    }
+    var pendingRecords = ex.filter(function(r) {
+      if (!r.witnessAttestation) return true;
+      return recordAgeMs(r) < IN_FLIGHT_HOLD_MS;
+    });
+    var settledRecords = ex.filter(function(r) {
+      if (!r.witnessAttestation) return false;
+      return recordAgeMs(r) >= IN_FLIGHT_HOLD_MS;
+    });
+    var hasInFlight = hasPP || pendingRecords.length > 0;
+
+    if (hasInFlight) {
+      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">In flight</div>';
+      html += '<div class="in-flight-card" style="background:var(--bg-raised); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow); margin-bottom:16px;">';
+
+      var ifRows = [];
+
+      // (a) Pending proposal
+      if (hasPP) {
+        var ppDesc = pp.details.description || pp.details.category || 'Exchange';
+        var ppIsProv = pp.details.energyState === 'provided';
+        var ppValColor = ppIsProv ? 'var(--green)' : 'var(--blue)';
+        var ppValSign = ppIsProv ? '+' : '\u2212';
+        var ppBgColor = ppIsProv ? 'var(--green-light)' : 'var(--blue-light)';
+        var ppArrow = ppIsProv
+          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + ppValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+        var ppPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + ppValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+        var ppName = pp._partnerName ? esc(pp._partnerName) : '';
+        var ppStatus = ppName
+          ? 'Pending ' + ppName + '\u2019s confirmation'
+          : 'Pending their confirmation';
+        var ppFresh = pp._submittedAt && (Date.now() - pp._submittedAt) < 8000;
+        var ppFreshClass = ppFresh ? ' fresh' : '';
+        var ppRow = '';
+        ppRow += '<div class="in-flight-row' + ppFreshClass + '" style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
+        ppRow += '<div style="width:42px; height:32px; border-radius:8px; background:' + ppBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + ppArrow + ppPerson + '</div>';
+        ppRow += '<div style="flex:1; min-width:0;">';
+        ppRow += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(ppDesc) + '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span></div>';
+        ppRow += '<div style="font-size:var(--fs-sm); color:var(--accent);">' + ppStatus + '</div>';
+        ppRow += '</div>';
+        ppRow += '<div style="font-size:var(--fs-md); font-weight:600; color:' + ppValColor + '; white-space:nowrap;">' + ppValSign + Number(pp.details.value).toLocaleString() + '</div>';
+        ppRow += '</div>';
+        ifRows.push(ppRow);
+      }
+
+      // (b) Pending records (in chain, awaiting witness OR recently
+      // attested but still in the hold window). Show newest first to
+      // match the rest of the UI.
+      pendingRecords.slice().reverse().forEach(function(r) {
+        var rDesc = r.description || r.category || 'Exchange';
+        var rName = state.settings.hideNames ? '' : (r.counterpartyName || '');
+        var rIsProv = r.energyState === 'provided';
+        var rValColor = rIsProv ? 'var(--green)' : 'var(--blue)';
+        var rValSign = rIsProv ? '+' : '\u2212';
+        var rBgColor = rIsProv ? 'var(--green-light)' : 'var(--blue-light)';
+        var rArrow = rIsProv
+          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + rValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
+          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + rValColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
+        var rPerson = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + rValColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
+        var rFresh = recordAgeMs(r) < 8000;
+        var rFreshClass = rFresh ? ' fresh' : '';
+        // Three sub-states inside In flight (post-record):
+        //   not attested            -> green check 'Approved' pill, accent subtitle
+        //   attested + in hold      -> green check 'Recorded' pill, green subtitle
+        // The transition between them happens automatically when
+        // submitWitness sets r.witnessAttestation and triggers a
+        // refreshHome (per v2.61.28). The 'Approved' pill in green
+        // gives the user a clear celebratory marker between the
+        // pre-record 'Pending' state (accent) and the final settled
+        // state in Recent. Without it the row could read as 'Pending'
+        // straight to 'Recorded' and the moment of confirmation got
+        // lost in the transition.
+        var rAttested = !!r.witnessAttestation;
+        var rPill = rAttested
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--green); color:#fff; margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Recorded</span>'
+          : '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(43,140,62,0.14); color:var(--green); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Approved</span>';
+        var rStatus = rAttested
+          ? (rName ? esc(rName) + ' \u00b7 Witness attested' : 'Witness attested')
+          : (rName ? esc(rName) + ' \u00b7 Pending witness attestation' : 'Pending witness attestation');
+        var rStatusColor = rAttested ? 'var(--green)' : 'var(--accent)';
+        var pendRow = '';
+        pendRow += '<div class="in-flight-row' + rFreshClass + '" style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
+        pendRow += '<div style="width:42px; height:32px; border-radius:8px; background:' + rBgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + rArrow + rPerson + '</div>';
+        pendRow += '<div style="flex:1; min-width:0;">';
+        pendRow += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(rDesc) + rPill + '</div>';
+        pendRow += '<div style="font-size:var(--fs-sm); color:' + rStatusColor + ';">' + rStatus + '</div>';
+        pendRow += '</div>';
+        pendRow += '<div style="font-size:var(--fs-md); font-weight:600; color:' + rValColor + '; white-space:nowrap;">' + rValSign + r.value + '</div>';
+        pendRow += '</div>';
+        ifRows.push(pendRow);
+      });
+
+      // Join with separators so multi-row in-flight cards (rare but
+      // possible) read like the recent list -- thin border between rows.
+      html += ifRows.join('<div style="height:1px; background:var(--border);"></div>');
+
+      html += '</div>';
+    }
+
+    // === RECENT (settled only) ===
+    if (settledRecords.length > 0) {
+      var recent = settledRecords.slice().reverse().slice(0, 8);
 
       html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">';
       html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent exchanges</div>';
@@ -8340,7 +8681,20 @@ function init() {
         var desc = r.description || r.category || 'Exchange';
         var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
         var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
         var isProv = r.energyState === 'provided';
+        // Pending = record exists in chain but witness attestation has not
+        // arrived yet. submitWitness sets r.witnessAttestation on success
+        // and triggers a re-render. Until then, this record reads as
+        // pending on Home -- a small pill next to the title plus a
+        // 'pending witness' status line below.
+        var isPending = !r.witnessAttestation;
+        // Fresh = timestamp is recent enough to mean "this exchange just
+        // happened during this session of the app". Triggers a brief
+        // background-fade animation on the row so the user's eye finds
+        // it after the modal closes. 8s window covers normal cases
+        // including the witness round-trip.
+        var isFresh = recordAgeMs(r) < 8000;
         // Bite 2 of language audit: row valence neutralized. Received is not
         // bad in HEP; provided and received are two roles in a cooperative
         // act, both honest. Green for provided, blue for received -- both
@@ -8354,12 +8708,20 @@ function init() {
           : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
         var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
         var border = idx < recent.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
-        html += '<div class="home-row" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
+        var freshClass = isFresh ? ' fresh' : '';
+        html += '<div class="home-row' + freshClass + '" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
         html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
         html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
         html += '<div style="flex:1; min-width:0;">';
-        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
-        html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + '</div>';
+        var pendingPill = isPending
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span>'
+          : '';
+        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + pendingPill + '</div>';
+        var subtitleText = isPending
+          ? (name ? esc(name) + ' \u00b7 ' : '') + 'Pending witness attestation'
+          : (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts;
+        var subtitleColor = isPending ? 'var(--accent)' : 'var(--text-faint)';
+        html += '<div style="font-size:var(--fs-sm); color:' + subtitleColor + ';">' + subtitleText + '</div>';
         html += '</div>';
         html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
         html += '</div>';
@@ -8376,7 +8738,7 @@ function init() {
         html += '</div>';
       });
       html += '</div>';
-    } else {
+    } else if (!hasInFlight) {
       html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:30px 20px; text-align:center; box-shadow:var(--shadow);">';
       html += '<div style="font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">When you record your first cooperative exchange, it will appear here.</div>';
       html += '</div>';
@@ -9698,41 +10060,19 @@ function init() {
     return h;
   }
 
-  // renderStandingTab — now writes into the wallet modal, not a tab.
-  // In v2.58.0 the Standing tab was removed from the bottom nav and its
-  // content moved into the wallet modal body (opened via the wallet icon
-  // at the top of the device). The function name is kept for continuity
-  // with callers, but it now targets 'wallet-standing-content'.
-  function renderStandingTab() {
-    var el = document.getElementById('wallet-standing-content');
-    if (!el) return;
-    var ex = state.chain.filter(HCP.isAct);
-    var balance = HCP.walletBalance(state.chain);
-    var provided = ex.filter(function(r) { return r.energyState === 'provided'; });
-    var received = ex.filter(function(r) { return r.energyState === 'received'; });
-    var counterparties = {};
-    ex.forEach(function(r) { if (r.counterparty) counterparties[r.counterparty] = 1; });
-    var cats = {};
-    ex.forEach(function(r) { var k = r.category || 'uncategorized'; cats[k] = (cats[k] || 0) + 1; });
-
-    var html = '';
-
-    // Identity panel (collapsible) with three-state photo logic
+  // v2.61.22: identity panel extracted from renderStandingTab so the
+  // wallet modal can render it at the TOP of the body (above the stats
+  // card) rather than buried halfway down the modal. Returns the full
+  // HTML string for the collapsible identity card -- photo + name +
+  // fingerprint as the collapsed header, expanded view shows photo-state
+  // nudges (genesis/current/both/none), about, skills, and the Edit
+  // profile button. Reads from state directly; no parameters.
+  function renderIdentityPanelHTML() {
     var name = state.declarations.name || 'Anonymous';
     var genesisPhoto = '';
     var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
     if (genesisRec) genesisPhoto = genesisRec.photoData;
     var currentPhoto = state.declarations.photo || '';
-    // Determine photo state: 'none', 'genesis-only', 'current-only', 'both'
-    // genesis-only: chain has a genesis photo, user has not added a current
-    //   replacement yet (or current matches genesis). Show genesis filled,
-    //   current placeholder.
-    // current-only: chain has no genesis photo (anonymous-at-setup user),
-    //   user has since added a current. Genesis slot stays permanently empty
-    //   (chain is immutable, no retroactive genesis photo possible). Show
-    //   current filled, genesis placeholder.
-    // both: chain has a genesis photo AND user has added a different current.
-    //   Show both side by side.
     var photoState = 'none';
     if (genesisPhoto && currentPhoto && genesisPhoto !== currentPhoto) photoState = 'both';
     else if (genesisPhoto) photoState = 'genesis-only';
@@ -9742,6 +10082,7 @@ function init() {
     var decls = [];
     if (state.declarations.skills && state.declarations.skills.length) decls = state.declarations.skills;
 
+    var html = '';
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px; box-shadow:var(--shadow); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer;" onclick="var p=this.nextElementSibling; p.style.display=p.style.display===\'block\'?\'none\':\'block\'; this.querySelector(\'.id-chev\').style.transform=p.style.display===\'block\'?\'rotate(90deg)\':\'\';">';
     if (displayPhoto) {
@@ -9773,7 +10114,6 @@ function init() {
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
     } else if (photoState === 'genesis-only') {
-      // Genesis photo exists, no separate current. Show genesis filled, current placeholder.
       html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
       html += '<div style="text-align:center;"><img src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--accent); background:var(--accent-light); display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="App.openDeclarationsEdit()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
@@ -9787,15 +10127,12 @@ function init() {
       html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer; font-weight:500;" onclick="App.openLessonTile(\'sovereignty\')">Learn why</span>';
       html += '</div></div></div>';
     } else if (photoState === 'current-only') {
-      // No genesis photo (chain started anonymous, immutable so it stays empty),
-      // but a current photo has been added. Show current filled, genesis placeholder.
       html += '<div style="display:flex; justify-content:center; gap:20px; margin:12px 0 16px; padding-bottom:4px;">';
       html += '<div style="text-align:center;"><div style="width:56px; height:56px; border-radius:50%; border:2px dashed var(--text-faint); background:var(--bg-input); display:flex; align-items:center; justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center;"><img src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
       html += '</div>';
       html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.5; padding:0 4px;">No genesis photo on this chain. Genesis is permanent and cannot be added later. Your current photo is what counterparties will see.</div>';
     } else if (photoState === 'both') {
-      // Both photos - toggle view
       html += '<div style="display:flex; justify-content:center; gap:24px; margin:12px 0 16px; padding:4px 0 8px;">';
       html += '<div style="text-align:center; cursor:pointer;" onclick="var g=this.querySelector(\'img\'); var c=this.parentElement.querySelector(\'[data-photo=current]\'); if(g)g.style.border=\'3px solid var(--accent)\'; if(c)c.style.border=\'3px solid transparent\';"><img data-photo="genesis" src="' + genesisPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid transparent;"><div style="font-size:10px; font-weight:600; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Genesis</div></div>';
       html += '<div style="text-align:center; cursor:pointer;" onclick="var c=this.querySelector(\'img\'); var g=this.parentElement.querySelector(\'[data-photo=genesis]\'); if(c)c.style.border=\'3px solid var(--accent)\'; if(g)g.style.border=\'3px solid transparent\';"><img data-photo="current" src="' + currentPhoto + '" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:3px solid var(--accent);"><div style="font-size:10px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Current</div></div>';
@@ -9818,6 +10155,25 @@ function init() {
     }
     html += '<button style="width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.openDeclarationsEdit()">Edit profile</button>';
     html += '</div></div>';
+    return html;
+  }
+
+  // renderStandingTab — now writes into the wallet modal, not a tab.
+  // In v2.58.0 the Standing tab was removed from the bottom nav and its
+  // content moved into the wallet modal body (opened via the wallet icon
+  // at the top of the device). The function name is kept for continuity
+  // with callers, but it now targets 'wallet-standing-content'.
+  function renderStandingTab() {
+    var el = document.getElementById('wallet-standing-content');
+    if (!el) return;
+    var ex = state.chain.filter(HCP.isAct);
+    var html = '';
+
+    // v2.61.22: identity panel moved to the TOP of the wallet modal body
+    // (rendered into #wallet-identity-panel by openWallet via
+    // renderIdentityPanelHTML). This div now renders only the POH verdict
+    // card and the empty-state nudge if applicable. Stats card is rendered
+    // by openWallet directly into the static wallet-detail markup.
 
     // Proof of Human verdict card (aggregate for this chain)
     // Absorbs what used to be a separate "Strengthen your chain" nudge card —
@@ -9825,54 +10181,12 @@ function init() {
     // is available but not enabled.
     html += renderPOHVerdict({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() });
 
-    // Participation card (no position/balance shown - person can check via wallet)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Participation</div>';
-    html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
-    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Provided</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--green);">' + provided.length + '</div></div>';
-    html += '<div style="flex:1;"><div style="font-size:var(--fs-xs); color:var(--text-faint);">Received</div><div style="font-size:var(--fs-lg); font-weight:600; color:var(--accent);">' + received.length + '</div></div>';
-    html += '</div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">People</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(counterparties).length + '</span></div>';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Categories</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + Object.keys(cats).length + '</span></div>';
-    html += '<div style="display:flex; justify-content:space-between;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Total exchanges</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ex.length + '</span></div>';
-    // Chain age
-    if (state.chain.length > 0) {
-      var genesis = new Date(state.chain[0].timestamp);
-      var now = new Date();
-      var days = Math.floor((now - genesis) / 86400000);
-      var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
-      html += '<div style="display:flex; justify-content:space-between; margin-top:8px;"><span style="font-size:var(--fs-md); color:var(--text-dim);">Chain age</span><span style="font-size:var(--fs-md); font-weight:600; color:var(--text);">' + ageStr + '</span></div>';
-    }
-    html += '</div>';
-
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:24px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
       html += 'No exchanges yet. Tap <strong>+</strong> to start your first one.';
       html += '</div>';
-    } else if (ex.length > 0) {
-      // Recent activity (last 3)
-      var recent = ex.slice().reverse().slice(0, 3);
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent</div>';
-      html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.switchTab(\'history\')">View all</span>';
-      html += '</div>';
-      recent.forEach(function(r) {
-        var desc = r.description || r.category || 'Exchange';
-        var isProv = r.energyState === 'provided';
-        // See Bite 2 note in renderHomeTab.
-        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
-        var valSign = isProv ? '+' : '-';
-        var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0;' + (r !== recent[recent.length-1] ? ' border-bottom:1px solid var(--border);' : '') + '">';
-        html += '<div style="font-size:var(--fs-md); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; margin-right:12px;">' + esc(desc) + '</div>';
-        html += '<div style="display:flex; align-items:center; gap:8px;">';
-        html += '<span style="font-size:var(--fs-sm); color:var(--text-faint);">' + ds + '</span>';
-        html += '<span style="font-size:var(--fs-md); font-weight:600; color:' + valColor + ';">' + valSign + r.value + '</span>';
-        html += '</div></div>';
-      });
-      html += '</div>';
     }
+    // Recent activity card removed in v2.61.20 -- duplicated the History tab.
     el.innerHTML = html;
   }
 
@@ -10161,7 +10475,7 @@ function init() {
     exFlowActive = true;
     cleanupSession();
     showModal('exchange');
-    document.getElementById('exchange-header').textContent = 'New Exchange';
+    document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
     var html = '<div style="text-align:center; margin-bottom:24px; padding-top:8px;">';
