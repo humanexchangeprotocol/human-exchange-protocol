@@ -365,7 +365,6 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('setup').scrollTop = 0;
     if (step === 'pin') buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
     else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep('photo'); } else shake(); });
-    else if (step === 'range') { rangeStep = 0; document.querySelectorAll('#setup-range .range-substep').forEach(s => s.classList.remove('active')); document.querySelector('#setup-range .range-substep[data-rs="0"]').classList.add('active'); document.querySelectorAll('#range-progress .rp-dot').forEach((d,i) => { d.className = 'rp-dot' + (i === 0 ? ' current' : ''); }); }
   }
 
   function capturePhoto() { document.getElementById('photo-capture-input').click(); }
@@ -4928,7 +4927,7 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations.valTagsSimple = getValTags('dr-vt-simple');
     state.declarations.valTagsComplex = getValTags('dr-vt-complex');
     state.declarations.valTagsDaily = getValTags('dr-vt-daily');
-    save(); closeModal('range'); toast('Scale exercise saved'); refreshHome();
+    save(); closeModal('range'); toast('Scale exercise saved'); if (state.fingerprint) refreshHome();
   }
 
   function dismissRangePrompt() {

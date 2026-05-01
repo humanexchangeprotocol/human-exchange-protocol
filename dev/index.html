@@ -963,236 +963,42 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <button class="btn btn-secondary" onclick="App.setupStep('range')" style="margin-top:8px;">Skip for now</button>
   </div>
 
-  <!-- RANGE DECLARATION -->
+  <!-- RANGE PRIMER (single screen, replaces the 10-substep exercise) -->
   <div id="setup-range" class="step">
-    <div class="range-progress" id="range-progress">
-      <span class="rp-dot current"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span><span class="rp-dot"></span>
+    <div class="guidance">
+      <strong style="font-size:17px;">How value works here</strong>
+    </div>
+    <div class="guidance">
+      When you do something for someone, that act of energy gets a number. The shared scale runs from 0 to 1,000,000. It is the same ruler for everyone. Most everyday cooperation lives near the bottom. Big numbers are reserved for the rare and exceptional.
     </div>
 
-    <!-- Sub-step 1: Intro -->
-    <div class="range-substep active" data-rs="0">
-      <div class="guidance">
-        You are about to think about how you value the things you do. This is not a test. There are no wrong answers.
-      </div>
-      <div class="guidance">
-        We are going to ask you a few questions about value. Just pick numbers that feel right to you. Do not overthink it. Your instincts about what things are worth come from a lifetime of experience.
-      </div>
-      <div class="guidance">
-        After you finish, we will show you something that ties it all together.
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-primary" onclick="App.rangeNav(1)">Begin</button>
-      </div>
+    <svg viewBox="0 0 320 90" style="width:100%; max-width:320px; height:auto; display:block; margin:12px auto 8px;" xmlns="http://www.w3.org/2000/svg" aria-label="Distribution of cooperative act values on the 0 to 1,000,000 scale">
+      <defs>
+        <linearGradient id="rangeDensity" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.85"/>
+          <stop offset="18%" stop-color="var(--accent)" stop-opacity="0.55"/>
+          <stop offset="45%" stop-color="var(--accent)" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.04"/>
+        </linearGradient>
+      </defs>
+      <text x="20" y="22" font-size="11" fill="var(--text-dim)" text-anchor="start">Most cooperation lives near zero</text>
+      <rect x="20" y="35" width="280" height="14" fill="url(#rangeDensity)" rx="2"/>
+      <line x1="20" y1="49" x2="20" y2="60" stroke="var(--text-dim)" stroke-width="1"/>
+      <line x1="300" y1="49" x2="300" y2="60" stroke="var(--text-dim)" stroke-width="1"/>
+      <text x="20" y="74" font-size="11" fill="var(--text-dim)" text-anchor="start">0</text>
+      <text x="300" y="74" font-size="11" fill="var(--text-dim)" text-anchor="end">1,000,000</text>
+    </svg>
+
+    <div class="guidance">
+      When you exchange, both of you put numbers on the same ruler. If a person asks for a lot, the other person carries that weight on their own chain. There is risk in either direction. You decide whether the trade makes sense for you.
     </div>
 
-    <!-- Sub-step 2: Cancer anchor -->
-    <div class="range-substep" data-rs="1">
-      <div class="guidance">
-        <strong>Imagine this.</strong>
-      </div>
-      <div class="guidance" style="font-size:17px; line-height:1.6;">
-        On a scale of 1 to 1,000,000 — what value would you give to someone who cured cancer? Or someone who discovered a clean, carbon-free energy source that transformed our world?
-      </div>
-      <div class="range-input-group">
-        <label>What value would you give them?</label>
-        <div class="range-val-row">
-          <input type="number" id="range-cancer-val" min="1" max="1000000" style="font-size:28px; width:160px;">
-        </div>
-        <div class="val-tags-label">What makes it valuable? Tap any that apply.</div>
-        <div class="val-tags" id="vt-anchor">
-          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
-        </div>
-      </div>
-      <div class="guidance" style="font-size:14px; color:var(--text-faint);">
-        Now, with that in mind, let us think about the things you do.
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(0)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(2)">Next</button>
-      </div>
+    <div class="guidance" style="font-size:14px; color:var(--text-dim);">
+      The valuation worksheet walks you through a few small examples to help you find your own sense of where things sit on the scale. If you already have a sense of it, you can move forward.
     </div>
 
-    <!-- Sub-step 3: Simple act -->
-    <div class="range-substep" data-rs="2">
-      <div class="guidance">
-        <strong>A small favor.</strong> Something easy that you would do for someone — it takes a few minutes, no special skill. Carrying a bag. Holding a door. Helping someone find something they dropped.
-      </div>
-      <div class="range-input-group">
-        <label style="margin-bottom:4px;">On the scale of 1 to 1,000,000, what value would you give a small favor like that?</label>
-        <div class="range-val-row">
-          <input type="number" id="range-simple-val" min="1" max="1000000" style="font-size:28px; width:140px;">
-        </div>
-        <div class="val-tags-label">How did you arrive at that number? Tap any that apply.</div>
-        <div class="val-tags" id="vt-simple">
-          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
-        </div>
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(1)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(3)">Next</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 4: Day of work -->
-    <div class="range-substep" data-rs="3">
-      <div class="guidance">
-        <strong>A full day of work.</strong> Whatever you do most days — for a job, for your family, for your community. A full day of your energy and effort.
-      </div>
-      <div id="range-ref-daily" class="range-ref" style="display:none;"></div>
-      <div class="range-input-group">
-        <label style="margin-bottom:4px;">What value would you give a full day of that?</label>
-        <div class="range-val-row">
-          <input type="number" id="range-daily-val" min="1" max="1000000" style="font-size:28px; width:140px;">
-        </div>
-        <div class="val-tags-label">How did you arrive at that number?</div>
-        <div class="val-tags" id="vt-daily">
-          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
-        </div>
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(2)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(4)">Next</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 5: Personal ceiling -->
-    <div class="range-substep" data-rs="4">
-      <div class="guidance">
-        <strong>Your best work.</strong> Now think about the most impressive thing you could do — combining all of your skills, knowledge, and experience into something that might take weeks or months. The best you are capable of.
-      </div>
-      <div id="range-ref-complex" class="range-ref" style="display:none;"></div>
-      <div class="range-input-group">
-        <label style="margin-bottom:4px;">What value would you give your best work?</label>
-        <div class="range-val-row">
-          <input type="number" id="range-complex-val" min="1" max="1000000" style="font-size:28px; width:140px;">
-        </div>
-        <div class="val-tags-label">How did you arrive at that number?</div>
-        <div class="val-tags" id="vt-complex">
-          <span class="val-tag" onclick="App.toggleValTag(this)">Time it takes</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Physical effort</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What feels fair</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Skill required</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">What I'd charge in $</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Years of learning</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Materials or supplies</span>
-          <span class="val-tag" onclick="App.toggleValTag(this)">Risk or responsibility</span>
-        </div>
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(3)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(5)">See Where You Stand</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 6: Universal Scale Reveal -->
-    <div class="range-substep" data-rs="5">
-      <div class="guidance" style="text-align:center;">
-        <strong style="font-size:18px;">Your Values on the Shared Scale</strong>
-      </div>
-
-      <div class="guidance">
-        Everyone who uses this system shares the same scale: <strong>0 to 1,000,000</strong>. It is a ruler, like meters or degrees. It does not tell you what your energy and effort is worth. It gives everyone a shared frame so that when two people meet, they can compare values directly. No conversion. No math. Just two numbers on the same ruler.
-      </div>
-
-      <div id="range-result-viz"></div>
-
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(4)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(6)">Next</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 7: Market & Pricing -->
-    <div class="range-substep" data-rs="6">
-      <div class="guidance">
-        <strong>How pricing works here.</strong>
-      </div>
-      <div class="guidance">
-        When you exchange with someone, their values will most likely align with yours if they followed the same logic. But you may notice someone asks for a higher recognition of energy for something that does not seem to require much. That is the pricing mechanism at work.
-      </div>
-      <div class="guidance">
-        If a price does not feel right, you do not have to exchange. Someone else may offer the same energy at a different value. You can also negotiate — just as you would at any market. This is no different than deciding not to buy something at a store because the price does not feel right.
-      </div>
-      <div class="guidance">
-        If you make a few exchanges and later realize you agreed to values that were too high or too low, that is fine. You are not punished for it. Every exchange after a mistake makes the mistake less significant on your thread. Early exchanges are how you learn.
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(5)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(7)">Next</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 8: Coincidence of Wants Part 1 -->
-    <div class="range-substep" data-rs="7">
-      <div class="guidance">
-        <strong>How exchange works without money.</strong>
-      </div>
-      <div class="guidance">
-        Imagine two people. Maria bakes bread. James fixes bikes. Maria's bike is broken and James is hungry. This works perfectly — Maria gives James bread, James fixes Maria's bike. They both record it. Both threads grow.
-      </div>
-      <div class="guidance">
-        But what if Maria's bike is fine and James is still hungry? In the old world, Maria might bake him bread anyway. She remembers the help. James knows he should reciprocate. The whole community keeps a rough mental ledger of who gives and who takes.
-      </div>
-      <div class="guidance">
-        That system worked beautifully for thousands of years. What broke it was not selfishness. It was scale. As communities grew beyond a few dozen people, no one could hold everyone's cooperative history in their head anymore.
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(6)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(8)">Next</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 9: Coincidence of Wants Part 2 -->
-    <div class="range-substep" data-rs="8">
-      <div class="guidance">
-        <strong>This system solves the memory problem.</strong>
-      </div>
-      <div class="guidance">
-        When Maria bakes bread for James, they both record it. Maria provided energy worth 50 units. James received it. Maria's thread goes up. James's thread reflects what he received. The exchange is real. The energy moved. The record is permanent.
-      </div>
-      <div class="guidance">
-        Now when Maria needs her roof patched, she goes to Elena. Elena can see Maria's thread — a person who cooperates, who provides real value to her community. Elena names her price. Maria agrees. They record a new exchange. New units are created on both threads.
-      </div>
-      <div class="guidance">
-        Maria did not need to have something Elena wanted right now. Her thread — her history of genuine cooperation — is what made the exchange possible. That is how the coincidence of wants is solved. Not with a token that passes between hands, but with a record that shows who you are.
-      </div>
-      <div class="range-nav">
-        <button class="btn btn-secondary" onclick="App.rangeNav(7)">Back</button>
-        <button class="btn btn-primary" onclick="App.rangeNav(9)">Next</button>
-      </div>
-    </div>
-
-    <!-- Sub-step 10: Declare -->
-    <div class="range-substep" data-rs="9">
-      <div class="guidance" style="background:var(--bg-raised); padding:14px; border-radius:var(--radius); border:1px solid var(--border);">
-        <strong>This is just a starting point.</strong> The exercise above helps you think about how you value things. As you exchange with others, your actual history becomes the real picture. You can always revisit this.
-      </div>
-
-      <div class="range-nav" style="flex-direction:column; gap:8px;">
-        <button class="btn btn-primary" onclick="App.submitRange()" style="width:100%;">Continue</button>
-      </div>
-    </div>
+    <button class="btn btn-secondary" onclick="App.openDeclareRange()" style="margin-top:8px;">Take the valuation worksheet</button>
+    <button class="btn btn-primary" onclick="App.setupStep('sensors')" style="margin-top:12px;">Continue</button>
   </div>
 
   <!-- SENSORS -->
