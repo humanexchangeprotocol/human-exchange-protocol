@@ -194,7 +194,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === SETUP === */
 #setup { align-items: center; justify-content: flex-start; padding: 24px; padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #setup h1 { font-size: 26px; font-weight: 600; color: var(--accent); margin-bottom: 2px; flex-shrink: 0; }
-#setup .subtitle { font-size: 15px; color: var(--text-dim); margin-bottom: 20px; font-style: italic; flex-shrink: 0; }
+#setup .subtitle { font-size: 14px; color: var(--text-dim); margin-bottom: 20px; font-style: italic; line-height: 1.6; flex-shrink: 0; }
 #setup .step { display: none; width: 100%; max-width: 380px; }
 #setup .step.active { display: block; }
 #setup .step p { color: var(--text-dim); font-size: 15px; margin-bottom: 14px; line-height: 1.55; }
@@ -852,7 +852,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <!-- ========== SETUP ========== -->
 <div id="setup" class="screen">
   <h1>Human Exchange Protocol</h1>
-  <div class="subtitle">A record of what people do for each other</div>
+  <div class="subtitle">
+    A record of what people do for each other.<br>
+    A medium to help two people exchange or cooperate.<br>
+    A mutual scale that all parties can understand.
+  </div>
 
   <!-- WELCOME: Brief intro -->
   <div id="setup-welcome1" class="step active">
