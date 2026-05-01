@@ -202,6 +202,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 #setup .step .guidance { text-align: left; color: var(--text-dim); font-size: 15px; line-height: 1.55; margin-bottom: 14px; }
 #setup .step .guidance strong { color: var(--text); font-weight: 500; }
 .welcome-icon { font-size: 40px; margin-bottom: 12px; display: block; }
+.welcome-icon-svg { width: 64px; height: 64px; margin: 0 auto 12px; display: block; color: var(--accent); }
 .welcome-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 16px; }
 .welcome-dots .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
 .welcome-dots .dot.active { background: var(--accent); }
@@ -906,7 +907,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
   <!-- WELCOME: Brief intro -->
   <div id="setup-welcome1" class="step active">
-    <span class="welcome-icon" style="font-size:48px;">&#129309;</span>
+    <svg class="welcome-icon-svg" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-label="Two overlapping circles representing cooperation between two parties"><circle cx="18" cy="24" r="14" fill="currentColor" fill-opacity="0.55"/><circle cx="30" cy="24" r="14" fill="currentColor" fill-opacity="0.55"/></svg>
     <div class="guidance" style="text-align:center; font-size:24px; color:var(--accent); font-weight:600; margin-top:8px; margin-bottom:12px;">
       Welcome to HEP
     </div>
@@ -1110,7 +1111,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
   <!-- DONE -->
   <div id="setup-done" class="step">
-    <span class="welcome-icon">&#10024;</span>
+    <svg class="welcome-icon-svg" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-label="Concentric circles representing your chain's first point"><circle cx="24" cy="24" r="22" fill="currentColor" fill-opacity="0.15"/><circle cx="24" cy="24" r="11" fill="currentColor"/></svg>
     <div class="guidance" style="text-align:center;">
       <strong>You have just created the beginning of your thread.</strong>
     </div>
