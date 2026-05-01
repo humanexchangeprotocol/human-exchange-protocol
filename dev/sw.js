@@ -1,6 +1,6 @@
 // HEP Service Worker — DEV BUILD
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.61.51';
+const CACHE_VERSION = '2.61.52';
 const CACHE_NAME = 'hep-dev-v' + CACHE_VERSION;
 
 // Files to cache on install
@@ -9,6 +9,7 @@ const CORE_ASSETS = [
   './index.html',
   './hep-core.js',
   './hep-app.js',
+  './lessons.json',
   './vendor/qrcode.js',
   './manifest.json',
   './icon-192.png',
@@ -65,7 +66,7 @@ self.addEventListener('fetch', function(event) {
 
   // Core app files: network-first (always get latest when online)
   var path = url.pathname.replace(/.*\//, ''); // filename only
-  var isCore = (path === '' || path === 'index.html' || path === 'hep-core.js' || path === 'hep-app.js' || path === 'sw.js');
+  var isCore = (path === '' || path === 'index.html' || path === 'hep-core.js' || path === 'hep-app.js' || path === 'lessons.json' || path === 'sw.js');
 
   if (isCore || event.request.mode === 'navigate') {
     event.respondWith(

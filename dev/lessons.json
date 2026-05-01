@@ -1,0 +1,222 @@
+{
+  "groups": [
+    {
+      "key": "getting-started",
+      "title": "Getting Started",
+      "description": "Learn the basics of cooperative exchange",
+      "lessons": ["act", "value", "calibrate"]
+    },
+    {
+      "key": "understanding-chain",
+      "title": "Understanding Your Chain",
+      "description": "How your cooperation record works",
+      "lessons": ["foundations", "pricing", "exchange"]
+    },
+    {
+      "key": "bigger-picture",
+      "title": "The Bigger Picture",
+      "description": "Why cooperative exchange matters",
+      "lessons": ["beyond", "community", "sovereignty", "privacy"]
+    }
+  ],
+  "topics": {
+    "act": {
+      "title": "The Cooperative Act",
+      "slides": [
+        {
+          "title": "Before anyone named it",
+          "body": "<p>Two people. One helps the other. Something exists afterward that didn\u2019t exist before.</p><p><span class=\"highlight\">This has always happened.</span> Before money. Before barter. Before any system anyone ever invented. Two people, and the honest moment between them.</p><p>A neighbor watches your kids. A friend drives you to the airport. Someone shares a meal. Energy moved. That\u2019s a cooperative act. It always was.</p>"
+        },
+        {
+          "title": "The permission system",
+          "body": "<p>The monetary system didn\u2019t just create a medium of exchange. It created a <span class=\"highlight\">permission system for what counts as work.</span></p><p>Caregiving. Domestic labor. Community maintenance. Creative practice. All reclassified as leisure or charity \u2014 not because they produce no value, but because they produce no extractable value for the system doing the classifying.</p><p>HEP refuses this permission system entirely.</p>"
+        },
+        {
+          "title": "The tarp",
+          "body": "<p>Two homeless people. One has a tarp. One needs it. Energy moves.</p><p><span class=\"highlight\">That is a cooperative act. It always was.</span> The monetary system didn\u2019t invent it \u2014 it just stopped counting it.</p><p>Nobody loses when that exchange gets recorded. No pool is drained. No authority is threatened. Two people\u2019s reality becomes slightly more legible. That is all. And that is everything.</p>"
+        },
+        {
+          "title": "The honest record",
+          "body": "<p>HEP records cooperative acts between people. What you did, with whom, when \u2014 confirmed by both parties, held only by the people who lived it.</p><p><span class=\"highlight\">Not a currency. Not a score. A record.</span></p><p>Before money existed, communities remembered who contributed and who received. This is that memory \u2014 made portable, tamper-evident, and held by the people who made it.</p>"
+        }
+      ]
+    },
+    "value": {
+      "title": "Value Is Yours",
+      "slides": [
+        {
+          "title": "You declare",
+          "body": "<p>When you provide something \u2014 mow a lawn, fix a pipe, teach a lesson, share a skill \u2014 <span class=\"highlight\">you name the value.</span> A number that represents the energy you spent.</p><p>No institution tells you what your work is worth. No algorithm decides. You declare it, and the other person either agrees or you have a conversation.</p><p>This is how valuation worked before anyone decided for everyone.</p>"
+        },
+        {
+          "title": "Both sides honest",
+          "body": "<p>Every act has a provider and a receiver. <span class=\"highlight\">Both are honest positions.</span></p><p>A teacher provides for years before receiving. A student receives for years before giving. A person in crisis receives care. None of this is a burden \u2014 it\u2019s honest receiving.</p><p>The words are simple: <span class=\"highlight\">provided</span> and <span class=\"highlight\">received</span>. No moral weight. Just honest direction.</p>"
+        },
+        {
+          "title": "Your chain is your reference",
+          "body": "<p>Over time your chain builds a record of what you\u2019ve valued and what others have valued when working with you. <span class=\"highlight\">Your own history becomes your pricing guide.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your context for the next one. The pattern is yours. Nobody else sets it.</p><p>Price discovery emerges naturally from honest history. No authority required.</p>"
+        },
+        {
+          "title": "No wrong number",
+          "body": "<p>A haircut might be worth 10 in one context and 25 in another. <span class=\"highlight\">The protocol records what you agreed on, not what someone decided for you.</span></p><p>There is no correct price for anything. There is only what two people honestly agreed happened between them. The chain doesn\u2019t judge. It records the cooperative reality.</p><p>That\u2019s the point. The value is yours.</p>"
+        }
+      ]
+    },
+    "beyond": {
+      "title": "Beyond the Moment",
+      "slides": [
+        {
+          "icon": "<svg class=\"icon icon-md\"><use href=\"#icon-hourglass\"/></svg>",
+          "title": "The timing problem",
+          "body": "<p>You fix your neighbor\u2019s sink. She\u2019s grateful, but she can\u2019t help you right now \u2014 and what you actually need is someone to tutor your kid.</p><p><span class=\"highlight\">This is the oldest problem in cooperation.</span> Economists call it the coincidence of wants: both people need to want what the other has, at the same time, in the right proportion.</p><p>For most of human history, communities solved this with memory. Everyone knew who contributed and who received. That memory was the ledger.</p>"
+        },
+        {
+          "title": "What money solved",
+          "body": "<p>Community memory worked, but it had limits. <span class=\"highlight\">It couldn\u2019t scale beyond the people who knew you.</span></p><p>Money solved this by creating a universal token \u2014 help someone, receive a coin, spend that coin with a stranger across town. You no longer needed the same person to help you back. The timing problem was solved.</p><p>But money solved it by creating a permission system. If the system doesn\u2019t recognize your work, you don\u2019t get the token. No token, no participation. The solution created its own exclusions.</p>"
+        },
+        {
+          "title": "What your chain solves",
+          "body": "<p>Your chain is a portable record of your cooperative history. When someone who\u2019s never met you reads it, <span class=\"highlight\">they can see the shape of who you are</span> \u2014 what you\u2019ve done, how consistently, in what categories.</p><p>You fix the sink. Your chain records it. Next week you meet a tutor. She doesn\u2019t know your neighbor. She doesn\u2019t need to. She reads your chain and sees a real person with a real history of honest cooperation. A thread forms between you.</p><p>The timing problem is solved. No universal token required.</p>"
+        },
+        {
+          "title": "No one is excluded",
+          "body": "<p>Here\u2019s the difference: <span class=\"highlight\">you don\u2019t need a balance or a surplus to participate.</span> Your chain doesn\u2019t check your account before letting you cooperate.</p><p>A person who has received far more than they\u2019ve provided \u2014 a student, an elder, someone recovering from crisis \u2014 still has a readable chain. Still has a history. Still can cooperate with anyone willing.</p><p>Money solved the coincidence of wants but created gatekeeping. The fabric of cooperation forms without the gate.</p>"
+        }
+      ]
+    },
+    "calibrate": {
+      "title": "Find Your Unit",
+      "interactive": true,
+      "slides": [
+        {
+          "title": "Your starting point",
+          "body": "<p>Before your first exchange, it helps to think about <span class=\"highlight\">what your unit means to you.</span></p><p>This is a thought exercise. There are no right answers. You\u2019re building your own internal compass \u2014 a sense of relative value that\u2019s yours alone.</p><p>Think of <span class=\"highlight\">the simplest helpful thing you do regularly.</span> Something easy. Something you wouldn\u2019t think twice about.</p><div class=\"cal-input-group\"><div class=\"cal-label\">Describe it in a few words:</div><input class=\"cal-input\" type=\"text\" id=\"cal-simple-desc\" placeholder=\"e.g. watering a neighbor\u2019s plants\" oninput=\"App.calUpdate()\"></div><div class=\"cal-input-group\"><div class=\"cal-input-row\"><div class=\"cal-label\">Give it a number:</div><input class=\"cal-input cal-input-num\" type=\"number\" id=\"cal-simple-val\" placeholder=\"5\" min=\"1\" oninput=\"App.calUpdate()\"></div><div class=\"cal-note\">Pick any number that feels right. This becomes your anchor.</div></div>"
+        },
+        {
+          "title": "Your skilled work",
+          "body": "<p>Now think of <span class=\"highlight\">the most skilled thing you do.</span> Something that took years to learn, or that very few people around you can do.</p><div class=\"cal-input-group\"><div class=\"cal-label\">Describe it:</div><input class=\"cal-input\" type=\"text\" id=\"cal-skilled-desc\" placeholder=\"e.g. rewiring a circuit breaker panel\" oninput=\"App.calUpdate()\"></div><p>How many of your simple acts does this equal? If <span class=\"highlight\" id=\"cal-anchor-echo\">your simple act</span> is <span class=\"highlight\" id=\"cal-anchor-val-echo\">your number</span>, what\u2019s this worth?</p><div class=\"cal-input-group\"><div class=\"cal-input-row\"><div class=\"cal-label\">Its value:</div><input class=\"cal-input cal-input-num\" type=\"number\" id=\"cal-skilled-val\" placeholder=\"50\" min=\"1\" oninput=\"App.calUpdate()\"></div><div class=\"cal-note\" id=\"cal-ratio-note\"></div></div>"
+        },
+        {
+          "title": "Something in between",
+          "body": "<p>Most of what you do probably falls somewhere between those two. <span class=\"highlight\">Think of an everyday task that takes real effort</span> but isn\u2019t your most specialized work.</p><div class=\"cal-input-group\"><div class=\"cal-label\">Describe it:</div><input class=\"cal-input\" type=\"text\" id=\"cal-mid-desc\" placeholder=\"e.g. cooking a full meal for a gathering\" oninput=\"App.calUpdate()\"></div><div class=\"cal-input-group\"><div class=\"cal-input-row\"><div class=\"cal-label\">Its value:</div><input class=\"cal-input cal-input-num\" type=\"number\" id=\"cal-mid-val\" placeholder=\"20\" min=\"1\" oninput=\"App.calUpdate()\"></div><div class=\"cal-note\" id=\"cal-mid-note\"></div></div>"
+        },
+        {
+          "title": "Something you\u2019d receive",
+          "body": "<p>You won\u2019t just be providing \u2014 you\u2019ll be receiving too. <span class=\"highlight\">Think of something you\u2019d want from someone else.</span></p><div class=\"cal-input-group\"><div class=\"cal-label\">What would you receive?</div><input class=\"cal-input\" type=\"text\" id=\"cal-recv-desc\" placeholder=\"e.g. someone tutoring my kid in math\" oninput=\"App.calUpdate()\"></div><div class=\"cal-input-group\"><div class=\"cal-input-row\"><div class=\"cal-label\">What feels fair?</div><input class=\"cal-input cal-input-num\" type=\"number\" id=\"cal-recv-val\" placeholder=\"25\" min=\"1\" oninput=\"App.calUpdate()\"></div><div class=\"cal-note\">There\u2019s no wrong answer. This is about your sense of proportion.</div></div>"
+        },
+        {
+          "title": "Your map",
+          "body": "<p>Here\u2019s the internal map you just built \u2014 <span class=\"highlight\">your own sense of relative value.</span></p><div id=\"cal-summary\"></div><p>This isn\u2019t a price list. It\u2019s a compass. When you do your first real exchange and someone asks <span class=\"highlight\">\u201cwhat\u2019s this worth?\u201d</span> \u2014 you already have an answer that\u2019s yours.</p><div class=\"cal-note\">Your chain will grow from here. Every real exchange refines your sense of value. This was just the starting point.</div>"
+        }
+      ]
+    },
+    "foundations": {
+      "title": "Foundations",
+      "slides": [
+        {
+          "title": "How does an exchange work?",
+          "body": "<p>One person provides a service, a product, or help. The other person receives it. Both agree on a value \u2014 a number that represents what just happened.</p><p><span class=\"highlight\">You declare the value of your own work.</span> Nobody tells you what it\u2019s worth. The other person agrees or you negotiate.</p><p>The act gets recorded on both chains. That\u2019s it. No money changed hands. Real work got recorded.</p>"
+        },
+        {
+          "title": "Chain, thread, fabric",
+          "body": "<p>Your <span class=\"highlight\">chain</span> is your complete history of cooperative acts. Every exchange you\u2019ve ever done, in order, linked together so nothing can be changed after the fact. Your balance shows whether you\u2019ve provided more than you\u2019ve received, or the reverse. Both are honest positions.</p><p>Every time you cooperate with someone, a <span class=\"highlight\">thread</span> is woven between your chain and theirs. The act sits on both, linking you. You might never see that person again, or you might exchange with them a hundred times. Each act is another thread.</p><p>When threads multiply across a community, they form a <span class=\"highlight\">fabric</span> \u2014 the cooperation that was always there, now visible. Nobody owns the fabric. It emerges from the acts.</p><p>A teacher gives for years before receiving. A student receives for years before giving. The chain holds the full arc. The threads show who cooperated. The fabric is what a community is, made legible.</p>"
+        },
+        {
+          "title": "Two phones, one exchange",
+          "body": "<p>An exchange can happen several ways. If you are together, you exchange short pairing codes and your phones connect through the network. <span class=\"highlight\">Both phones record the act. Both chains grow by one entry.</span></p><p>If there is no internet, you can use QR codes directly between phones. The record lives on your phone and theirs. Nobody else has a copy unless you choose to share it.</p>"
+        },
+        {
+          "title": "What can you imagine?",
+          "body": "<p>A neighborhood where every act of cooperation is visible. A community that can see what it\u2019s actually capable of. An elder whose lifetime of giving is finally recorded.</p><p><span class=\"highlight\">Your imagination is the limit.</span> This tool records cooperative acts \u2014 what you build with it is up to you and your community.</p><p>Start by doing what you\u2019re already doing. Just record it this time.</p>"
+        }
+      ]
+    },
+    "pricing": {
+      "title": "Price Discovery",
+      "slides": [
+        {
+          "title": "Your chain is your reference",
+          "body": "<p>Over time, your chain builds a record of what you\u2019ve provided and what you\u2019ve received. When negotiating a new exchange, <span class=\"highlight\">you can surface comparable acts from your own history.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your pricing context. The other person can see the pattern without seeing who those acts were with.</p><p>Price discovery emerges naturally from honest history.</p>"
+        },
+        {
+          "title": "Negotiation is human",
+          "body": "<p>Two people might value the same work differently. That\u2019s not a flaw \u2014 it\u2019s how real exchange works. <span class=\"highlight\">The protocol records what you agreed on, not what someone decided for you.</span></p><p>A haircut might be worth 10 in one context and 25 in another. The chain doesn\u2019t judge. It records the cooperative reality between two specific people at a specific moment.</p>"
+        },
+        {
+          "title": "The chain viewer",
+          "body": "<p>When someone shares their chain with you before an exchange, <span class=\"highlight\">you can see the shape of their work</span> \u2014 what categories they work in, how consistently they price, how active they\u2019ve been.</p><p>This is the context that makes negotiation informed rather than blind. You\u2019re not guessing. You\u2019re reading an honest record.</p>"
+        }
+      ]
+    },
+    "exchange": {
+      "title": "Exchange & Parity",
+      "slides": [
+        {
+          "title": "The exchange rate",
+          "body": "<p>Every person values their effort on their own scale. Your \u201c10\u201d and someone else\u2019s \u201c10\u201d might represent very different amounts of energy. <span class=\"highlight\">The exchange rate translates between your scale and theirs.</span></p><p>Think of the way currencies work between countries. A dollar and a euro measure differently. Neither is wrong. The exchange rate makes sure both sides are represented honestly.</p><p>Your rate comes from your chain\u2019s density compared to theirs. As both chains grow, the rate gets more precise.</p>"
+        },
+        {
+          "title": "How parity works",
+          "body": "<p>When two people exchange, the rate between their chains adjusts prices so both sides are honestly represented. <span class=\"highlight\">This happens automatically from the data. Nobody sets the rate.</span></p><p>Over time, your chain accumulates valuation data from everyone you have exchanged with. That accumulated data forms a basket, similar to what economists use to calculate purchasing power parity between countries, except nobody built or governs it.</p><p>Within specific categories of work, the rates are even more precise.</p>"
+        },
+        {
+          "title": "Trust across chains",
+          "body": "<p>You don\u2019t need to know someone to exchange with them. You need to see their chain. <span class=\"highlight\">A long, active, balanced chain is hard to fake and easy to trust.</span></p><p>The protocol doesn\u2019t vouch for anyone. The chain speaks for itself. A person with 500 confirmed acts over two years tells a different story than a person with 3 acts last week.</p><p>Trust is built honestly through cooperation. Fabrication is expensive to sustain.</p>"
+        }
+      ]
+    },
+    "community": {
+      "title": "Building Community",
+      "slides": [
+        {
+          "title": "Planting the first seeds",
+          "body": "<p>Every network starts with two people doing one honest exchange. <span class=\"highlight\">You don\u2019t need critical mass. You need one real act.</span></p><p>Start with what\u2019s already happening \u2014 a neighbor who watches your kids, a friend who fixes your car, a colleague who covers your shift. Record what was already real.</p><p>The protocol doesn\u2019t create cooperation. It makes existing cooperation visible.</p>"
+        },
+        {
+          "title": "The network grows naturally",
+          "body": "<p>When your counterparties start recording their own acts with others, the network spreads without anyone managing it. <span class=\"highlight\">There is no sign-up, no onboarding funnel, no growth team.</span></p><p>Each person\u2019s chain is independent. Threads form when people exchange. As more people cooperate, the threads weave into a fabric \u2014 the community, made visible. The community emerges from the acts themselves, not from a platform.</p>"
+        },
+        {
+          "title": "What communities can see",
+          "body": "<p>When enough people in a neighborhood are recording cooperative acts, <span class=\"highlight\">the community can see what it\u2019s actually capable of.</span></p><p>How much tutoring happens every week. How many meals get shared. How much repair work circulates. The invisible economy becomes visible \u2014 not to surveil, but to understand and strengthen.</p><p>A community that can see its own cooperation can organize around it.</p>"
+        }
+      ]
+    },
+    "sovereignty": {
+      "title": "Your Phone, Your Server",
+      "slides": [
+        {
+          "title": "Offline by design",
+          "body": "<p>This app works without the internet. Your chain lives on your device. Exchanges happen face-to-face. <span class=\"highlight\">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>"
+        },
+        {
+          "icon": "<svg class=\"icon icon-md\"><use href=\"#icon-lock\"/></svg>",
+          "title": "Your data stays yours",
+          "body": "<p>No one can access your chain without your PIN. No company stores a copy. No government has a backdoor. <span class=\"highlight\">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>"
+        },
+        {
+          "icon": "<svg class=\"icon icon-md\"><use href=\"#icon-lightning\"/></svg>",
+          "title": "Resilience through simplicity",
+          "body": "<p>The entire application is a single file. It runs on any phone with a browser. <span class=\"highlight\">There is no server to hack, no database to breach, no company to shut down.</span></p><p>If the website disappears tomorrow, every installed copy keeps working. The protocol lives wherever the people are. That\u2019s the point.</p>"
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacy & Safety",
+      "slides": [
+        {
+          "title": "You control what others see",
+          "body": "<p>When you share your chain for negotiation, <span class=\"highlight\">no counterparty names are ever shown.</span> Only your work patterns, categories, and pricing history.</p><p>The person you\u2019re negotiating with can see the shape of your work without knowing who you worked with. Your competence travels with you. Your connections stay private.</p>"
+        },
+        {
+          "title": "Protection in dangerous places",
+          "body": "<p>If you\u2019re in a situation where revealing your network could be dangerous, <span class=\"highlight\">the protocol protects you by design.</span></p><p>No central registry knows you exist. No list of members can be seized. Your thread is encrypted behind your PIN. To an outside observer, the app is just a file on your phone.</p><p>If you need to disappear, delete your thread. It\u2019s gone. No trace, no record, no recovery.</p>"
+        },
+        {
+          "title": "Identity without identification",
+          "body": "<p>Your fingerprint \u2014 a short hash of your public key \u2014 identifies you in exchanges. <span class=\"highlight\">It proves you\u2019re the same person across acts without revealing who you are.</span></p><p>You can participate fully without ever giving your real name. The declarations section is optional. What you share is what you choose to share. Nothing more.</p>"
+        }
+      ]
+    }
+  }
+}
