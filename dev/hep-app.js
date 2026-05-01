@@ -2834,7 +2834,7 @@ const PAIR_CODE_LENGTH = 4;
       const content = document.getElementById('session-content');
       const statusDiv = content.querySelector('.pair-status');
       if (statusDiv) {
-        statusDiv.innerHTML = '<div class="ps-icon">&#128230;</div>' +
+        statusDiv.innerHTML = '<div class="ps-icon"><svg class="icon icon-lg"><use href="#icon-hourglass"/></svg></div>' +
           '<div class="ps-text">Your proposal is with them. You\'ll see their response here.</div>';
       }
 
@@ -4100,7 +4100,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="cs-label">Proposed value (their units)</div>';
     h += '<div style="display:flex;align-items:center;justify-content:center;gap:6px;">';
     h += '<div class="cs-val" id="cf-nv" onclick="App.cfEditValue()" style="cursor:pointer;">' + def + '</div>';
-    h += '<button onclick="App.cfEditValue()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;padding:4px;" title="Edit value">&#9998;</button>';
+    h += '<button onclick="App.cfEditValue()" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:4px;" title="Edit value"><svg class="icon icon-md"><use href="#icon-edit"/></svg></button>';
     h += '</div>';
     h += '<input type="number" id="cf-nedit" style="display:none;width:140px;margin:4px auto 8px;text-align:center;padding:10px;font-size:24px;font-weight:300;background:var(--bg-input);border:2px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);font-family:var(--font);outline:none;" min="0" step="1" inputmode="numeric" onblur="App.cfCommitEdit()" onkeydown="if(event.key===\'Enter\')this.blur()">';
     h += '<div class="cs-sub" id="cf-nv-sub">converts to ' + Math.round(def * d.catER) + ' in your units</div>';
@@ -6228,11 +6228,12 @@ const PAIR_CODE_LENGTH = 4;
 
     // Content
     var s = slides[idx];
-    var icon = s.icon || '';
-    // Strip HTML entities for visual display
+    // Slide icon rendering removed in v2.61.51 -- the previous emoji
+    // icons clashed with the new SVG iconography system. Slide-icon
+    // visual treatment is pinned for future design pass; data preserved
+    // in slide objects (s.icon) for when we revisit.
     var content = document.getElementById('lesson-content');
-    content.innerHTML = '<div class="lesson-tile-visual" style="animation:lessonFadeUp 0.35s ease">' + icon + '</div>' +
-      '<h3 class="lesson-tile-heading" key="h' + idx + '">' + s.title + '</h3>' +
+    content.innerHTML = '<h3 class="lesson-tile-heading" key="h' + idx + '">' + s.title + '</h3>' +
       '<div class="lesson-tile-body" key="b' + idx + '">' + _lessonStripHTML(s.body) + '</div>';
 
     // Bottom (dots + button)
