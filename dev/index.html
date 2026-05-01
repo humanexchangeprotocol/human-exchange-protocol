@@ -938,14 +938,11 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="guidance">
       <strong style="font-size:17px;">Make your first declaration</strong>
     </div>
-    <div class="guidance" style="font-size:14px;">
-      Declarations are things you record about yourself that help people understand who you are. This is a deeply personal process. You can always come back and add more over time.
-    </div>
     <div class="guidance">
-      In our current system, people understand you through degrees and certifications. This is different. This is about who you are and what you do. Some of that may be formal training, but it could also be life experience, things you learned by doing, skills no institution ever validated. Caregiver. Gardener. Problem solver. Mechanic. Mentor. Whatever is true about you.
+      Declarations are things you record about yourself that help people understand who you are. This is yours to write. There is no authority to please, no profile to optimize, no algorithm reading it.
     </div>
-    <div class="guidance" style="font-size:14px; color:var(--text-faint);">
-      Do not feel limited here. This is a declaration of who you are, not who other people decided you are.
+    <div class="guidance" style="font-size:14px; color:var(--text-dim);">
+      You can come back and add more anytime. Most people start small and build over time as they remember the things that matter.
     </div>
     <div class="field">
       <label>What do you do?</label>
@@ -953,6 +950,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     </div>
     <div class="skills-section">
       <label>Skills &amp; qualifications</label>
+      <div class="guidance" style="font-size:13px; color:var(--text-faint); margin-bottom:8px;">
+        If there are things you do over and over again with people, add them here. Anything you are proficient at. Anything you have certifications in. Anything you care about. You decide what counts.
+      </div>
       <div class="skills-list" id="setup-skills-list"></div>
       <div class="skill-add-row">
         <input type="text" id="setup-skill-input" placeholder="e.g. Craftsperson, CPR certified, great cook" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('setup')}">
