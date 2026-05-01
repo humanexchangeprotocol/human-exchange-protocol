@@ -860,6 +860,30 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="6 9 12 15 18 9"/>
     </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="5 12 10 17 19 7"/>
+    </symbol>
+    <symbol id="icon-warning" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
+      <path d="M12 3 L22 20 H2 z M11 9.5 H13 V14.5 H11 z M11 16 H13 V18 H11 z"/>
+    </symbol>
+    <symbol id="icon-hourglass" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="3.5" width="12" height="2" rx="0.5"/>
+      <rect x="6" y="18.5" width="12" height="2" rx="0.5"/>
+      <path d="M8 6 H16 L13 12 L16 18 H8 L11 12 z"/>
+    </symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24">
+      <path d="M8 11 V8 a4 4 0 0 1 8 0 v3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      <rect x="5" y="11" width="14" height="9" rx="2" fill="currentColor"/>
+    </symbol>
+    <symbol id="icon-lightning" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M13 3 L5 13 H11 L9 21 L19 11 H13 z"/>
+    </symbol>
+    <symbol id="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 3 21 3 21 9"/>
+      <polyline points="9 21 3 21 3 15"/>
+      <polyline points="21 15 21 21 15 21"/>
+      <polyline points="3 9 3 3 9 3"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -1326,7 +1350,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:10px;">?</div>
           <div class="cp-name" id="ex-verify-name" style="font-size:20px; margin-bottom:6px;">Connected</div>
           <div class="sas-badge" style="margin:8px 0 0 0;">
-            <span class="sas-lock">&#128274;</span>
+            <span class="sas-lock"><svg class="icon icon-md"><use href="#icon-lock"/></svg></span>
             <span class="sas-code" id="ex-sas-code" style="font-size:26px; letter-spacing:6px;">--</span>
           </div>
           <div style="font-size:12px; color:var(--text-faint); margin-top:6px;">Check this matches their screen</div>
@@ -1464,7 +1488,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         </div>
         <button class="btn btn-primary" style="margin-top:20px;" onclick="App.submitPairCode()">Pair</button>
         <div class="pair-status" id="pair-status" style="display:none;">
-          <div class="ps-icon" id="pair-status-icon">&#9203;</div>
+          <div class="ps-icon" id="pair-status-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>
           <div class="ps-text" id="pair-status-text"></div>
         </div>
         <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:16px; line-height:1.5;">Both people fill out their own side. When either phone reaches a server, the halves are matched. If values agree and directions complement, the exchange resolves automatically.</p>
@@ -1499,7 +1523,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="hs-status-line active" id="ex-proposal-status">Waiting for them to scan...</div>
         <!-- In-person path -->
         <div class="path-view" id="pv-inperson" style="display:none;">
-          <div class="hs-qr"><canvas id="proposal-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('proposal')">&#x26F6; Make bigger for scanning</button></div>
+          <div class="hs-qr"><canvas id="proposal-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('proposal')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>
           <button class="btn btn-primary" style="margin-top:16px;" onclick="App.initiatorConfirmScan()">They've scanned it</button>
           <div class="transport-switch"><button onclick="App.switchTransport()">Switch to message instead</button></div>
           <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:12px; line-height:1.5;">Having trouble scanning? Tap "Switch to message" above to send as a link instead.</p>
@@ -1524,7 +1548,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="hs-step" id="ex-step-waiting">
         <div class="hs-status-line active" id="ex-waiting-status">They're reviewing your proposal...</div>
         <div class="hs-status" style="padding-top:40px;">
-          <div class="hs-icon">&#9203;</div>
+          <div class="hs-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>
           <h3 id="ex-waiting-title">Waiting for their response</h3>
           <p id="ex-waiting-desc" style="margin-bottom:20px;">When they confirm, the exchange will continue.</p>
         </div>
@@ -1543,13 +1567,13 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="hs-step" id="ex-step-settle">
         <div class="hs-status-line active" id="ex-settle-status">Recording... sharing with the other person</div>
         <div class="hs-status">
-          <div class="hs-icon">&#9989;</div>
+          <div class="hs-icon"><svg class="icon icon-md"><use href="#icon-check"/></svg></div>
           <h3>Your record is saved</h3>
           <p>Now share the settlement so their record updates too.</p>
         </div>
         <!-- In-person settlement -->
         <div class="path-view" id="settle-inperson" style="display:none;">
-          <div class="hs-qr"><canvas id="settlement-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('settlement')">&#x26F6; Make bigger for scanning</button></div>
+          <div class="hs-qr"><canvas id="settlement-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('settlement')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>
           <button class="btn btn-primary" style="margin-top:16px;" onclick="App.finishExchange()">They've scanned it</button>
           <button class="btn btn-secondary" style="margin-top:8px;" onclick="App.settleViaMessage()">Send by message instead</button>
         </div>
@@ -1626,13 +1650,13 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="hs-step" id="cf-step-return">
         <div class="hs-status-line active" id="cf-return-status">Your record is saved. Sharing with the other person...</div>
         <div class="hs-status">
-          <div class="hs-icon">&#9989;</div>
+          <div class="hs-icon"><svg class="icon icon-md"><use href="#icon-check"/></svg></div>
           <h3>Confirmed</h3>
           <p>Now share your confirmation so their record updates too.</p>
           <div id="cf-return-relay-status" style="display:none; margin-top:12px; padding:10px 14px; background:var(--bg-raised); border-radius:var(--radius-sm); border:1px solid var(--border); font-size:13px; color:var(--green);">&#9679; Auto-settling via server&hellip;</div>
         </div>
         <div class="path-view active" id="cf-rv-inperson">
-          <div class="hs-qr"><canvas id="return-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('return')">&#x26F6; Make bigger for scanning</button></div>
+          <div class="hs-qr"><canvas id="return-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('return')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>
           <button class="btn btn-primary" style="margin-top:16px;" onclick="App.cfConfirmTheyScanned()">They've scanned it</button>
           <div class="transport-switch"><button onclick="App.setCfReturnPath('message')">Send by message instead</button></div>
         </div>
@@ -1654,7 +1678,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="hs-step" id="cf-step-waiting">
         <div class="hs-status-line active">Waiting for their settlement...</div>
         <div class="hs-status">
-          <div class="hs-icon">&#9203;</div>
+          <div class="hs-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>
           <h3>Waiting for their response</h3>
           <p>They're completing the exchange on their side. Once done, your record will be fully settled.</p>
           <div id="cf-relay-status" style="display:none; margin-top:12px; padding:10px 14px; background:var(--bg-raised); border-radius:var(--radius-sm); border:1px solid var(--border); font-size:13px; color:var(--green);">&#9679; Listening for auto-settlement&hellip;</div>
@@ -1673,7 +1697,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="hs-step" id="cf-step-settled">
         <div class="hs-status-line done">Done. Both recorded.</div>
         <div class="hs-success">
-          <div class="hs-check">&#10003;</div>
+          <div class="hs-check"><svg class="icon icon-md"><use href="#icon-check"/></svg></div>
           <h3>Act Recorded</h3>
           <p>Both chains are written. The cooperative act is memorialized.</p>
           <button class="btn btn-primary" onclick="App.closeConfirm()">Done</button>
@@ -1709,7 +1733,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="modal-body" id="chainshare-body">
       <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your chain for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
       <div class="review-panel" id="chainshare-summary"></div>
-      <div class="hs-qr"><canvas id="chainshare-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('chainshare')">&#x26F6; Make bigger for scanning</button></div>
+      <div class="hs-qr"><canvas id="chainshare-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR('chainshare')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>
       <textarea class="payload-area" id="chainshare-payload" readonly></textarea>
       <button class="btn btn-secondary" onclick="App.copyChainShare()">Copy</button>
       <button class="btn btn-secondary" onclick="App.shareChainShareText()">Share via Text</button>
@@ -1836,7 +1860,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('sovereignty')">
-        <div class="lt-icon" style="background:rgba(180,140,220,0.12);">&#9889;</div>
+        <div class="lt-icon" style="background:rgba(180,140,220,0.12);"><svg class="icon icon-md"><use href="#icon-lightning"/></svg></div>
         <div class="lt-info">
           <div class="lt-title">Your Phone, Your Server</div>
           <div class="lt-desc">Offline-first design, data sovereignty, and no dependencies</div>

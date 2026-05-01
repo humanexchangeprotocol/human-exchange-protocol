@@ -1807,7 +1807,7 @@ const PAIR_CODE_LENGTH = 4;
     const statusEl = document.getElementById('pair-status');
     statusEl.style.display = 'block';
     statusEl.className = 'pair-status resolving';
-    document.getElementById('pair-status-icon').innerHTML = '&#9203;';
+    document.getElementById('pair-status-icon').innerHTML = '<svg class="icon icon-md"><use href="#icon-hourglass"/></svg>';
 
     // Try to upload to server
     const uploaded = await uploadPairHalf(pairHalf);
@@ -1896,7 +1896,7 @@ const PAIR_CODE_LENGTH = 4;
       const statusEl = document.getElementById('pair-status');
       if (statusEl) {
         statusEl.className = 'pair-status mismatch';
-        document.getElementById('pair-status-icon').innerHTML = '&#9888;';
+        document.getElementById('pair-status-icon').innerHTML = '<svg class="icon icon-md"><use href="#icon-warning"/></svg>';
         document.getElementById('pair-status-text').textContent =
           'The other person\'s values didn\'t match yours. The exchange is unresolved. You may want to discuss and try again.';
       }
@@ -1976,7 +1976,7 @@ const PAIR_CODE_LENGTH = 4;
     const statusEl = document.getElementById('pair-status');
     if (statusEl) {
       statusEl.className = 'pair-status resolved';
-      document.getElementById('pair-status-icon').innerHTML = '&#10003;';
+      document.getElementById('pair-status-icon').innerHTML = '<svg class="icon icon-md"><use href="#icon-check"/></svg>';
       document.getElementById('pair-status-text').textContent =
         'Exchange resolved. Both chains are written.';
     }
@@ -2373,7 +2373,7 @@ const PAIR_CODE_LENGTH = 4;
         document.getElementById('session-content').style.display = 'block';
         document.getElementById('session-content').innerHTML =
           '<div class="pair-status resolving" style="margin-top:16px;">' +
-          '<div class="ps-icon">&#9203;</div>' +
+          '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>' +
           '<div class="ps-text">Your code is submitted. Once they enter their code and connect, you\'ll see each other here.</div>' +
           '</div>';
         startSessionPoll();
@@ -2731,7 +2731,7 @@ const PAIR_CODE_LENGTH = 4;
       content.innerHTML = html;
     } else {
       html += '<div class="pair-status resolving" style="margin-top:16px;" id="session-waiting-proposal">' +
-        '<div class="ps-icon">&#9203;</div>' +
+        '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>' +
         '<div class="ps-text">Exploring their chain. Their proposal will appear here when they send it.</div></div>';
       content.innerHTML = html;
       startSessionPoll();
@@ -2945,7 +2945,7 @@ const PAIR_CODE_LENGTH = 4;
         const statusDiv = content.querySelector('.pair-status');
         if (statusDiv) {
           statusDiv.className = 'pair-status mismatch';
-          statusDiv.innerHTML = '<div class="ps-icon">&#9888;</div>' +
+          statusDiv.innerHTML = '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-warning"/></svg></div>' +
             '<div class="ps-text">They didn\'t agree to the proposal. You may want to discuss and try again.</div>';
         }
         toast('Proposal rejected');
@@ -4566,7 +4566,7 @@ const PAIR_CODE_LENGTH = 4;
     var catCount = Object.keys(ts.cats || {}).length;
     var html = '<div style="padding:16px; background:rgba(43,140,62,0.04); border:1px solid rgba(43,140,62,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
-    html += '<span style="font-size:18px; color:var(--green);">&#10003;</span>';
+    html += '<span style="font-size:18px; color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--green);">Healthy chain</div>';
     html += '</div>';
     html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
@@ -4575,7 +4575,7 @@ const PAIR_CODE_LENGTH = 4;
     html += exCoopBar(ts.g, ts.r);
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
-      html += '<span style="color:var(--green);">&#10003;</span> Real phone';
+      html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
     html += '</div>';
@@ -5943,7 +5943,7 @@ const PAIR_CODE_LENGTH = 4;
     beyond: {
       title: 'Beyond the Moment',
       slides: [
-        { icon: '&#8987;', title: 'The timing problem',
+        { icon: '<svg class="icon icon-md"><use href="#icon-hourglass"/></svg>', title: 'The timing problem',
           body: '<p>You fix your neighbor\u2019s sink. She\u2019s grateful, but she can\u2019t help you right now \u2014 and what you actually need is someone to tutor your kid.</p><p><span class="highlight">This is the oldest problem in cooperation.</span> Economists call it the coincidence of wants: both people need to want what the other has, at the same time, in the right proportion.</p><p>For most of human history, communities solved this with memory. Everyone knew who contributed and who received. That memory was the ledger.</p>' },
         { icon: '&#127759;', title: 'What money solved',
           body: '<p>Community memory worked, but it had limits. <span class="highlight">It couldn\u2019t scale beyond the people who knew you.</span></p><p>Money solved this by creating a universal token \u2014 help someone, receive a coin, spend that coin with a stranger across town. You no longer needed the same person to help you back. The timing problem was solved.</p><p>But money solved it by creating a permission system. If the system doesn\u2019t recognize your work, you don\u2019t get the token. No token, no participation. The solution created its own exclusions.</p>' },
@@ -6046,9 +6046,9 @@ const PAIR_CODE_LENGTH = 4;
       slides: [
         { icon: '&#128241;', title: 'Offline by design',
           body: '<p>This app works without the internet. Your chain lives on your device. Exchanges happen face-to-face. <span class="highlight">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>' },
-        { icon: '&#128274;', title: 'Your data stays yours',
+        { icon: '<svg class="icon icon-md"><use href="#icon-lock"/></svg>', title: 'Your data stays yours',
           body: '<p>No one can access your chain without your PIN. No company stores a copy. No government has a backdoor. <span class="highlight">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>' },
-        { icon: '&#9889;', title: 'Resilience through simplicity',
+        { icon: '<svg class="icon icon-md"><use href="#icon-lightning"/></svg>', title: 'Resilience through simplicity',
           body: '<p>The entire application is a single file. It runs on any phone with a browser. <span class="highlight">There is no server to hack, no database to breach, no company to shut down.</span></p><p>If the website disappears tomorrow, every installed copy keeps working. The protocol lives wherever the people are. That\u2019s the point.</p>' },
       ]
     },
@@ -6759,7 +6759,7 @@ function init() {
           var statusEl = document.getElementById('ex-join-status');
           if (statusEl) {
             statusEl.style.display = 'block';
-            statusEl.innerHTML = '<div class="pair-status resolving"><div class="ps-icon">&#9203;</div><div class="ps-text">Waiting for connection...</div></div>';
+            statusEl.innerHTML = '<div class="pair-status resolving"><div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div><div class="ps-text">Waiting for connection...</div></div>';
           }
           var btn = document.getElementById('ex-join-btn');
           if (btn) btn.style.display = 'none';
@@ -7381,7 +7381,7 @@ function init() {
     var isPhone = dev.touchPoints > 0;
     if (isPhone) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">';
-      html += '<span style="color:var(--green); font-size:14px;">&#10003;</span>';
+      html += '<span style="color:var(--green); font-size:14px;"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
       html += '<span style="font-size:13px; color:var(--text-dim);">Real phone confirmed</span>';
       html += '</div>';
       html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:16px; line-height:1.5;">This device has a touch screen, a hardware graphics chip, and physical sensors. It behaves like a real phone carried by a person.</div>';
@@ -7702,7 +7702,7 @@ function init() {
     // Device check even on new
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
-      html += '<span style="color:var(--green);">&#10003;</span> Real phone';
+      html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
     html += '</div>';
@@ -7744,7 +7744,7 @@ function init() {
     // Device confirmation
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
-      html += '<span style="color:var(--green);">&#10003;</span> Real phone';
+      html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
 
@@ -7771,7 +7771,7 @@ function init() {
     }
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
-    html += '<span style="font-size:18px; color:var(--accent);">&#9888;</span>';
+    html += '<span style="font-size:18px; color:var(--accent);"><svg class="icon icon-md"><use href="#icon-warning"/></svg></span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
     html += '</div>';
     html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
@@ -8762,7 +8762,7 @@ function init() {
         var fpShort = (r.counterparty || '').substring(0, 16);
         if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
         html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
-        if (r.witnessAttestation) html += '<div style="color:var(--green);">&#10003; Witness attested</div>';
+        if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
         html += '</div>';
         html += '</div>';
       });
@@ -8876,10 +8876,10 @@ function init() {
     var toneBg = 'var(--bg-raised)';
     var toneBorder = 'var(--border)';
     var toneIcon = '&#9679;'; // filled circle
-    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '&#10003;'; }
+    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-check"/></svg>'; }
     else if (v.tone === 'partial') { toneColor = '#B45309'; toneBg = 'rgba(180,83,9,0.06)'; toneBorder = 'rgba(180,83,9,0.25)'; toneIcon = '&#9679;'; }
     else if (v.tone === 'weak') { toneColor = 'var(--text-dim)'; toneIcon = '&#9679;'; }
-    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '&#9888;'; }
+    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-warning"/></svg>'; }
 
     var h = '';
     h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -9335,10 +9335,10 @@ function init() {
     var toneBg = 'var(--bg-raised)';
     var toneBorder = 'var(--border)';
     var toneIcon = '&#9679;';
-    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '&#10003;'; }
+    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-check"/></svg>'; }
     else if (v.tone === 'partial') { toneColor = '#B45309'; toneBg = 'rgba(180,83,9,0.06)'; toneBorder = 'rgba(180,83,9,0.25)'; toneIcon = '&#9679;'; }
     else if (v.tone === 'weak') { toneColor = 'var(--text-dim)'; toneIcon = '&#9679;'; }
-    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '&#9888;'; }
+    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-warning"/></svg>'; }
 
     var h = '';
     h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -10269,7 +10269,7 @@ function init() {
       if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
       html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
       html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
-      if (r.witnessAttestation) html += '<div style="color:var(--green);">&#10003; Witness attested</div>';
+      if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
       html += '</div>';
       html += '</div>';
     });
