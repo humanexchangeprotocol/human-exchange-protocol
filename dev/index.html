@@ -900,7 +900,10 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <strong>Take a picture of yourself.</strong> It does not need to be perfect. This is not social media. It is just you.
     </div>
     <div class="guidance">
-      This photo gets encrypted into the foundation of your thread. It is your identity anchor. When you exchange with someone, they can compare your current photo to this original to verify you are the same person who started this thread. It protects you.
+      By taking this photo now, you anchor an image of yourself at the very beginning of your encrypted chain. The original is sealed in your genesis record and cannot be changed. From this moment forward, no one can ever say this chain belonged to anybody but you.
+    </div>
+    <div class="guidance" style="font-size:14px; color:var(--text-dim);">
+      When you exchange with someone later, they can compare your current photo to this anchor and see that you are the same person who started this chain. It protects you. It also protects the people who exchange with you.
     </div>
     <div class="photo-area">
       <div class="photo-preview" id="setup-photo-preview">&#9678;</div>
@@ -913,7 +916,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     </div>
     <button class="btn btn-primary" onclick="App.setupStep('name')">Continue</button>
     <button class="btn" onclick="App.setupStep('name')" style="margin-top:12px; background:none; color:var(--text-faint); font-size:13px;">I cannot take or upload a photo right now</button>
-    <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.5; text-align:center;">Skipping this means your thread has no identity anchor. You can add one later, but it will be harder for people to verify your thread is yours.</div>
+    <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.5; text-align:center;">Skipping this means your chain has no identity anchor. You can add one later, but it will be harder for people to verify the chain is yours.</div>
   </div>
 
   <!-- NAME -->
