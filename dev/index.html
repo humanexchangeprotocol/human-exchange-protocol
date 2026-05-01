@@ -446,7 +446,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .modal-overlay.active .modal { transform: translateY(0); }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; padding-top: calc(16px + var(--safe-top)); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .modal-header h2 { font-size: 20px; font-weight: 600; }
-.modal-close { width: 44px; height: 44px; background: var(--bg-input); border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.modal-close { width: 44px; height: 44px; background: var(--bg-input); border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+.icon-sm { width: 14px; height: 14px; }
+.icon-md { width: 18px; height: 18px; }
+.icon-lg { width: 22px; height: 22px; }
+.icon-xl { width: 28px; height: 28px; }
 .modal-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; padding-bottom: calc(20px + var(--safe-bottom)); }
 .modal-footer { padding: 14px 20px; padding-bottom: calc(14px + var(--safe-bottom)); border-top: 1px solid var(--border); flex-shrink: 0; }
 /* Wallet modal: fills the viewport like tab screens (Settings, Learn, History),
@@ -840,6 +845,23 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 </style>
 </head>
 <body>
+<!-- ICON SPRITE: solid where geometry permits, heavy stroke where it cannot. Use via <svg class="icon icon-md"><use href="#icon-x"/></svg>. Color inherits via currentColor. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <path d="M6 6 L18 18 M18 6 L6 18"/>
+    </symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 6 15 12 9 18"/>
+    </symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 6 9 12 15 18"/>
+    </symbol>
+    <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+  </defs>
+</svg>
 
 <div id="update-banner" class="update-banner">
   <span id="update-banner-text">A new version is available.</span>
@@ -1185,7 +1207,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>My Chain</h2>
-      <button class="modal-close" onclick="App.closeModal('wallet')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('wallet')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body wallet-body">
       <div id="wallet-identity-panel"></div>
@@ -1208,17 +1230,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <div style="display:flex; align-items:center; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyTextureFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Chain health</span>
           <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">How others see your chain</span>
-          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
         </div>
         <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyPricingFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Pricing history</span>
           <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and prices</span>
-          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
         </div>
         <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openChainViewerFromWallet();">
           <span style="font-size:14px; font-weight:500; color:var(--text);">Full chain</span>
           <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Every recorded act</span>
-          <span style="font-size:14px; color:var(--text-faint);">&#8250;</span>
+          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
         </div>
       </div>
 
@@ -1237,7 +1259,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Pending</h2>
-      <button class="modal-close" onclick="App.closeModal('pending')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('pending')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body" id="pending-body"></div>
   </div>
@@ -1248,7 +1270,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Recent Acts</h2>
-      <button class="modal-close" onclick="App.closeModal('recent')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('recent')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="recent-hint">Tap any act to pre-fill a new exchange</div>
     <div style="padding:12px 20px 0; flex-shrink:0;">
@@ -1263,7 +1285,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Cooperate</h2>
-      <button class="modal-close" onclick="App.closeModal('cooperate')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('cooperate')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body" id="cooperate-body">
       <!-- Populated dynamically with reusable acts or empty state -->
@@ -1276,7 +1298,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2 id="exchange-header">New exchange</h2>
-      <button class="modal-close" id="exchange-close" onclick="App.closeExchange()">&#10005;</button>
+      <button class="modal-close" id="exchange-close" onclick="App.closeExchange()"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <!-- 3-step progress indicator (role-aware: proposer=green, confirmer=blue).
          JS rebuilds the labels and step states via renderIndicator(). -->
@@ -1361,7 +1383,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <div class="hs-step" id="ex-step-form">
         <div class="prefill-bar" id="ex-prefill-bar" style="display:none;">
           <div class="pf-text"><span class="pf-label">Pre-filled:</span> <span id="ex-prefill-desc"></span></div>
-          <button class="pf-clear" onclick="App.clearPrefill()" aria-label="Clear">&#10005;</button>
+          <button class="pf-clear" onclick="App.clearPrefill()" aria-label="Clear"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
         </div>
 
         <div id="ex-form-partner-label" style="font-size:15px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;"></div>
@@ -1571,7 +1593,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2 id="confirm-header">Incoming Proposal</h2>
-      <button class="modal-close" onclick="App.closeConfirm()">&#10005;</button>
+      <button class="modal-close" onclick="App.closeConfirm()"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body" id="confirm-body">
 
@@ -1667,7 +1689,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>My Chain</h2>
-      <button class="modal-close" onclick="App.closeModal('chain')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('chain')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="tabs">
       <button class="tab active" onclick="App.chainTab('records')" id="ctab-records">Records</button>
@@ -1682,7 +1704,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Share Chain</h2>
-      <button class="modal-close" onclick="App.closeModal('chainshare')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('chainshare')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body" id="chainshare-body">
       <p style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Share a read-only snapshot of your chain for negotiation. No counterparty names are included. Only your work patterns, density, and categories are visible.</p>
@@ -1700,7 +1722,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Their Chain</h2>
-      <button class="modal-close" onclick="App.closeModal('chainview')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('chainview')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="tabs">
       <button class="tab active" onclick="App.incomingChainTab('texture')" id="cv-texture">Texture</button>
@@ -1718,7 +1740,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Share App</h2>
-      <button class="modal-close" onclick="App.closeModal('share')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('share')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body">
       <p style="font-size:14px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Share the Human Exchange Protocol with someone. They'll be able to install it on their phone and get started.</p>
@@ -1740,7 +1762,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2 id="learn-title">Learn</h2>
-      <button class="modal-close" id="learn-close-btn" onclick="App.learnBack()">&#10005;</button>
+      <button class="modal-close" id="learn-close-btn" onclick="App.learnBack()"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
 
     <!-- Topic Menu -->
@@ -1752,7 +1774,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">The Cooperative Act</div>
           <div class="lt-desc">What actually happens when two people help each other — and why it matters</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('value')">
         <div class="lt-icon" style="background:rgba(43,140,62,0.12);">&#9878;</div>
@@ -1760,7 +1782,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Value Is Yours</div>
           <div class="lt-desc">You decide what your work is worth — nobody else</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('beyond')">
         <div class="lt-icon" style="background:rgba(204,68,68,0.12);">&#8644;</div>
@@ -1768,7 +1790,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Beyond the Moment</div>
           <div class="lt-desc">How your record lets you cooperate with anyone — not just the person you helped</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('calibrate')">
         <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9881;</div>
@@ -1776,7 +1798,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Find Your Unit</div>
           <div class="lt-desc">A thought exercise to calibrate your own sense of value before your first exchange</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
 
       <div class="learn-section-divider"></div>
@@ -1787,7 +1809,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Foundations</div>
           <div class="lt-desc">How exchanges work, what your chain is, and what you can build</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('pricing')">
         <div class="lt-icon" style="background:rgba(43,140,62,0.12);">&#128269;</div>
@@ -1795,7 +1817,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Price Discovery</div>
           <div class="lt-desc">How pricing emerges from your history and negotiation</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('exchange')">
         <div class="lt-icon" style="background:rgba(204,68,68,0.12);">&#8644;</div>
@@ -1803,7 +1825,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Exchange &amp; Parity</div>
           <div class="lt-desc">Exchange ratios, purchasing power, and cross-chain trust</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('community')">
         <div class="lt-icon" style="background:rgba(130,160,220,0.12);">&#9784;</div>
@@ -1811,7 +1833,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Building Community</div>
           <div class="lt-desc">Seeding networks, growing trust, and collective strength</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('sovereignty')">
         <div class="lt-icon" style="background:rgba(180,140,220,0.12);">&#9889;</div>
@@ -1819,7 +1841,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Your Phone, Your Server</div>
           <div class="lt-desc">Offline-first design, data sovereignty, and no dependencies</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
       <div class="learn-topic" onclick="App.learnOpen('privacy')">
         <div class="lt-icon" style="background:rgba(42,90,143,0.12);">&#9737;</div>
@@ -1827,7 +1849,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
           <div class="lt-title">Privacy &amp; Safety</div>
           <div class="lt-desc">Controlling what others see, protecting yourself, deleting everything</div>
         </div>
-        <div class="lt-arrow">&#8250;</div>
+        <div class="lt-arrow"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></div>
       </div>
     </div>
 
@@ -1835,9 +1857,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="learn-slides" id="learn-slides">
       <div class="learn-carousel" id="learn-carousel"></div>
       <div class="learn-nav">
-        <button class="learn-nav-btn" id="learn-prev" onclick="App.learnPrev()">&#8249; Back</button>
+        <button class="learn-nav-btn" id="learn-prev" onclick="App.learnPrev()"><svg class="icon icon-md"><use href="#icon-chevron-left"/></svg> Back</button>
         <div class="learn-dots" id="learn-dots"></div>
-        <button class="learn-nav-btn" id="learn-next" onclick="App.learnNext()">Next &#8250;</button>
+        <button class="learn-nav-btn" id="learn-next" onclick="App.learnNext()">Next <svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></button>
       </div>
     </div>
   </div>
@@ -1849,7 +1871,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Your Declarations</h2>
-      <button class="modal-close" onclick="App.closeModal('declarations')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('declarations')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body">
       <div class="photo-area">
@@ -1899,7 +1921,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Scale Exercise</h2>
-      <button class="modal-close" onclick="App.closeModal('range')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('range')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body">
       <div class="guidance" style="text-align:left; color:var(--text-dim); font-size:15px; line-height:1.6; margin-bottom:16px;">
@@ -1997,7 +2019,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2>Use previous</h2>
-      <button class="modal-close" onclick="App.closeModal('use-picker')">&#10005;</button>
+      <button class="modal-close" onclick="App.closeModal('use-picker')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <div class="modal-body" id="use-picker-body"></div>
   </div>

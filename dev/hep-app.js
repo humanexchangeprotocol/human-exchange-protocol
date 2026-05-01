@@ -480,7 +480,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Labels row
     html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:6px;">';
-    html += '<div style="font-size:11px; color:var(--green); font-weight:500;">&#9660; you are here</div>';
+    html += '<div style="font-size:11px; color:var(--green); font-weight:500;"><svg class="icon icon-md"><use href="#icon-chevron-down"/></svg> you are here</div>';
     html += '<div style="font-size:11px; color:var(--text-dim); text-align:right;">';
     html += '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--red); vertical-align:middle; margin-right:3px;"></span>';
     html += '1,000,000 — Curing cancer</div>';
@@ -958,7 +958,7 @@ const PAIR_CODE_LENGTH = 4;
     html += '<div style="width:100%; max-width:400px;">';
     html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">';
     html += '<h2 style="font-size:18px; color:var(--text); margin:0;">My Photos</h2>';
-    html += '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;">&#10005;</button>';
+    html += '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
     html += '</div>';
     html += '<p style="font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Show this screen to the person you are exchanging with. They can compare your genesis photo with how you look now.</p>';
 
@@ -3125,7 +3125,7 @@ const PAIR_CODE_LENGTH = 4;
       document.getElementById('session-status-line').textContent = 'Rejected';
       document.getElementById('session-content').innerHTML =
         '<div class="pair-status mismatch">' +
-        '<div class="ps-icon">&#10005;</div>' +
+        '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-x"/></svg></div>' +
         '<div class="ps-text">You rejected this proposal. You can discuss with the other person and try again.</div>' +
         '</div>';
     } catch(e) {
@@ -5135,7 +5135,7 @@ const PAIR_CODE_LENGTH = 4;
     bar.innerHTML = '<div style="flex:1; font-size:13px; color:var(--text-dim); line-height:1.4;">'
       + 'Your photo is ' + months + ' months old. Updating it strengthens your chain\'s integrity.'
       + '</div>'
-      + '<button onclick="sessionStorage.setItem(\'hep_photo_nudge_dismissed\',\'1\'); document.getElementById(\'photo-nudge-bar\').remove();" style="background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px;">&#10005;</button>';
+      + '<button onclick="sessionStorage.setItem(\'hep_photo_nudge_dismissed\',\'1\'); document.getElementById(\'photo-nudge-bar\').remove();" style="background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
     document.body.appendChild(bar);
   }
 
@@ -7217,7 +7217,7 @@ function init() {
     return '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showTextureDetail(\'' + detailKey + '\')">' +
       '<span style="font-size:10px; flex-shrink:0; width:20px; text-align:center; color:' + iconColor + ';">' + icon + '</span>' +
       '<span style="flex:1; font-size:13px; color:' + labelColor + '; line-height:1.4;' + labelWeight + '">' + label + '</span>' +
-      '<span style="font-size:14px; color:var(--text-faint); flex-shrink:0;">&#8250;</span>' +
+      '<span style="font-size:14px; color:var(--text-faint); flex-shrink:0;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>' +
       '</div>';
   }
 
@@ -7801,7 +7801,7 @@ function init() {
   function exRenderNonhuman(ts, name, dev, cl) {
     var html = '<div style="padding:16px; background:rgba(204,68,68,0.04); border:1px solid rgba(204,68,68,0.15); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:8px;">';
-    html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;">&#10006;</span>';
+    html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
     html += '</div>';
     html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
@@ -8245,7 +8245,7 @@ function init() {
     var catId = 'svc-cat-' + catName.replace(/[^a-zA-Z0-9]/g, '_');
     var html = '<div style="margin-bottom:2px;">';
     html += '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.toggleServiceCat(\'' + catId + '\')">';
-    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     html += '<span style="flex:1; font-size:14px; font-weight:500; color:var(--text);">' + esc(catName) + '</span>';
     html += '<span style="font-size:12px; color:var(--text-faint);">' + items.length + ' service' + (items.length > 1 ? 's' : '') + ' \u00b7 ' + totalCount + 'x</span>';
     html += '</div>';
@@ -8906,7 +8906,7 @@ function init() {
     else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
-    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div></div>';
 
     // Per-origin breakdown strip (compact, just below header)
@@ -9031,7 +9031,7 @@ function init() {
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary) + '</div>';
     h += '</div>';
     if (enableCtrl) h += '<div style="flex-shrink:0; margin-right:4px;">' + enableCtrl + '</div>';
-    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div>';
 
     // Level 3 — inline detail panel
@@ -9367,7 +9367,7 @@ function init() {
     else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
-    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div></div>';
 
     // Per-origin breakdown strip
@@ -9472,7 +9472,7 @@ function init() {
     h += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">' + esc(s.humanName) + badge + '</div>';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary || '') + '</div>';
     h += '</div>';
-    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div>';
 
     // Level 3 — lookup copy from local registry
@@ -10127,7 +10127,7 @@ function init() {
     html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text);">' + esc(name) + '</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-family:var(--font-mono);">' + esc(fp) + '</div>';
     html += '</div>';
-    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     html += '</div>';
     // Expanded panel
     html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
@@ -10333,7 +10333,7 @@ function init() {
       if (allDone) {
         html += '<div class="ltab-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
       } else {
-        html += '<span class="ltab-chev">&#9662;</span>';
+        html += '<span class="ltab-chev"><svg class="icon icon-md"><use href="#icon-chevron-down"/></svg></span>';
       }
       html += '</button>';
 
@@ -10356,7 +10356,7 @@ function init() {
         }
         html += '<div style="flex:1; min-width:0;"><div class="ltab-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + lesson.title + '</div>';
         html += '<div class="ltab-lesson-steps">' + stepCount + ' steps</div></div>';
-        html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span>';
+        html += '<span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
         html += '</button>';
       });
       html += '</div>';
