@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.61.51';
+const APP_VERSION='2.61.53';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 const HCP=(()=>{'use strict';
@@ -501,7 +501,46 @@ async function drp(b64,sharedKey){
   return JSON.parse(u8d.decode(plain));
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp}
+// --- Witness response verification (Phase B, slice B.1) ---
+// Ed25519 verification path for signed responses from witness servers
+// (witness-identity-protocol §6.1, §6.2). Distinct from vpld above:
+// vpld verifies exchange payloads between users (ECDSA P-256 over a
+// non-canonical JSON.stringify), whereas vwp verifies witness-signed
+// responses (Ed25519 over a canonical JSON serialization).
+//
+// cjs is the canonical-JSON serializer matching the witness server's
+// canonicalize: lexicographically sorted keys at every object level,
+// no insignificant whitespace, primitives via JSON.stringify, array
+// element order preserved. The witness server signs over this exact
+// byte string; the app must reproduce it exactly to verify.
+//
+// vwp returns Promise<boolean>. Inputs are an object payload (with a
+// hex-encoded `signature` field) and a hex-encoded 32-byte Ed25519
+// public key. Web Crypto Ed25519 support: Chrome 113+ (May 2023),
+// Firefox 130+ (Sept 2024), Safari 17+ (Sept 2023).
+function cjs(v){
+  if(v===null)return 'null';
+  if(Array.isArray(v))return '['+v.map(cjs).join(',')+']';
+  if(typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+cjs(v[k])).join(',')+'}';
+  return JSON.stringify(v);
+}
+async function vwp(payload,publicKeyHex){
+  if(!payload||typeof payload!=='object')return false;
+  if(typeof payload.signature!=='string')return false;
+  if(typeof publicKeyHex!=='string'||!/^[0-9a-f]{64}$/i.test(publicKeyHex))return false;
+  try{
+    const{signature,...rest}=payload;
+    const canonical=cjs(rest);
+    const sigBuf=htb(signature);
+    if(sigBuf.byteLength!==64)return false;
+    const pubBuf=htb(publicKeyHex);
+    if(pubBuf.byteLength!==32)return false;
+    const pubKey=await crypto.subtle.importKey('raw',pubBuf,{name:'Ed25519'},false,['verify']);
+    return await crypto.subtle.verify('Ed25519',pubKey,sigBuf,u8.encode(canonical));
+  }catch{return false}
+}
+
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp}
 })();
 
 // ============================================================
