@@ -41,9 +41,45 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.61.53';
+const APP_VERSION='2.61.54';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
+
+// HEP_SEEDS: hardcoded trusted-witness list per witness-identity-protocol §8.1.
+// "The app build includes a small JSON file: an array of trusted witness
+// pubkeys. This list ships with the app, never updates between releases,
+// and is the foundation."
+//
+// Each entry MUST have a pubkey (hex Ed25519 public key, the witness's
+// permanent identity). url is OPTIONAL: a reachable starting URL the app
+// can bootstrap from. Witnesses without a url are trust anchors only,
+// not bootstrap candidates; the app discovers their current endpoints
+// via gossip from any witness that is reachable.
+//
+// This list is the trust gate (§4.2). A witness's pubkey appearing in
+// /announce traffic does not make it part of the network. A witness is
+// only part of the network if its pubkey is in this list (or in the
+// signed /seeds.json manifest from the marketing site, when that lands
+// in a later phase).
+//
+// Phase B uses these for passthrough verification: the app fetches
+// signed /peers from a witness and verifies the signature against this
+// list. Failures are logged but not enforced. Phase C will enforce.
+const HEP_SEEDS = [
+  // IONOS witness (witness.thesitefit.com, 108.175.13.197)
+  {
+    pubkey: 'de484188af83bfad5cf0e9ad5c4e636e6ef00a986623bdecd9e13928fa24e59b',
+    url: 'https://witness.thesitefit.com',
+  },
+  // Michael's PC instance (LAN-only; trust anchor, no public bootstrap URL yet)
+  {
+    pubkey: '726d682b9b3ea0874ff22049abb4a50f65d14fb42467cfe0874352a503fc40b6',
+  },
+  // Patrick's Pi instance (LAN-only; trust anchor, no public bootstrap URL yet)
+  {
+    pubkey: '71dd5577899043eb00d9002367ea77f986b36926ddcbff615edc2308c1546003',
+  },
+];
 const HCP=(()=>{'use strict';
 const PV='2.0.0',SV=6,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5;
 const SCALE_MAX=1000000;
