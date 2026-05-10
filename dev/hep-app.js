@@ -4967,12 +4967,17 @@ const PAIR_CODE_LENGTH = 4;
   // Runs once at boot, on a delay so it does not contend with the
   // initial UI render. Detached fire-and-forget; never throws.
   //
-  // Response-shape detection. /peers (legacy) returns a JSON array
-  // of peer entries. /peers?signed=1 (slice 5) returns a JSON object
-  // with server_pubkey, peers, signed_at, sequence, and signature.
+  // Response-shape detection. Three known shapes from witnesses:
+  //   1. Legacy /peers (v2.3.0 and current slice-4-9 legacy path):
+  //      { peers: [...], count: N } -- object, no signature field.
+  //   2. Signed /peers?signed=1 (slice 5):
+  //      { server_pubkey, peers, as_of, signed_at, sequence, signature }
+  //      -- object with hex-string signature field.
+  //   3. Bare array (some early hand-rolled witnesses):
+  //      [ {url, pubkey, ...}, ... ]
   // The query string is silently ignored by v2.3.0 IONOS, so
-  // production traffic today returns the array. That is the
-  // expected "legacy response" path until IONOS upgrades.
+  // production traffic today returns shape 1. When IONOS upgrades
+  // to slice 5+, the same code path will receive shape 2 and verify.
   async function checkSeedWitnessSignedPeers() {
     if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) {
       console.log('[phase-b] HEP_SEEDS not available; skipping');
@@ -4992,11 +4997,8 @@ const PAIR_CODE_LENGTH = 4;
         return;
       }
       var data = await resp.json();
-      if (Array.isArray(data)) {
-        console.log('[phase-b] ' + seed.url + ' returned legacy unsigned peers (length=' + data.length + '); verification not exercised');
-        return;
-      }
-      if (data && typeof data === 'object' && typeof data.signature === 'string') {
+      // Shape 2: signed envelope.
+      if (data && typeof data === 'object' && !Array.isArray(data) && typeof data.signature === 'string') {
         var valid = await HCP.verifyWitnessPayload(data, seed.pubkey);
         var peerCount = Array.isArray(data.peers) ? data.peers.length : 0;
         if (valid) {
@@ -5004,6 +5006,16 @@ const PAIR_CODE_LENGTH = 4;
         } else {
           console.warn('[phase-b] SIGNATURE FAILED for ' + seed.url + ' against pubkey ' + seed.pubkey.substring(0, 16) + '...; peers=' + peerCount);
         }
+        return;
+      }
+      // Shape 1: legacy { peers, count } object.
+      if (data && typeof data === 'object' && !Array.isArray(data) && Array.isArray(data.peers)) {
+        console.log('[phase-b] ' + seed.url + ' returned legacy unsigned peers (count=' + data.peers.length + '); verification not exercised');
+        return;
+      }
+      // Shape 3: bare array.
+      if (Array.isArray(data)) {
+        console.log('[phase-b] ' + seed.url + ' returned bare-array peers (length=' + data.length + '); verification not exercised');
         return;
       }
       console.log('[phase-b] ' + seed.url + ' returned unrecognized response shape');
