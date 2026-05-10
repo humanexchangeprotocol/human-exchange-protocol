@@ -234,7 +234,7 @@ const PAIR_CODE_LENGTH = 4;
     doneDetails: null,
   };
 
-  const SK = 'hcp_data';
+  const SK = 'hcp_dev_data';
 
   // --- Storage ---
   function save() {
@@ -365,7 +365,6 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('setup').scrollTop = 0;
     if (step === 'pin') buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
     else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep('photo'); } else shake(); });
-    else if (step === 'range') { rangeStep = 0; document.querySelectorAll('#setup-range .range-substep').forEach(s => s.classList.remove('active')); document.querySelector('#setup-range .range-substep[data-rs="0"]').classList.add('active'); document.querySelectorAll('#range-progress .rp-dot').forEach((d,i) => { d.className = 'rp-dot' + (i === 0 ? ' current' : ''); }); }
   }
 
   function capturePhoto() { document.getElementById('photo-capture-input').click(); }
@@ -481,7 +480,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Labels row
     html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:6px;">';
-    html += '<div style="font-size:11px; color:var(--green); font-weight:500;">&#9660; you are here</div>';
+    html += '<div style="font-size:11px; color:var(--green); font-weight:500;"><svg class="icon icon-md"><use href="#icon-chevron-down"/></svg> you are here</div>';
     html += '<div style="font-size:11px; color:var(--text-dim); text-align:right;">';
     html += '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--red); vertical-align:middle; margin-right:3px;"></span>';
     html += '1,000,000 — Curing cancer</div>';
@@ -959,7 +958,7 @@ const PAIR_CODE_LENGTH = 4;
     html += '<div style="width:100%; max-width:400px;">';
     html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">';
     html += '<h2 style="font-size:18px; color:var(--text); margin:0;">My Photos</h2>';
-    html += '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;">&#10005;</button>';
+    html += '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
     html += '</div>';
     html += '<p style="font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Show this screen to the person you are exchanging with. They can compare your genesis photo with how you look now.</p>';
 
@@ -1069,7 +1068,7 @@ const PAIR_CODE_LENGTH = 4;
   function inviteViaQR() { openShare(); }
 
   // --- Pending Transactions ---
-  const PENDING_KEY = 'hcp_pending_items';
+  const PENDING_KEY = 'hcp_dev_pending_items';
 
   function loadPending() {
     try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch(e) { return []; }
@@ -1112,7 +1111,7 @@ const PAIR_CODE_LENGTH = 4;
     if (state.relayPollInterval) { clearInterval(state.relayPollInterval); state.relayPollInterval = null; }
     // Clear pending pair data
     state.pendingPair = null;
-    localStorage.removeItem('hcp_pending_pair');
+    localStorage.removeItem('hcp_dev_pending_pair');
     toast('All pending cleared');
   }
 
@@ -1505,7 +1504,7 @@ const PAIR_CODE_LENGTH = 4;
   function closeExchange() {
     var wasDone = _sessionWritten || (state.doneSummary && state.doneSummary.length > 0);
     state.pendingProposal = null;
-    localStorage.removeItem('hcp_pending_proposal');
+    localStorage.removeItem('hcp_dev_pending_proposal');
     exStopConnectPoll();
     exFlowActive = false;
     cleanupSession();
@@ -1652,7 +1651,7 @@ const PAIR_CODE_LENGTH = 4;
     state.pendingProposal.payload = payload;
 
     // Persist so it survives page reload (URL-based confirmation flow)
-    localStorage.setItem('hcp_pending_proposal', JSON.stringify(state.pendingProposal));
+    localStorage.setItem('hcp_dev_pending_proposal', JSON.stringify(state.pendingProposal));
 
     const qrUrl = getAppBase() + '?hs=' + b64Encode(payload);
     document.getElementById('proposal-payload').value = payload;
@@ -1680,7 +1679,7 @@ const PAIR_CODE_LENGTH = 4;
       state.pendingProposal._partnerName = (pSnap && pSnap._name) || '';
       state.pendingProposal._partnerFp = sessionPartner.fingerprint || '';
       state.pendingProposal._submittedAt = Date.now();
-      try { localStorage.setItem('hcp_pending_proposal', JSON.stringify(state.pendingProposal)); } catch(_) {}
+      try { localStorage.setItem('hcp_dev_pending_proposal', JSON.stringify(state.pendingProposal)); } catch(_) {}
 
       // Send the proposal to the witness server and start the
       // confirmation poll (handled inside submitSessionProposal).
@@ -1793,7 +1792,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Store locally for persistence
     state.pendingPair = pairHalf;
-    localStorage.setItem('hcp_pending_pair', JSON.stringify(pairHalf));
+    localStorage.setItem('hcp_dev_pending_pair', JSON.stringify(pairHalf));
 
     // Update pending item
     const pending = loadPending();
@@ -1808,7 +1807,7 @@ const PAIR_CODE_LENGTH = 4;
     const statusEl = document.getElementById('pair-status');
     statusEl.style.display = 'block';
     statusEl.className = 'pair-status resolving';
-    document.getElementById('pair-status-icon').innerHTML = '&#9203;';
+    document.getElementById('pair-status-icon').innerHTML = '<svg class="icon icon-md"><use href="#icon-hourglass"/></svg>';
 
     // Try to upload to server
     const uploaded = await uploadPairHalf(pairHalf);
@@ -1897,7 +1896,7 @@ const PAIR_CODE_LENGTH = 4;
       const statusEl = document.getElementById('pair-status');
       if (statusEl) {
         statusEl.className = 'pair-status mismatch';
-        document.getElementById('pair-status-icon').innerHTML = '&#9888;';
+        document.getElementById('pair-status-icon').innerHTML = '<svg class="icon icon-md"><use href="#icon-warning"/></svg>';
         document.getElementById('pair-status-text').textContent =
           'The other person\'s values didn\'t match yours. The exchange is unresolved. You may want to discuss and try again.';
       }
@@ -1966,7 +1965,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Clean up
     state.pendingPair = null;
-    localStorage.removeItem('hcp_pending_pair');
+    localStorage.removeItem('hcp_dev_pending_pair');
 
     // Remove from pending list
     const pending = loadPending();
@@ -1977,7 +1976,7 @@ const PAIR_CODE_LENGTH = 4;
     const statusEl = document.getElementById('pair-status');
     if (statusEl) {
       statusEl.className = 'pair-status resolved';
-      document.getElementById('pair-status-icon').innerHTML = '&#10003;';
+      document.getElementById('pair-status-icon').innerHTML = '<svg class="icon icon-md"><use href="#icon-check"/></svg>';
       document.getElementById('pair-status-text').textContent =
         'Exchange resolved. Both chains are written.';
     }
@@ -2001,7 +2000,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // On app init, check for pending pair uploads
   function resumePendingPair() {
-    const saved = localStorage.getItem('hcp_pending_pair');
+    const saved = localStorage.getItem('hcp_dev_pending_pair');
     if (!saved) return;
     try {
       state.pendingPair = JSON.parse(saved);
@@ -2013,7 +2012,7 @@ const PAIR_CODE_LENGTH = 4;
           }
         });
       }
-    } catch(e) { localStorage.removeItem('hcp_pending_pair'); }
+    } catch(e) { localStorage.removeItem('hcp_dev_pending_pair'); }
   }
 
 
@@ -2374,7 +2373,7 @@ const PAIR_CODE_LENGTH = 4;
         document.getElementById('session-content').style.display = 'block';
         document.getElementById('session-content').innerHTML =
           '<div class="pair-status resolving" style="margin-top:16px;">' +
-          '<div class="ps-icon">&#9203;</div>' +
+          '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>' +
           '<div class="ps-text">Your code is submitted. Once they enter their code and connect, you\'ll see each other here.</div>' +
           '</div>';
         startSessionPoll();
@@ -2732,7 +2731,7 @@ const PAIR_CODE_LENGTH = 4;
       content.innerHTML = html;
     } else {
       html += '<div class="pair-status resolving" style="margin-top:16px;" id="session-waiting-proposal">' +
-        '<div class="ps-icon">&#9203;</div>' +
+        '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div>' +
         '<div class="ps-text">Exploring their chain. Their proposal will appear here when they send it.</div></div>';
       content.innerHTML = html;
       startSessionPoll();
@@ -2835,7 +2834,7 @@ const PAIR_CODE_LENGTH = 4;
       const content = document.getElementById('session-content');
       const statusDiv = content.querySelector('.pair-status');
       if (statusDiv) {
-        statusDiv.innerHTML = '<div class="ps-icon">&#128230;</div>' +
+        statusDiv.innerHTML = '<div class="ps-icon"><svg class="icon icon-lg"><use href="#icon-hourglass"/></svg></div>' +
           '<div class="ps-text">Your proposal is with them. You\'ll see their response here.</div>';
       }
 
@@ -2946,7 +2945,7 @@ const PAIR_CODE_LENGTH = 4;
         const statusDiv = content.querySelector('.pair-status');
         if (statusDiv) {
           statusDiv.className = 'pair-status mismatch';
-          statusDiv.innerHTML = '<div class="ps-icon">&#9888;</div>' +
+          statusDiv.innerHTML = '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-warning"/></svg></div>' +
             '<div class="ps-text">They didn\'t agree to the proposal. You may want to discuss and try again.</div>';
         }
         toast('Proposal rejected');
@@ -3126,7 +3125,7 @@ const PAIR_CODE_LENGTH = 4;
       document.getElementById('session-status-line').textContent = 'Rejected';
       document.getElementById('session-content').innerHTML =
         '<div class="pair-status mismatch">' +
-        '<div class="ps-icon">&#10005;</div>' +
+        '<div class="ps-icon"><svg class="icon icon-md"><use href="#icon-x"/></svg></div>' +
         '<div class="ps-text">You rejected this proposal. You can discuss with the other person and try again.</div>' +
         '</div>';
     } catch(e) {
@@ -3608,7 +3607,7 @@ const PAIR_CODE_LENGTH = 4;
     // Clear form
     ['ex-desc','ex-value','ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
     state.pendingProposal = null;
-    localStorage.removeItem('hcp_pending_proposal');
+    localStorage.removeItem('hcp_dev_pending_proposal');
 
     if (relayDelivered) {
       // Server delivered the settlement -- skip the QR, go straight to done
@@ -4101,7 +4100,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="cs-label">Proposed value (their units)</div>';
     h += '<div style="display:flex;align-items:center;justify-content:center;gap:6px;">';
     h += '<div class="cs-val" id="cf-nv" onclick="App.cfEditValue()" style="cursor:pointer;">' + def + '</div>';
-    h += '<button onclick="App.cfEditValue()" style="background:none;border:none;color:var(--accent);font-size:16px;cursor:pointer;padding:4px;" title="Edit value">&#9998;</button>';
+    h += '<button onclick="App.cfEditValue()" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:4px;" title="Edit value"><svg class="icon icon-md"><use href="#icon-edit"/></svg></button>';
     h += '</div>';
     h += '<input type="number" id="cf-nedit" style="display:none;width:140px;margin:4px auto 8px;text-align:center;padding:10px;font-size:24px;font-weight:300;background:var(--bg-input);border:2px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);font-family:var(--font);outline:none;" min="0" step="1" inputmode="numeric" onblur="App.cfCommitEdit()" onkeydown="if(event.key===\'Enter\')this.blur()">';
     h += '<div class="cs-sub" id="cf-nv-sub">converts to ' + Math.round(def * d.catER) + ' in your units</div>';
@@ -4263,7 +4262,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Store provisional record — chain writes only on settlement
     const provisional = { record: record, initiatorFp: parsed.fp, initiatorPub: parsed.pub, proposalTs: parsed.ts, created: Date.now() };
-    localStorage.setItem('hcp_provisional', JSON.stringify(provisional));
+    localStorage.setItem('hcp_dev_provisional', JSON.stringify(provisional));
 
     // Generate return confirmation payload — include confirmer's description
     const returnPayload = await HCP.generateConfirmationPayload(state.publicKeyJwk, state.chain, parsed, state.privateKey, _cachedDeviceHash);
@@ -4359,7 +4358,7 @@ const PAIR_CODE_LENGTH = 4;
     showCfStep('waiting');
     // Start relay polling if witness server configured
     if (getWitnessUrl()) {
-      const provRaw = localStorage.getItem('hcp_provisional');
+      const provRaw = localStorage.getItem('hcp_dev_provisional');
       if (provRaw) {
         try {
           const prov = JSON.parse(provRaw);
@@ -4384,7 +4383,7 @@ const PAIR_CODE_LENGTH = 4;
       const settlement = HCP.parseSettlementPayload(payload);
 
       // Load provisional record
-      const provRaw = localStorage.getItem('hcp_provisional');
+      const provRaw = localStorage.getItem('hcp_dev_provisional');
       if (!provRaw) { toast('No provisional record found'); return; }
       const prov = JSON.parse(provRaw);
 
@@ -4407,7 +4406,7 @@ const PAIR_CODE_LENGTH = 4;
       }
 
       // Clear provisional
-      localStorage.removeItem('hcp_provisional');
+      localStorage.removeItem('hcp_dev_provisional');
 
       // Clear matching pending item
       const cpending = loadPending();
@@ -4567,7 +4566,7 @@ const PAIR_CODE_LENGTH = 4;
     var catCount = Object.keys(ts.cats || {}).length;
     var html = '<div style="padding:16px; background:rgba(43,140,62,0.04); border:1px solid rgba(43,140,62,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
-    html += '<span style="font-size:18px; color:var(--green);">&#10003;</span>';
+    html += '<span style="font-size:18px; color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--green);">Healthy chain</div>';
     html += '</div>';
     html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
@@ -4576,7 +4575,7 @@ const PAIR_CODE_LENGTH = 4;
     html += exCoopBar(ts.g, ts.r);
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
-      html += '<span style="color:var(--green);">&#10003;</span> Real phone';
+      html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
     html += '</div>';
@@ -4928,7 +4927,7 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations.valTagsSimple = getValTags('dr-vt-simple');
     state.declarations.valTagsComplex = getValTags('dr-vt-complex');
     state.declarations.valTagsDaily = getValTags('dr-vt-daily');
-    save(); closeModal('range'); toast('Scale exercise saved'); refreshHome();
+    save(); closeModal('range'); toast('Scale exercise saved'); if (state.fingerprint) refreshHome();
   }
 
   function dismissRangePrompt() {
@@ -4955,6 +4954,78 @@ const PAIR_CODE_LENGTH = 4;
     opts = opts || {};
     opts.headers = Object.assign({ 'ngrok-skip-browser-warning': '1' }, opts.headers || {});
     return fetch(url, opts);
+  }
+
+  // === PHASE B: PASSTHROUGH SIGNED-PEER VERIFICATION (slice B.3) ===
+  // Probes every seeded witness with a bootstrap url, fetches
+  // /peers?signed=1 from each, and verifies the signed envelope
+  // against that seed's pubkey. Logs the outcome per witness without
+  // affecting app behavior: legacy responses, signature failures, and
+  // network errors are all observed-but-not-enforced. Phase C will
+  // flip the failure path from log to reject.
+  //
+  // Runs once at boot, on a delay so it does not contend with the
+  // initial UI render. Detached fire-and-forget; never throws.
+  // Each seeded witness is probed in parallel.
+  //
+  // Response-shape detection. Three known shapes from witnesses:
+  //   1. Legacy /peers (v2.3.0 and current slice-4-9 legacy path):
+  //      { peers: [...], count: N } -- object, no signature field.
+  //   2. Signed /peers?signed=1 (slice 5):
+  //      { server_pubkey, peers, as_of, signed_at, sequence, signature }
+  //      -- object with hex-string signature field.
+  //   3. Bare array [ {url, pubkey, ...}, ... ] -- some hand-rolled
+  //      witnesses might still emit this. Defensive case.
+  async function probeOneSeed(seed) {
+    var url = seed.url + '/peers?signed=1';
+    try {
+      var resp = await fetch(url, { method: 'GET' });
+      if (!resp.ok) {
+        console.log('[phase-b] ' + seed.url + ' returned HTTP ' + resp.status + '; verification not exercised');
+        return;
+      }
+      var data = await resp.json();
+      // Shape 2: signed envelope.
+      if (data && typeof data === 'object' && !Array.isArray(data) && typeof data.signature === 'string') {
+        var valid = await HCP.verifyWitnessPayload(data, seed.pubkey);
+        var peerCount = Array.isArray(data.peers) ? data.peers.length : 0;
+        if (valid) {
+          console.log('[phase-b] OK signature verified for ' + seed.url + '; peers=' + peerCount);
+        } else {
+          console.warn('[phase-b] SIGNATURE FAILED for ' + seed.url + ' against pubkey ' + seed.pubkey.substring(0, 16) + '...; peers=' + peerCount);
+        }
+        return;
+      }
+      // Shape 1: legacy { peers, count } object.
+      if (data && typeof data === 'object' && !Array.isArray(data) && Array.isArray(data.peers)) {
+        console.log('[phase-b] ' + seed.url + ' returned legacy unsigned peers (count=' + data.peers.length + '); verification not exercised');
+        return;
+      }
+      // Shape 3: bare array.
+      if (Array.isArray(data)) {
+        console.log('[phase-b] ' + seed.url + ' returned bare-array peers (length=' + data.length + '); verification not exercised');
+        return;
+      }
+      console.log('[phase-b] ' + seed.url + ' returned unrecognized response shape');
+    } catch (err) {
+      console.log('[phase-b] fetch failed for ' + seed.url + ': ' + (err && err.message ? err.message : err));
+    }
+  }
+  async function checkSeedWitnessSignedPeers() {
+    if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) {
+      console.log('[phase-b] HEP_SEEDS not available; skipping');
+      return;
+    }
+    var seedsWithUrl = HEP_SEEDS.filter(function(s) { return s && s.url; });
+    if (seedsWithUrl.length === 0) {
+      console.log('[phase-b] no seeds with bootstrap URL; skipping');
+      return;
+    }
+    // Probe all seeded witnesses in parallel; per-seed logging happens
+    // inside probeOneSeed. Promise.all completes when every probe has
+    // resolved (each one swallows its own errors), so this never
+    // rejects.
+    await Promise.all(seedsWithUrl.map(probeOneSeed));
   }
 
   // === LAYER 4: Server Reputation Tracking ===
@@ -5087,7 +5158,7 @@ const PAIR_CODE_LENGTH = 4;
   // harder over time. Absence of pings is itself a signal.
 
   const PING_MIN_SPACING_MS = 24 * 60 * 60 * 1000; // 1 day minimum between pings
-  const PING_LAST_KEY = 'hcp_last_ping';
+  const PING_LAST_KEY = 'hcp_dev_last_ping';
   var _cachedDeviceHash = ''; // Pre-computed on login for cross-device exchange
   var _cachedGeo = null; // Continuously updated from GPS watch
   var _geoWatchId = null;
@@ -5136,7 +5207,7 @@ const PAIR_CODE_LENGTH = 4;
     bar.innerHTML = '<div style="flex:1; font-size:13px; color:var(--text-dim); line-height:1.4;">'
       + 'Your photo is ' + months + ' months old. Updating it strengthens your chain\'s integrity.'
       + '</div>'
-      + '<button onclick="sessionStorage.setItem(\'hep_photo_nudge_dismissed\',\'1\'); document.getElementById(\'photo-nudge-bar\').remove();" style="background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px;">&#10005;</button>';
+      + '<button onclick="sessionStorage.setItem(\'hep_photo_nudge_dismissed\',\'1\'); document.getElementById(\'photo-nudge-bar\').remove();" style="background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
     document.body.appendChild(bar);
   }
 
@@ -5735,7 +5806,7 @@ const PAIR_CODE_LENGTH = 4;
     // Scorched earth
     localStorage.removeItem(SK);
     localStorage.removeItem(SK + '_keys');
-    localStorage.removeItem('hcp_install_dismissed');
+    localStorage.removeItem('hcp_dev_install_dismissed');
 
     // Unregister service worker
     if ('serviceWorker' in navigator) {
@@ -5872,7 +5943,7 @@ const PAIR_CODE_LENGTH = 4;
           setTimeout(() => showCfReview(parsed), 300);
         } else if (inc.type === 'confirmation') {
           // Restore pending proposal from localStorage
-          const saved = localStorage.getItem('hcp_pending_proposal');
+          const saved = localStorage.getItem('hcp_dev_pending_proposal');
           if (saved) {
             state.pendingProposal = JSON.parse(saved);
             // Arrived via URL scan — in-person path
@@ -5913,158 +5984,33 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Learn ---
-  const LEARN_TOPICS = {
-    // === START HERE (boot camp) ===
-    act: {
-      title: 'The Cooperative Act',
-      slides: [
-        { icon: '&#9741;', title: 'Before anyone named it',
-          body: '<p>Two people. One helps the other. Something exists afterward that didn\u2019t exist before.</p><p><span class="highlight">This has always happened.</span> Before money. Before barter. Before any system anyone ever invented. Two people, and the honest moment between them.</p><p>A neighbor watches your kids. A friend drives you to the airport. Someone shares a meal. Energy moved. That\u2019s a cooperative act. It always was.</p>' },
-        { icon: '&#127975;', title: 'The permission system',
-          body: '<p>The monetary system didn\u2019t just create a medium of exchange. It created a <span class="highlight">permission system for what counts as work.</span></p><p>Caregiving. Domestic labor. Community maintenance. Creative practice. All reclassified as leisure or charity \u2014 not because they produce no value, but because they produce no extractable value for the system doing the classifying.</p><p>HEP refuses this permission system entirely.</p>' },
-        { icon: '&#129309;', title: 'The tarp',
-          body: '<p>Two homeless people. One has a tarp. One needs it. Energy moves.</p><p><span class="highlight">That is a cooperative act. It always was.</span> The monetary system didn\u2019t invent it \u2014 it just stopped counting it.</p><p>Nobody loses when that exchange gets recorded. No pool is drained. No authority is threatened. Two people\u2019s reality becomes slightly more legible. That is all. And that is everything.</p>' },
-        { icon: '&#128203;', title: 'The honest record',
-          body: '<p>HEP records cooperative acts between people. What you did, with whom, when \u2014 confirmed by both parties, held only by the people who lived it.</p><p><span class="highlight">Not a currency. Not a score. A record.</span></p><p>Before money existed, communities remembered who contributed and who received. This is that memory \u2014 made portable, tamper-evident, and held by the people who made it.</p>' },
-      ]
-    },
-    value: {
-      title: 'Value Is Yours',
-      slides: [
-        { icon: '&#9878;', title: 'You declare',
-          body: '<p>When you provide something \u2014 mow a lawn, fix a pipe, teach a lesson, share a skill \u2014 <span class="highlight">you name the value.</span> A number that represents the energy you spent.</p><p>No institution tells you what your work is worth. No algorithm decides. You declare it, and the other person either agrees or you have a conversation.</p><p>This is how valuation worked before anyone decided for everyone.</p>' },
-        { icon: '&#128587;', title: 'Both sides honest',
-          body: '<p>Every act has a provider and a receiver. <span class="highlight">Both are honest positions.</span></p><p>A teacher provides for years before receiving. A student receives for years before giving. A person in crisis receives care. None of this is a burden \u2014 it\u2019s honest receiving.</p><p>The words are simple: <span class="highlight">provided</span> and <span class="highlight">received</span>. No moral weight. Just honest direction.</p>' },
-        { icon: '&#128200;', title: 'Your chain is your reference',
-          body: '<p>Over time your chain builds a record of what you\u2019ve valued and what others have valued when working with you. <span class="highlight">Your own history becomes your pricing guide.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your context for the next one. The pattern is yours. Nobody else sets it.</p><p>Price discovery emerges naturally from honest history. No authority required.</p>' },
-        { icon: '&#128161;', title: 'No wrong number',
-          body: '<p>A haircut might be worth 10 in one context and 25 in another. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>There is no correct price for anything. There is only what two people honestly agreed happened between them. The chain doesn\u2019t judge. It records the cooperative reality.</p><p>That\u2019s the point. The value is yours.</p>' },
-      ]
-    },
-    beyond: {
-      title: 'Beyond the Moment',
-      slides: [
-        { icon: '&#8987;', title: 'The timing problem',
-          body: '<p>You fix your neighbor\u2019s sink. She\u2019s grateful, but she can\u2019t help you right now \u2014 and what you actually need is someone to tutor your kid.</p><p><span class="highlight">This is the oldest problem in cooperation.</span> Economists call it the coincidence of wants: both people need to want what the other has, at the same time, in the right proportion.</p><p>For most of human history, communities solved this with memory. Everyone knew who contributed and who received. That memory was the ledger.</p>' },
-        { icon: '&#127759;', title: 'What money solved',
-          body: '<p>Community memory worked, but it had limits. <span class="highlight">It couldn\u2019t scale beyond the people who knew you.</span></p><p>Money solved this by creating a universal token \u2014 help someone, receive a coin, spend that coin with a stranger across town. You no longer needed the same person to help you back. The timing problem was solved.</p><p>But money solved it by creating a permission system. If the system doesn\u2019t recognize your work, you don\u2019t get the token. No token, no participation. The solution created its own exclusions.</p>' },
-        { icon: '&#128241;', title: 'What your chain solves',
-          body: '<p>Your chain is a portable record of your cooperative history. When someone who\u2019s never met you reads it, <span class="highlight">they can see the shape of who you are</span> \u2014 what you\u2019ve done, how consistently, in what categories.</p><p>You fix the sink. Your chain records it. Next week you meet a tutor. She doesn\u2019t know your neighbor. She doesn\u2019t need to. She reads your chain and sees a real person with a real history of honest cooperation. A thread forms between you.</p><p>The timing problem is solved. No universal token required.</p>' },
-        { icon: '&#9878;', title: 'No one is excluded',
-          body: '<p>Here\u2019s the difference: <span class="highlight">you don\u2019t need a balance or a surplus to participate.</span> Your chain doesn\u2019t check your account before letting you cooperate.</p><p>A person who has received far more than they\u2019ve provided \u2014 a student, an elder, someone recovering from crisis \u2014 still has a readable chain. Still has a history. Still can cooperate with anyone willing.</p><p>Money solved the coincidence of wants but created gatekeeping. The fabric of cooperation forms without the gate.</p>' },
-      ]
-    },
-    calibrate: {
-      title: 'Find Your Unit',
-      interactive: true,
-      slides: [
-        { icon: '&#9881;', title: 'Your starting point',
-          body: '<p>Before your first exchange, it helps to think about <span class="highlight">what your unit means to you.</span></p><p>This is a thought exercise. There are no right answers. You\u2019re building your own internal compass \u2014 a sense of relative value that\u2019s yours alone.</p><p>Think of <span class="highlight">the simplest helpful thing you do regularly.</span> Something easy. Something you wouldn\u2019t think twice about.</p>' +
-            '<div class="cal-input-group"><div class="cal-label">Describe it in a few words:</div>' +
-            '<input class="cal-input" type="text" id="cal-simple-desc" placeholder="e.g. watering a neighbor\u2019s plants" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-input-group"><div class="cal-input-row"><div class="cal-label">Give it a number:</div>' +
-            '<input class="cal-input cal-input-num" type="number" id="cal-simple-val" placeholder="5" min="1" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-note">Pick any number that feels right. This becomes your anchor.</div></div>' },
-        { icon: '&#11088;', title: 'Your skilled work',
-          body: '<p>Now think of <span class="highlight">the most skilled thing you do.</span> Something that took years to learn, or that very few people around you can do.</p>' +
-            '<div class="cal-input-group"><div class="cal-label">Describe it:</div>' +
-            '<input class="cal-input" type="text" id="cal-skilled-desc" placeholder="e.g. rewiring a circuit breaker panel" oninput="App.calUpdate()"></div>' +
-            '<p>How many of your simple acts does this equal? If <span class="highlight" id="cal-anchor-echo">your simple act</span> is <span class="highlight" id="cal-anchor-val-echo">your number</span>, what\u2019s this worth?</p>' +
-            '<div class="cal-input-group"><div class="cal-input-row"><div class="cal-label">Its value:</div>' +
-            '<input class="cal-input cal-input-num" type="number" id="cal-skilled-val" placeholder="50" min="1" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-note" id="cal-ratio-note"></div></div>' },
-        { icon: '&#128296;', title: 'Something in between',
-          body: '<p>Most of what you do probably falls somewhere between those two. <span class="highlight">Think of an everyday task that takes real effort</span> but isn\u2019t your most specialized work.</p>' +
-            '<div class="cal-input-group"><div class="cal-label">Describe it:</div>' +
-            '<input class="cal-input" type="text" id="cal-mid-desc" placeholder="e.g. cooking a full meal for a gathering" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-input-group"><div class="cal-input-row"><div class="cal-label">Its value:</div>' +
-            '<input class="cal-input cal-input-num" type="number" id="cal-mid-val" placeholder="20" min="1" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-note" id="cal-mid-note"></div></div>' },
-        { icon: '&#127760;', title: 'Something you\u2019d receive',
-          body: '<p>You won\u2019t just be providing \u2014 you\u2019ll be receiving too. <span class="highlight">Think of something you\u2019d want from someone else.</span></p>' +
-            '<div class="cal-input-group"><div class="cal-label">What would you receive?</div>' +
-            '<input class="cal-input" type="text" id="cal-recv-desc" placeholder="e.g. someone tutoring my kid in math" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-input-group"><div class="cal-input-row"><div class="cal-label">What feels fair?</div>' +
-            '<input class="cal-input cal-input-num" type="number" id="cal-recv-val" placeholder="25" min="1" oninput="App.calUpdate()"></div>' +
-            '<div class="cal-note">There\u2019s no wrong answer. This is about your sense of proportion.</div></div>' },
-        { icon: '&#128209;', title: 'Your map',
-          body: '<p>Here\u2019s the internal map you just built \u2014 <span class="highlight">your own sense of relative value.</span></p>' +
-            '<div id="cal-summary"></div>' +
-            '<p>This isn\u2019t a price list. It\u2019s a compass. When you do your first real exchange and someone asks <span class="highlight">\u201cwhat\u2019s this worth?\u201d</span> \u2014 you already have an answer that\u2019s yours.</p>' +
-            '<div class="cal-note">Your chain will grow from here. Every real exchange refines your sense of value. This was just the starting point.</div>' },
-      ]
-    },
+  // Lesson content lives in dev/lessons.json (loaded at boot via loadLessons()).
+  // Single-source-of-truth so app and (future) website Learn surfaces consume
+  // the same data. Strip emojis at the data layer; renderers add no fallbacks.
+  let LEARN_TOPICS = {};
+  let LESSON_GROUPS = [];
+  let lessonsReady = false;
+  let _lessonsLoadPromise = null;
 
-    // === GO DEEPER ===
-    foundations: {
-      title: 'Foundations',
-      slides: [
-        { icon: '&#8644;', title: 'How does an exchange work?',
-          body: '<p>One person provides a service, a product, or help. The other person receives it. Both agree on a value \u2014 a number that represents what just happened.</p><p><span class="highlight">You declare the value of your own work.</span> Nobody tells you what it\u2019s worth. The other person agrees or you negotiate.</p><p>The act gets recorded on both chains. That\u2019s it. No money changed hands. Real work got recorded.</p>' },
-        { icon: '&#9776;', title: 'Chain, thread, fabric',
-          body: '<p>Your <span class="highlight">chain</span> is your complete history of cooperative acts. Every exchange you\u2019ve ever done, in order, linked together so nothing can be changed after the fact. Your balance shows whether you\u2019ve provided more than you\u2019ve received, or the reverse. Both are honest positions.</p><p>Every time you cooperate with someone, a <span class="highlight">thread</span> is woven between your chain and theirs. The act sits on both, linking you. You might never see that person again, or you might exchange with them a hundred times. Each act is another thread.</p><p>When threads multiply across a community, they form a <span class="highlight">fabric</span> \u2014 the cooperation that was always there, now visible. Nobody owns the fabric. It emerges from the acts.</p><p>A teacher gives for years before receiving. A student receives for years before giving. The chain holds the full arc. The threads show who cooperated. The fabric is what a community is, made legible.</p>' },
-        { icon: '&#128241;', title: 'Two phones, one exchange',
-          body: '<p>An exchange can happen several ways. If you are together, you exchange short pairing codes and your phones connect through the network. <span class="highlight">Both phones record the act. Both chains grow by one entry.</span></p><p>If there is no internet, you can use QR codes directly between phones. The record lives on your phone and theirs. Nobody else has a copy unless you choose to share it.</p>' },
-        { icon: '&#10024;', title: 'What can you imagine?',
-          body: '<p>A neighborhood where every act of cooperation is visible. A community that can see what it\u2019s actually capable of. An elder whose lifetime of giving is finally recorded.</p><p><span class="highlight">Your imagination is the limit.</span> This tool records cooperative acts \u2014 what you build with it is up to you and your community.</p><p>Start by doing what you\u2019re already doing. Just record it this time.</p>' },
-      ]
-    },
-    pricing: {
-      title: 'Price Discovery',
-      slides: [
-        { icon: '&#128269;', title: 'Your chain is your reference',
-          body: '<p>Over time, your chain builds a record of what you\u2019ve provided and what you\u2019ve received. When negotiating a new exchange, <span class="highlight">you can surface comparable acts from your own history.</span></p><p>Fixed three faucets last month at 15 each? That\u2019s your pricing context. The other person can see the pattern without seeing who those acts were with.</p><p>Price discovery emerges naturally from honest history.</p>' },
-        { icon: '&#9881;', title: 'Negotiation is human',
-          body: '<p>Two people might value the same work differently. That\u2019s not a flaw \u2014 it\u2019s how real exchange works. <span class="highlight">The protocol records what you agreed on, not what someone decided for you.</span></p><p>A haircut might be worth 10 in one context and 25 in another. The chain doesn\u2019t judge. It records the cooperative reality between two specific people at a specific moment.</p>' },
-        { icon: '&#128202;', title: 'The chain viewer',
-          body: '<p>When someone shares their chain with you before an exchange, <span class="highlight">you can see the shape of their work</span> \u2014 what categories they work in, how consistently they price, how active they\u2019ve been.</p><p>This is the context that makes negotiation informed rather than blind. You\u2019re not guessing. You\u2019re reading an honest record.</p>' },
-      ]
-    },
-    exchange: {
-      title: 'Exchange & Parity',
-      slides: [
-        { icon: '&#8644;', title: 'The exchange rate',
-          body: '<p>Every person values their effort on their own scale. Your \u201c10\u201d and someone else\u2019s \u201c10\u201d might represent very different amounts of energy. <span class="highlight">The exchange rate translates between your scale and theirs.</span></p><p>Think of it the way currencies work between countries. A dollar and a euro measure differently. Neither is wrong. The exchange rate makes sure both sides are represented honestly.</p><p>Your rate comes from your chain\u2019s density compared to theirs. As both chains grow, the rate gets more precise.</p>' },
-        { icon: '&#9878;', title: 'How parity works',
-          body: '<p>When two people exchange, the rate between their chains adjusts prices so both sides are honestly represented. <span class="highlight">This happens automatically from the data. Nobody sets the rate.</span></p><p>Over time, your chain accumulates valuation data from everyone you have exchanged with. That accumulated data forms a basket, similar to what economists use to calculate purchasing power parity between countries, except nobody built or governs it.</p><p>Within specific categories of work, the rates are even more precise.</p>' },
-        { icon: '&#128279;', title: 'Trust across chains',
-          body: '<p>You don\u2019t need to know someone to exchange with them. You need to see their chain. <span class="highlight">A long, active, balanced chain is hard to fake and easy to trust.</span></p><p>The protocol doesn\u2019t vouch for anyone. The chain speaks for itself. A person with 500 confirmed acts over two years tells a different story than a person with 3 acts last week.</p><p>Trust is built honestly through cooperation. Fabrication is expensive to sustain.</p>' },
-      ]
-    },
-    community: {
-      title: 'Building Community',
-      slides: [
-        { icon: '&#127793;', title: 'Planting the first seeds',
-          body: '<p>Every network starts with two people doing one honest exchange. <span class="highlight">You don\u2019t need critical mass. You need one real act.</span></p><p>Start with what\u2019s already happening \u2014 a neighbor who watches your kids, a friend who fixes your car, a colleague who covers your shift. Record what was already real.</p><p>The protocol doesn\u2019t create cooperation. It makes existing cooperation visible.</p>' },
-        { icon: '&#127760;', title: 'The network grows naturally',
-          body: '<p>When your counterparties start recording their own acts with others, the network spreads without anyone managing it. <span class="highlight">There is no sign-up, no onboarding funnel, no growth team.</span></p><p>Each person\u2019s chain is independent. Threads form when people exchange. As more people cooperate, the threads weave into a fabric \u2014 the community, made visible. The community emerges from the acts themselves, not from a platform.</p>' },
-        { icon: '&#127919;', title: 'What communities can see',
-          body: '<p>When enough people in a neighborhood are recording cooperative acts, <span class="highlight">the community can see what it\u2019s actually capable of.</span></p><p>How much tutoring happens every week. How many meals get shared. How much repair work circulates. The invisible economy becomes visible \u2014 not to surveil, but to understand and strengthen.</p><p>A community that can see its own cooperation can organize around it.</p>' },
-      ]
-    },
-    sovereignty: {
-      title: 'Your Phone, Your Server',
-      slides: [
-        { icon: '&#128241;', title: 'Offline by design',
-          body: '<p>This app works without the internet. Your chain lives on your device. Exchanges happen face-to-face. <span class="highlight">No server, no cloud, no dependency.</span></p><p>This isn\u2019t a limitation \u2014 it\u2019s the design. A system that requires infrastructure excludes everyone without access to it. A system that runs on any phone includes everyone.</p>' },
-        { icon: '&#128274;', title: 'Your data stays yours',
-          body: '<p>No one can access your chain without your PIN. No company stores a copy. No government has a backdoor. <span class="highlight">If you delete it, it\u2019s gone.</span></p><p>This is data sovereignty in its simplest form. The person who created the data controls the data. There is no terms of service. There is no privacy policy to read. There is nothing to agree to because no one else is involved.</p>' },
-        { icon: '&#9889;', title: 'Resilience through simplicity',
-          body: '<p>The entire application is a single file. It runs on any phone with a browser. <span class="highlight">There is no server to hack, no database to breach, no company to shut down.</span></p><p>If the website disappears tomorrow, every installed copy keeps working. The protocol lives wherever the people are. That\u2019s the point.</p>' },
-      ]
-    },
-    privacy: {
-      title: 'Privacy & Safety',
-      slides: [
-        { icon: '&#9737;', title: 'You control what others see',
-          body: '<p>When you share your chain for negotiation, <span class="highlight">no counterparty names are ever shown.</span> Only your work patterns, categories, and pricing history.</p><p>The person you\u2019re negotiating with can see the shape of your work without knowing who you worked with. Your competence travels with you. Your connections stay private.</p>' },
-        { icon: '&#128737;', title: 'Protection in dangerous places',
-          body: '<p>If you\u2019re in a situation where revealing your network could be dangerous, <span class="highlight">the protocol protects you by design.</span></p><p>No central registry knows you exist. No list of members can be seized. Your thread is encrypted behind your PIN. To an outside observer, the app is just a file on your phone.</p><p>If you need to disappear, delete your thread. It\u2019s gone. No trace, no record, no recovery.</p>' },
-        { icon: '&#128100;', title: 'Identity without identification',
-          body: '<p>Your fingerprint \u2014 a short hash of your public key \u2014 identifies you in exchanges. <span class="highlight">It proves you\u2019re the same person across acts without revealing who you are.</span></p><p>You can participate fully without ever giving your real name. The declarations section is optional. What you share is what you choose to share. Nothing more.</p>' },
-      ]
-    },
-  };
+  function loadLessons() {
+    if (_lessonsLoadPromise) return _lessonsLoadPromise;
+    _lessonsLoadPromise = fetch('./lessons.json', { cache: 'no-cache' })
+      .then(function(r) {
+        if (!r.ok) throw new Error('lessons.json HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        LEARN_TOPICS = data.topics || {};
+        LESSON_GROUPS = data.groups || [];
+        lessonsReady = true;
+      })
+      .catch(function(err) {
+        console.error('[lessons] load failed:', err && err.message);
+        // Promise resolves regardless; consumers gate on lessonsReady.
+      });
+    return _lessonsLoadPromise;
+  }
+
 
   // Calibration exercise state
   let calData = { simpleDesc: '', simpleVal: 0, skilledDesc: '', skilledVal: 0, midDesc: '', midVal: 0, recvDesc: '', recvVal: 0 };
@@ -6178,15 +6124,19 @@ const PAIR_CODE_LENGTH = 4;
   var _lessonTouchStartX = null;
 
   function _getLessonCompleted() {
-    try { return JSON.parse(localStorage.getItem('hep_lessons_done') || '{}'); } catch(e) { return {}; }
+    try { return JSON.parse(localStorage.getItem('hep_dev_lessons_done') || '{}'); } catch(e) { return {}; }
   }
   function _setLessonCompleted(key) {
     var done = _getLessonCompleted();
     done[key] = true;
-    localStorage.setItem('hep_lessons_done', JSON.stringify(done));
+    localStorage.setItem('hep_dev_lessons_done', JSON.stringify(done));
   }
 
   function openLessonTile(topicKey) {
+    if (!lessonsReady) {
+      loadLessons().then(function() { openLessonTile(topicKey); });
+      return;
+    }
     var topic = LEARN_TOPICS[topicKey];
     if (!topic) return;
     _lessonTopicKey = topicKey;
@@ -6229,11 +6179,12 @@ const PAIR_CODE_LENGTH = 4;
 
     // Content
     var s = slides[idx];
-    var icon = s.icon || '';
-    // Strip HTML entities for visual display
+    // Slide icon rendering removed in v2.61.51 -- the previous emoji
+    // icons clashed with the new SVG iconography system. Slide-icon
+    // visual treatment is pinned for future design pass; data preserved
+    // in slide objects (s.icon) for when we revisit.
     var content = document.getElementById('lesson-content');
-    content.innerHTML = '<div class="lesson-tile-visual" style="animation:lessonFadeUp 0.35s ease">' + icon + '</div>' +
-      '<h3 class="lesson-tile-heading" key="h' + idx + '">' + s.title + '</h3>' +
+    content.innerHTML = '<h3 class="lesson-tile-heading" key="h' + idx + '">' + s.title + '</h3>' +
       '<div class="lesson-tile-body" key="b' + idx + '">' + _lessonStripHTML(s.body) + '</div>';
 
     // Bottom (dots + button)
@@ -6318,6 +6269,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function learnOpen(topicKey) {
+    if (!lessonsReady) {
+      loadLessons().then(function() { learnOpen(topicKey); });
+      return;
+    }
     const topic = LEARN_TOPICS[topicKey];
     if (!topic) return;
     currentLearnTopic = topicKey;
@@ -6420,7 +6375,7 @@ const PAIR_CODE_LENGTH = 4;
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstallPrompt = e;
-      if (!localStorage.getItem('hcp_install_dismissed')) {
+      if (!localStorage.getItem('hcp_dev_install_dismissed')) {
         document.getElementById('install-banner').classList.add('show');
       }
     });
@@ -6428,7 +6383,7 @@ const PAIR_CODE_LENGTH = 4;
     // iOS detection — show manual instructions
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    if (isIOS && !isStandalone && !localStorage.getItem('hcp_install_dismissed')) {
+    if (isIOS && !isStandalone && !localStorage.getItem('hcp_dev_install_dismissed')) {
       const banner = document.getElementById('install-banner');
       document.getElementById('install-sub').textContent = 'Tap the share button, then "Add to Home Screen"';
       document.getElementById('install-btn').textContent = 'Got it';
@@ -6455,7 +6410,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function dismissInstall() {
     document.getElementById('install-banner').classList.remove('show');
-    localStorage.setItem('hcp_install_dismissed', '1');
+    localStorage.setItem('hcp_dev_install_dismissed', '1');
   }
 
   function isIOSBrowser() {
@@ -6464,10 +6419,45 @@ const PAIR_CODE_LENGTH = 4;
     return isIOS && !isStandalone;
   }
 
+  // Returns 'installed' (already in standalone), 'ios', 'android', or 'desktop'
+  function detectInstallPlatform() {
+    const ua = navigator.userAgent;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isStandalone) return 'installed';
+    if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) return 'ios';
+    if (/Android/.test(ua)) return 'android';
+    return 'desktop';
+  }
+
+  // Populates the install-first instructions block based on the user's platform.
+  function renderInstallInstructions() {
+    const el = document.getElementById('install-instructions');
+    if (!el) return;
+    const platform = detectInstallPlatform();
+    if (platform === 'ios') {
+      el.innerHTML = '<strong>iPhone or iPad:</strong> Tap the <strong>Share</strong> button at the bottom of your screen, then tap <strong>"Add to Home Screen."</strong> Once installed, open HEP from your home screen and start setup there.';
+    } else if (platform === 'android') {
+      el.innerHTML = '<strong>Android:</strong> Open your browser menu (the three dots), then tap <strong>"Install app"</strong> or <strong>"Add to Home screen."</strong> Once installed, open HEP from your home screen and start setup there.';
+    } else {
+      el.innerHTML = '<strong>Desktop:</strong> Look for an install icon in your address bar, or open your browser menu and find <strong>"Install Human Exchange Protocol."</strong> If your browser does not offer install, you can continue in the browser instead.';
+    }
+  }
+
+  // Welcome screen Get Started routing: install-first if installable and not skipped, otherwise straight to PIN.
+  function goToInstallOrPin() {
+    const platform = detectInstallPlatform();
+    if (platform === 'installed' || localStorage.getItem('hcp_dev_skip_install')) {
+      setupStep('pin');
+    } else {
+      document.querySelectorAll('#setup .step').forEach(s => s.classList.remove('active'));
+      document.getElementById('setup-install-first').classList.add('active');
+      renderInstallInstructions();
+    }
+  }
+
   function skipInstallFirst() {
-    localStorage.setItem('hcp_skip_install', '1');
-    document.querySelectorAll('#setup .step').forEach(s => s.classList.remove('active'));
-    document.getElementById('setup-welcome1').classList.add('active');
+    localStorage.setItem('hcp_dev_skip_install', '1');
+    setupStep('pin');
   }
 
   // --- Init ---
@@ -6478,6 +6468,11 @@ const PAIR_CODE_LENGTH = 4;
   }
 
 function init() {
+    // Kick off lesson content fetch immediately. Promise resolves before user
+    // can reach the Learn tab in normal flow; consumers gate on lessonsReady
+    // and retry once the promise resolves if not yet loaded.
+    loadLessons();
+
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function(reg) {
         // SW lifecycle events no longer trigger user banners.
@@ -6503,11 +6498,6 @@ function init() {
       showLockScreen();
     } else {
       showScreen('setup');
-      // If iOS browser and no existing data, show install-first prompt
-      if (isIOSBrowser() && !localStorage.getItem('hcp_skip_install')) {
-        document.querySelectorAll('#setup .step').forEach(s => s.classList.remove('active'));
-        document.getElementById('setup-install-first').classList.add('active');
-      }
       // Desktop: make import prominent
       if (isDesktopBrowser()) {
         var importBtns = document.querySelectorAll('#setup .step button[onclick*="importBackup"]');
@@ -6522,6 +6512,11 @@ function init() {
         });
       }
     }
+    // Phase B passthrough verification: probe a seeded witness for a
+    // signed peer list and log the outcome. Delayed by 5s so it does
+    // not contend with initial UI render. Fire-and-forget; the
+    // function swallows its own errors.
+    setTimeout(function() { checkSeedWitnessSignedPeers(); }, 5000);
   }
   
   // After setup completes, check for guided intro
@@ -6730,7 +6725,7 @@ function init() {
           var statusEl = document.getElementById('ex-join-status');
           if (statusEl) {
             statusEl.style.display = 'block';
-            statusEl.innerHTML = '<div class="pair-status resolving"><div class="ps-icon">&#9203;</div><div class="ps-text">Waiting for connection...</div></div>';
+            statusEl.innerHTML = '<div class="pair-status resolving"><div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div><div class="ps-text">Waiting for connection...</div></div>';
           }
           var btn = document.getElementById('ex-join-btn');
           if (btn) btn.style.display = 'none';
@@ -7188,7 +7183,7 @@ function init() {
     return '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showTextureDetail(\'' + detailKey + '\')">' +
       '<span style="font-size:10px; flex-shrink:0; width:20px; text-align:center; color:' + iconColor + ';">' + icon + '</span>' +
       '<span style="flex:1; font-size:13px; color:' + labelColor + '; line-height:1.4;' + labelWeight + '">' + label + '</span>' +
-      '<span style="font-size:14px; color:var(--text-faint); flex-shrink:0;">&#8250;</span>' +
+      '<span style="font-size:14px; color:var(--text-faint); flex-shrink:0;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>' +
       '</div>';
   }
 
@@ -7352,7 +7347,7 @@ function init() {
     var isPhone = dev.touchPoints > 0;
     if (isPhone) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">';
-      html += '<span style="color:var(--green); font-size:14px;">&#10003;</span>';
+      html += '<span style="color:var(--green); font-size:14px;"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
       html += '<span style="font-size:13px; color:var(--text-dim);">Real phone confirmed</span>';
       html += '</div>';
       html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:16px; line-height:1.5;">This device has a touch screen, a hardware graphics chip, and physical sensors. It behaves like a real phone carried by a person.</div>';
@@ -7673,7 +7668,7 @@ function init() {
     // Device check even on new
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
-      html += '<span style="color:var(--green);">&#10003;</span> Real phone';
+      html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
     html += '</div>';
@@ -7715,7 +7710,7 @@ function init() {
     // Device confirmation
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
-      html += '<span style="color:var(--green);">&#10003;</span> Real phone';
+      html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
 
@@ -7742,7 +7737,7 @@ function init() {
     }
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
-    html += '<span style="font-size:18px; color:var(--accent);">&#9888;</span>';
+    html += '<span style="font-size:18px; color:var(--accent);"><svg class="icon icon-md"><use href="#icon-warning"/></svg></span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
     html += '</div>';
     html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
@@ -7772,7 +7767,7 @@ function init() {
   function exRenderNonhuman(ts, name, dev, cl) {
     var html = '<div style="padding:16px; background:rgba(204,68,68,0.04); border:1px solid rgba(204,68,68,0.15); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:8px;">';
-    html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;">&#10006;</span>';
+    html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></span>';
     html += '<div style="font-size:15px; font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
     html += '</div>';
     html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
@@ -8216,7 +8211,7 @@ function init() {
     var catId = 'svc-cat-' + catName.replace(/[^a-zA-Z0-9]/g, '_');
     var html = '<div style="margin-bottom:2px;">';
     html += '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.toggleServiceCat(\'' + catId + '\')">';
-    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     html += '<span style="flex:1; font-size:14px; font-weight:500; color:var(--text);">' + esc(catName) + '</span>';
     html += '<span style="font-size:12px; color:var(--text-faint);">' + items.length + ' service' + (items.length > 1 ? 's' : '') + ' \u00b7 ' + totalCount + 'x</span>';
     html += '</div>';
@@ -8733,7 +8728,7 @@ function init() {
         var fpShort = (r.counterparty || '').substring(0, 16);
         if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
         html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
-        if (r.witnessAttestation) html += '<div style="color:var(--green);">&#10003; Witness attested</div>';
+        if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
         html += '</div>';
         html += '</div>';
       });
@@ -8847,10 +8842,10 @@ function init() {
     var toneBg = 'var(--bg-raised)';
     var toneBorder = 'var(--border)';
     var toneIcon = '&#9679;'; // filled circle
-    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '&#10003;'; }
+    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-check"/></svg>'; }
     else if (v.tone === 'partial') { toneColor = '#B45309'; toneBg = 'rgba(180,83,9,0.06)'; toneBorder = 'rgba(180,83,9,0.25)'; toneIcon = '&#9679;'; }
     else if (v.tone === 'weak') { toneColor = 'var(--text-dim)'; toneIcon = '&#9679;'; }
-    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '&#9888;'; }
+    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-warning"/></svg>'; }
 
     var h = '';
     h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -8877,7 +8872,7 @@ function init() {
     else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
-    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div></div>';
 
     // Per-origin breakdown strip (compact, just below header)
@@ -9002,7 +8997,7 @@ function init() {
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary) + '</div>';
     h += '</div>';
     if (enableCtrl) h += '<div style="flex-shrink:0; margin-right:4px;">' + enableCtrl + '</div>';
-    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div>';
 
     // Level 3 — inline detail panel
@@ -9306,10 +9301,10 @@ function init() {
     var toneBg = 'var(--bg-raised)';
     var toneBorder = 'var(--border)';
     var toneIcon = '&#9679;';
-    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '&#10003;'; }
+    if (v.tone === 'strong') { toneColor = 'var(--green)'; toneBg = 'rgba(43,140,62,0.06)'; toneBorder = 'rgba(43,140,62,0.25)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-check"/></svg>'; }
     else if (v.tone === 'partial') { toneColor = '#B45309'; toneBg = 'rgba(180,83,9,0.06)'; toneBorder = 'rgba(180,83,9,0.25)'; toneIcon = '&#9679;'; }
     else if (v.tone === 'weak') { toneColor = 'var(--text-dim)'; toneIcon = '&#9679;'; }
-    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '&#9888;'; }
+    else if (v.tone === 'alarming') { toneColor = 'var(--red)'; toneBg = 'rgba(214,107,107,0.06)'; toneBorder = 'rgba(214,107,107,0.35)'; toneIcon = '<svg class="icon icon-md"><use href="#icon-warning"/></svg>'; }
 
     var h = '';
     h += '<div style="background:' + toneBg + '; border:1px solid ' + toneBorder + '; border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -9338,7 +9333,7 @@ function init() {
     else if (v.countWorthNoting > 0) mainLine += ' \u00b7 ' + v.countWorthNoting + ' worth noting';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">' + mainLine + '</div>';
     h += '</div></div>';
-    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-chev" style="font-size:22px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div></div>';
 
     // Per-origin breakdown strip
@@ -9443,7 +9438,7 @@ function init() {
     h += '<div style="font-size:var(--fs-md); color:var(--text); font-weight:500;">' + esc(s.humanName) + badge + '</div>';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px; line-height:1.4;">' + esc(s.summary || '') + '</div>';
     h += '</div>';
-    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;">&#8250;</span>';
+    h += '<span class="poh-sig-chev" style="font-size:20px; color:var(--accent); transition:transform 0.2s; flex-shrink:0; margin-left:4px; line-height:1;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     h += '</div>';
 
     // Level 3 — lookup copy from local registry
@@ -10098,7 +10093,7 @@ function init() {
     html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text);">' + esc(name) + '</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-family:var(--font-mono);">' + esc(fp) + '</div>';
     html += '</div>';
-    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;">&#9656;</span>';
+    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     html += '</div>';
     // Expanded panel
     html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
@@ -10240,7 +10235,7 @@ function init() {
       if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
       html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
       html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
-      if (r.witnessAttestation) html += '<div style="color:var(--green);">&#10003; Witness attested</div>';
+      if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
       html += '</div>';
       html += '</div>';
     });
@@ -10261,50 +10256,40 @@ function init() {
   function renderLearnTab() {
     var el = document.getElementById('tab-learn-content');
     if (!el) return;
+
+    // Gate on lessons load. If not yet loaded, render placeholder and re-render
+    // once data lands. Clears any prior rendered marker so the retry redraws.
+    if (!lessonsReady) {
+      el.removeAttribute('data-rendered');
+      el.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-faint);">Loading\u2026</div>';
+      loadLessons().then(function() { renderLearnTab(); });
+      return;
+    }
+
     if (el.getAttribute('data-rendered')) return;
     el.setAttribute('data-rendered', '1');
     var done = _getLessonCompleted();
-
-    // Topic groups with their lesson keys
-    var topicGroups = [
-      { title: 'Getting Started', icon: '&#127793;', description: 'Learn the basics of cooperative exchange', lessons: [
-        { key: 'act', title: 'The Cooperative Act' },
-        { key: 'value', title: 'Value Is Yours' },
-        { key: 'calibrate', title: 'Find Your Unit' },
-      ]},
-      { title: 'Understanding Your Chain', icon: '&#128279;', description: 'How your cooperation record works', lessons: [
-        { key: 'foundations', title: 'Foundations' },
-        { key: 'pricing', title: 'Price Discovery' },
-        { key: 'exchange', title: 'Exchange & Parity' },
-      ]},
-      { title: 'The Bigger Picture', icon: '&#127760;', description: 'Why cooperative exchange matters', lessons: [
-        { key: 'beyond', title: 'Beyond the Moment' },
-        { key: 'community', title: 'Building Community' },
-        { key: 'sovereignty', title: 'Your Phone, Your Server' },
-        { key: 'privacy', title: 'Privacy & Safety' },
-      ]},
-    ];
 
     var html = '<div style="padding-top:4px;">';
     html += '<div style="margin-bottom:16px;"><div style="font-size:var(--fs-xl); font-weight:500; color:var(--text);">Learn</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">Understanding builds trust</div></div>';
 
-    topicGroups.forEach(function(group, gi) {
-      var totalLessons = group.lessons.length;
-      var doneLessons = group.lessons.filter(function(l) { return done[l.key]; }).length;
-      var allDone = doneLessons === totalLessons;
+    LESSON_GROUPS.forEach(function(group, gi) {
+      var lessonKeys = group.lessons || [];
+      var totalLessons = lessonKeys.length;
+      var doneLessons = lessonKeys.filter(function(k) { return done[k]; }).length;
+      var allDone = totalLessons > 0 && doneLessons === totalLessons;
       var groupId = 'learn-group-' + gi;
 
       html += '<div class="ltab-card">';
       // Topic header
       html += '<button class="ltab-header" onclick="var el=document.getElementById(\'' + groupId + '\'); var chev=this.querySelector(\'.ltab-chev\'); if(el.style.display===\'block\'){el.style.display=\'none\'; chev.classList.remove(\'open\');}else{el.style.display=\'block\'; chev.classList.add(\'open\');}">';
-      html += '<span class="ltab-icon">' + group.icon + '</span>';
-      html += '<div style="flex:1; min-width:0;"><div class="ltab-title">' + group.title + '</div>';
+      html += '<div style="flex:1; min-width:0;"><div class="ltab-title">' + esc(group.title) + '</div>';
       html += '<div class="ltab-sub">' + (allDone ? 'Completed' : doneLessons + ' of ' + totalLessons + ' lessons') + '</div></div>';
       if (allDone) {
         html += '<div class="ltab-done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
       } else {
-        html += '<span class="ltab-chev">&#9662;</span>';
+        html += '<span class="ltab-chev"><svg class="icon icon-md"><use href="#icon-chevron-down"/></svg></span>';
       }
       html += '</button>';
 
@@ -10315,19 +10300,20 @@ function init() {
 
       // Lessons list (hidden by default)
       html += '<div class="ltab-lessons" id="' + groupId + '" style="display:none;">';
-      group.lessons.forEach(function(lesson, li) {
-        var isDone = done[lesson.key];
-        var topic = LEARN_TOPICS[lesson.key];
-        var stepCount = topic ? topic.slides.length : 0;
-        html += '<button class="ltab-lesson" onclick="App.openLessonTile(\'' + lesson.key + '\')">';
+      lessonKeys.forEach(function(lessonKey, li) {
+        var topic = LEARN_TOPICS[lessonKey];
+        if (!topic) return; // skip if topic missing from data
+        var isDone = done[lessonKey];
+        var stepCount = topic.slides ? topic.slides.length : 0;
+        html += '<button class="ltab-lesson" onclick="App.openLessonTile(\'' + lessonKey + '\')">';
         if (isDone) {
           html += '<div class="ltab-num done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
         } else {
           html += '<div class="ltab-num pending">' + (li + 1) + '</div>';
         }
-        html += '<div style="flex:1; min-width:0;"><div class="ltab-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + lesson.title + '</div>';
+        html += '<div style="flex:1; min-width:0;"><div class="ltab-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + esc(topic.title) + '</div>';
         html += '<div class="ltab-lesson-steps">' + stepCount + ' steps</div></div>';
-        html += '<span style="font-size:14px; color:var(--text-faint);">&#8250;</span>';
+        html += '<span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
         html += '</button>';
       });
       html += '</div>';
@@ -10568,7 +10554,7 @@ function init() {
   }
 
   return {
-    init, setupStep, completeSetup: completeSetupWrapped,
+    init, setupStep, completeSetup: completeSetupWrapped, goToInstallOrPin,
     switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,

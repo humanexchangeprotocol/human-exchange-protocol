@@ -41,9 +41,54 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.61.37';
+const APP_VERSION='2.61.57';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
+
+// HEP_SEEDS: hardcoded trusted-witness list per witness-identity-protocol §8.1.
+// "The app build includes a small JSON file: an array of trusted witness
+// pubkeys. This list ships with the app, never updates between releases,
+// and is the foundation."
+//
+// Each entry MUST have a pubkey (hex Ed25519 public key, the witness's
+// permanent identity). url is OPTIONAL: a reachable starting URL the app
+// can bootstrap from. Witnesses without a url are trust anchors only,
+// not bootstrap candidates; the app discovers their current endpoints
+// via gossip from any witness that is reachable.
+//
+// This list is the trust gate (§4.2). A witness's pubkey appearing in
+// /announce traffic does not make it part of the network. A witness is
+// only part of the network if its pubkey is in this list (or in the
+// signed /seeds.json manifest from the marketing site, when that lands
+// in a later phase).
+//
+// Phase B uses these for passthrough verification: the app fetches
+// signed /peers from a witness and verifies the signature against this
+// list. Failures are logged but not enforced. Phase C will enforce.
+const HEP_SEEDS = [
+  // IONOS witness (witness.thesitefit.com, 108.175.13.197)
+  {
+    pubkey: 'de484188af83bfad5cf0e9ad5c4e636e6ef00a986623bdecd9e13928fa24e59b',
+    url: 'https://witness.thesitefit.com',
+  },
+  // Michael's PC instance. LAN-only (no public exposure), but reachable
+  // at http://127.0.0.1:3141 from a browser running on the same PC.
+  // Browsers treat localhost as a secure context, so an HTTPS-loaded
+  // app can fetch this URL despite mixed-content rules. For users
+  // without a local witness on this port, the fetch fails with
+  // 'connection refused' and the probe simply logs 'fetch failed' --
+  // harmless. For Michael (and anyone else running their own local
+  // witness for development), this gives a real signed-peer
+  // integration test against a slice-9-code witness.
+  {
+    pubkey: '726d682b9b3ea0874ff22049abb4a50f65d14fb42467cfe0874352a503fc40b6',
+    url: 'http://127.0.0.1:3141',
+  },
+  // Patrick's Pi instance (LAN-only; trust anchor, no public bootstrap URL yet)
+  {
+    pubkey: '71dd5577899043eb00d9002367ea77f986b36926ddcbff615edc2308c1546003',
+  },
+];
 const HCP=(()=>{'use strict';
 const PV='2.0.0',SV=6,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5;
 const SCALE_MAX=1000000;
@@ -501,7 +546,46 @@ async function drp(b64,sharedKey){
   return JSON.parse(u8d.decode(plain));
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp}
+// --- Witness response verification (Phase B, slice B.1) ---
+// Ed25519 verification path for signed responses from witness servers
+// (witness-identity-protocol §6.1, §6.2). Distinct from vpld above:
+// vpld verifies exchange payloads between users (ECDSA P-256 over a
+// non-canonical JSON.stringify), whereas vwp verifies witness-signed
+// responses (Ed25519 over a canonical JSON serialization).
+//
+// cjs is the canonical-JSON serializer matching the witness server's
+// canonicalize: lexicographically sorted keys at every object level,
+// no insignificant whitespace, primitives via JSON.stringify, array
+// element order preserved. The witness server signs over this exact
+// byte string; the app must reproduce it exactly to verify.
+//
+// vwp returns Promise<boolean>. Inputs are an object payload (with a
+// hex-encoded `signature` field) and a hex-encoded 32-byte Ed25519
+// public key. Web Crypto Ed25519 support: Chrome 113+ (May 2023),
+// Firefox 130+ (Sept 2024), Safari 17+ (Sept 2023).
+function cjs(v){
+  if(v===null)return 'null';
+  if(Array.isArray(v))return '['+v.map(cjs).join(',')+']';
+  if(typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+cjs(v[k])).join(',')+'}';
+  return JSON.stringify(v);
+}
+async function vwp(payload,publicKeyHex){
+  if(!payload||typeof payload!=='object')return false;
+  if(typeof payload.signature!=='string')return false;
+  if(typeof publicKeyHex!=='string'||!/^[0-9a-f]{64}$/i.test(publicKeyHex))return false;
+  try{
+    const{signature,...rest}=payload;
+    const canonical=cjs(rest);
+    const sigBuf=htb(signature);
+    if(sigBuf.byteLength!==64)return false;
+    const pubBuf=htb(publicKeyHex);
+    if(pubBuf.byteLength!==32)return false;
+    const pubKey=await crypto.subtle.importKey('raw',pubBuf,{name:'Ed25519'},false,['verify']);
+    return await crypto.subtle.verify('Ed25519',pubKey,sigBuf,u8.encode(canonical));
+  }catch{return false}
+}
+
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp}
 })();
 
 // ============================================================
