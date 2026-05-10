@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.61.56';
+const APP_VERSION='2.61.57';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -71,9 +71,18 @@ const HEP_SEEDS = [
     pubkey: 'de484188af83bfad5cf0e9ad5c4e636e6ef00a986623bdecd9e13928fa24e59b',
     url: 'https://witness.thesitefit.com',
   },
-  // Michael's PC instance (LAN-only; trust anchor, no public bootstrap URL yet)
+  // Michael's PC instance. LAN-only (no public exposure), but reachable
+  // at http://127.0.0.1:3141 from a browser running on the same PC.
+  // Browsers treat localhost as a secure context, so an HTTPS-loaded
+  // app can fetch this URL despite mixed-content rules. For users
+  // without a local witness on this port, the fetch fails with
+  // 'connection refused' and the probe simply logs 'fetch failed' --
+  // harmless. For Michael (and anyone else running their own local
+  // witness for development), this gives a real signed-peer
+  // integration test against a slice-9-code witness.
   {
     pubkey: '726d682b9b3ea0874ff22049abb4a50f65d14fb42467cfe0874352a503fc40b6',
+    url: 'http://127.0.0.1:3141',
   },
   // Patrick's Pi instance (LAN-only; trust anchor, no public bootstrap URL yet)
   {

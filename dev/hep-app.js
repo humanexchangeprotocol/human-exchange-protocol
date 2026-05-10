@@ -4957,15 +4957,16 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // === PHASE B: PASSTHROUGH SIGNED-PEER VERIFICATION (slice B.3) ===
-  // Probes the first seeded witness with a bootstrap url, fetches
-  // /peers?signed=1, and verifies the signed envelope against the
-  // seed's pubkey. Logs the outcome without affecting app behavior:
-  // legacy responses, signature failures, and network errors are
-  // all observed-but-not-enforced. Phase C will flip the failure
-  // path from log to reject.
+  // Probes every seeded witness with a bootstrap url, fetches
+  // /peers?signed=1 from each, and verifies the signed envelope
+  // against that seed's pubkey. Logs the outcome per witness without
+  // affecting app behavior: legacy responses, signature failures, and
+  // network errors are all observed-but-not-enforced. Phase C will
+  // flip the failure path from log to reject.
   //
   // Runs once at boot, on a delay so it does not contend with the
   // initial UI render. Detached fire-and-forget; never throws.
+  // Each seeded witness is probed in parallel.
   //
   // Response-shape detection. Three known shapes from witnesses:
   //   1. Legacy /peers (v2.3.0 and current slice-4-9 legacy path):
@@ -4973,22 +4974,9 @@ const PAIR_CODE_LENGTH = 4;
   //   2. Signed /peers?signed=1 (slice 5):
   //      { server_pubkey, peers, as_of, signed_at, sequence, signature }
   //      -- object with hex-string signature field.
-  //   3. Bare array (some early hand-rolled witnesses):
-  //      [ {url, pubkey, ...}, ... ]
-  // The query string is silently ignored by v2.3.0 IONOS, so
-  // production traffic today returns shape 1. When IONOS upgrades
-  // to slice 5+, the same code path will receive shape 2 and verify.
-  async function checkSeedWitnessSignedPeers() {
-    if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) {
-      console.log('[phase-b] HEP_SEEDS not available; skipping');
-      return;
-    }
-    var seedsWithUrl = HEP_SEEDS.filter(function(s) { return s && s.url; });
-    if (seedsWithUrl.length === 0) {
-      console.log('[phase-b] no seeds with bootstrap URL; skipping');
-      return;
-    }
-    var seed = seedsWithUrl[0];
+  //   3. Bare array [ {url, pubkey, ...}, ... ] -- some hand-rolled
+  //      witnesses might still emit this. Defensive case.
+  async function probeOneSeed(seed) {
     var url = seed.url + '/peers?signed=1';
     try {
       var resp = await fetch(url, { method: 'GET' });
@@ -5022,6 +5010,22 @@ const PAIR_CODE_LENGTH = 4;
     } catch (err) {
       console.log('[phase-b] fetch failed for ' + seed.url + ': ' + (err && err.message ? err.message : err));
     }
+  }
+  async function checkSeedWitnessSignedPeers() {
+    if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) {
+      console.log('[phase-b] HEP_SEEDS not available; skipping');
+      return;
+    }
+    var seedsWithUrl = HEP_SEEDS.filter(function(s) { return s && s.url; });
+    if (seedsWithUrl.length === 0) {
+      console.log('[phase-b] no seeds with bootstrap URL; skipping');
+      return;
+    }
+    // Probe all seeded witnesses in parallel; per-seed logging happens
+    // inside probeOneSeed. Promise.all completes when every probe has
+    // resolved (each one swallows its own errors), so this never
+    // rejects.
+    await Promise.all(seedsWithUrl.map(probeOneSeed));
   }
 
   // === LAYER 4: Server Reputation Tracking ===
