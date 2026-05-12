@@ -4951,22 +4951,23 @@ const PAIR_CODE_LENGTH = 4;
 
   // === PHASE C.1: ATTESTATION SIGNATURE VERIFICATION ===
   // Look up the trusted Ed25519 pubkey for a witness URL, sourced from
-  // HEP_SEEDS (and, in later slices, from gossip-discovered peers signed
-  // into the trusted set by a seed witness). Returns null when the URL
-  // is not in the trusted set; submitWitness treats that as "verification
+  // the user's effective trust set (HEP_SEEDS plus any servers the
+  // user has added in Settings). Returns null when the URL is not in
+  // the trusted set; submitWitness treats that as "verification
   // skipped, user is talking to a witness they chose manually."
   //
   // URL normalization mirrors getWitnessUrl: trailing slash stripped,
   // case-insensitive scheme/host comparison.
   function getTrustedPubkeyForUrl(url) {
     if (!url || typeof url !== 'string') return null;
-    if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) return null;
+    var set = getEffectiveTrustSet();
+    if (!Array.isArray(set) || set.length === 0) return null;
     const normalized = url.trim().replace(/\/+$/, '').toLowerCase();
-    for (var i = 0; i < HEP_SEEDS.length; i++) {
-      var seed = HEP_SEEDS[i];
-      if (seed && seed.url && seed.pubkey) {
-        var seedUrl = seed.url.trim().replace(/\/+$/, '').toLowerCase();
-        if (seedUrl === normalized) return seed.pubkey;
+    for (var i = 0; i < set.length; i++) {
+      var entry = set[i];
+      if (entry && entry.url && entry.pubkey) {
+        var entryUrl = entry.url.trim().replace(/\/+$/, '').toLowerCase();
+        if (entryUrl === normalized) return entry.pubkey;
       }
     }
     return null;
@@ -5051,20 +5052,21 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
   async function checkSeedWitnessSignedPeers() {
-    if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) {
-      console.log('[phase-b] HEP_SEEDS not available; skipping');
+    var set = getEffectiveTrustSet();
+    if (!Array.isArray(set) || set.length === 0) {
+      console.log('[phase-b] effective trust set empty; skipping');
       return;
     }
-    var seedsWithUrl = HEP_SEEDS.filter(function(s) { return s && s.url; });
-    if (seedsWithUrl.length === 0) {
-      console.log('[phase-b] no seeds with bootstrap URL; skipping');
+    var entriesWithUrl = set.filter(function(s) { return s && s.url; });
+    if (entriesWithUrl.length === 0) {
+      console.log('[phase-b] no entries with bootstrap URL; skipping');
       return;
     }
-    // Probe all seeded witnesses in parallel; per-seed logging happens
-    // inside probeOneSeed. Promise.all completes when every probe has
-    // resolved (each one swallows its own errors), so this never
-    // rejects.
-    await Promise.all(seedsWithUrl.map(probeOneSeed));
+    // Probe all reachable witnesses in parallel; per-entry logging
+    // happens inside probeOneSeed. Promise.all completes when every
+    // probe has resolved (each one swallows its own errors), so this
+    // never rejects.
+    await Promise.all(entriesWithUrl.map(probeOneSeed));
   }
 
   // === LAYER 4: Server Reputation Tracking ===
@@ -5110,6 +5112,91 @@ const PAIR_CODE_LENGTH = 4;
     var rep = getServerReputation();
     if (!rep[url]) return SERVER_TRUST_INITIAL;
     return rep[url].trust;
+  }
+
+  // === USER-ADDED WITNESSES (Component 2 build, May 2026) ===
+  // Operator self-registration channel: an operator who has stood up a
+  // witness server adds its URL and pubkey here. The entry joins the
+  // user's effective trust set on top of HEP_SEEDS. In a later slice,
+  // these entries propagate to recipients via the share flow.
+  //
+  // Verification happens at add time: caller fetches /status from the
+  // URL, confirms server_pubkey matches what was entered, and only on
+  // match calls addUserWitness. Both pieces (URL and pubkey) must come
+  // from a source consistent with a live, signing witness; a single
+  // piece alone cannot land.
+  //
+  // Storage shape: localStorage array of { url, pubkey, addedAt }.
+  // Dedup by pubkey (server identity) and by url (an operator who
+  // re-registers with a new URL replaces the old entry).
+  const USER_WITNESSES_KEY = 'hep_user_witnesses';
+
+  function getUserWitnesses() {
+    try {
+      var raw = localStorage.getItem(USER_WITNESSES_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch(e) { return []; }
+  }
+
+  function saveUserWitnesses(list) {
+    try { localStorage.setItem(USER_WITNESSES_KEY, JSON.stringify(list)); } catch(e) {}
+  }
+
+  // Caller is responsible for /status verification before this is called.
+  function addUserWitness(url, pubkey) {
+    var list = getUserWitnesses();
+    var normUrl = String(url || '').trim().replace(/\/+$/, '');
+    var normPubkey = String(pubkey || '').trim().toLowerCase();
+    if (!normUrl || !normPubkey) return null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].pubkey === normPubkey || list[i].url === normUrl) {
+        list[i] = { url: normUrl, pubkey: normPubkey, addedAt: new Date().toISOString() };
+        saveUserWitnesses(list);
+        return list[i];
+      }
+    }
+    var entry = { url: normUrl, pubkey: normPubkey, addedAt: new Date().toISOString() };
+    list.push(entry);
+    saveUserWitnesses(list);
+    return entry;
+  }
+
+  function removeUserWitness(pubkey) {
+    var list = getUserWitnesses();
+    var normPubkey = String(pubkey || '').trim().toLowerCase();
+    var filtered = list.filter(function(w) { return w.pubkey !== normPubkey; });
+    saveUserWitnesses(filtered);
+    return filtered.length !== list.length;
+  }
+
+  // Effective trust set: HEP_SEEDS + user-added, deduplicated by pubkey
+  // with HEP_SEEDS winning on collision (a user-added entry cannot
+  // shadow a hardcoded trust anchor with a different URL). Each entry
+  // carries a source tag so UI and Phase B/C logging can distinguish
+  // seed vs user-added witnesses.
+  function getEffectiveTrustSet() {
+    var set = [];
+    var seenPubkeys = {};
+    if (typeof HEP_SEEDS !== 'undefined' && Array.isArray(HEP_SEEDS)) {
+      for (var i = 0; i < HEP_SEEDS.length; i++) {
+        var s = HEP_SEEDS[i];
+        if (s && s.pubkey) {
+          set.push({ url: s.url || null, pubkey: s.pubkey, source: 'seed' });
+          seenPubkeys[s.pubkey] = true;
+        }
+      }
+    }
+    var userList = getUserWitnesses();
+    for (var j = 0; j < userList.length; j++) {
+      var u = userList[j];
+      if (u && u.pubkey && !seenPubkeys[u.pubkey]) {
+        set.push({ url: u.url, pubkey: u.pubkey, source: 'user', addedAt: u.addedAt });
+        seenPubkeys[u.pubkey] = true;
+      }
+    }
+    return set;
   }
 
   async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
@@ -5301,15 +5388,16 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // retryPendingAttestations: walk the queue, attempt to attest each
-  // pending record against every trusted witness in HEP_SEEDS that has
-  // a bootstrap URL and isn't currently quarantined by reputation. The
-  // first witness to produce a verifiable attestation wins; later
-  // witnesses are skipped for that record. Called on boot (delayed
-  // past initial render) and on the 'online' window event. Idempotent
-  // and concurrent-safe: the same record attested in parallel by the
-  // live flow and the retry just produces two identical /witness POSTs,
-  // which the server's idempotency at /witness already handles
-  // (same mint_hash returns the same stored attestation).
+  // pending record against every trusted witness in the effective trust
+  // set (HEP_SEEDS + user-added) that has a bootstrap URL and isn't
+  // currently quarantined by reputation. The first witness to produce
+  // a verifiable attestation wins; later witnesses are skipped for
+  // that record. Called on boot (delayed past initial render) and on
+  // the 'online' window event. Idempotent and concurrent-safe: the
+  // same record attested in parallel by the live flow and the retry
+  // just produces two identical /witness POSTs, which the server's
+  // idempotency at /witness already handles (same mint_hash returns
+  // the same stored attestation).
   //
   // Cross-witness retry is what makes the queue self-healing. C.2.1
   // shipped retry against the configured witness only, which left
@@ -5325,21 +5413,21 @@ const PAIR_CODE_LENGTH = 4;
     var pending = getPendingAttestations();
     if (pending.length === 0) return;
 
-    // Build the candidate witness list: every HEP_SEEDS entry that has
-    // a bootstrap URL and isn't below the trust threshold. Order is
-    // HEP_SEEDS order, which is deterministic across phones running
-    // the same build (relevant later for cross-device convergence).
+    // Build the candidate witness list: every entry in the effective
+    // trust set (HEP_SEEDS + user-added) that has a bootstrap URL and
+    // isn't below the trust threshold. Order is deterministic across
+    // phones running the same build for the HEP_SEEDS portion; user
+    // additions follow in insertion order.
     var candidates = [];
-    if (typeof HEP_SEEDS !== 'undefined' && Array.isArray(HEP_SEEDS)) {
-      for (var s = 0; s < HEP_SEEDS.length; s++) {
-        var seed = HEP_SEEDS[s];
-        if (!seed || !seed.url || !seed.pubkey) continue;
-        var trust = getServerTrust(seed.url);
-        if (trust < SERVER_TRUST_THRESHOLD) {
-          continue; // quarantined locally
-        }
-        candidates.push({ url: seed.url, pubkey: seed.pubkey });
+    var trustSet = getEffectiveTrustSet();
+    for (var s = 0; s < trustSet.length; s++) {
+      var entry = trustSet[s];
+      if (!entry || !entry.url || !entry.pubkey) continue;
+      var trust = getServerTrust(entry.url);
+      if (trust < SERVER_TRUST_THRESHOLD) {
+        continue; // quarantined locally
       }
+      candidates.push({ url: entry.url, pubkey: entry.pubkey });
     }
     if (candidates.length === 0) {
       console.log('[attest-retry] no candidate witnesses available; skipping');
@@ -10587,6 +10675,125 @@ function init() {
     el.innerHTML = html;
   }
 
+  // === OPERATOR SURFACE HANDLERS (user-pluggable witness list) ===
+  // Visibility of the "Your witness server" tile is gated by an
+  // opt-in toggle so most users never see the cryptographic-string-
+  // typing UI. State is stored in localStorage. If the user has
+  // already added at least one server, the surface is auto-shown so
+  // they can manage what they added.
+  const OPERATOR_SURFACE_KEY = 'hep_show_operator_surface';
+
+  function getShowOperatorSurface() {
+    if (getUserWitnesses().length > 0) return true;
+    try {
+      return localStorage.getItem(OPERATOR_SURFACE_KEY) === '1';
+    } catch(e) { return false; }
+  }
+
+  function setShowOperatorSurface(on) {
+    try {
+      if (on) localStorage.setItem(OPERATOR_SURFACE_KEY, '1');
+      else localStorage.removeItem(OPERATOR_SURFACE_KEY);
+    } catch(e) {}
+  }
+
+  function toggleOperatorSurface() {
+    var current = getShowOperatorSurface();
+    if (current && getUserWitnesses().length > 0) {
+      toast('Remove your added servers first');
+      return;
+    }
+    setShowOperatorSurface(!current);
+    renderSettingsTab();
+  }
+
+  function openAddWitnessModal() {
+    var body = document.getElementById('add-witness-body');
+    if (!body) return;
+    body.innerHTML = ''
+      + '<div style="padding:0 4px;">'
+      + '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:18px;">Enter the public URL and Ed25519 public key of a witness server you run. The app will fetch the server\'s /status and confirm the key matches before adding.</div>'
+      + '<div style="margin-bottom:14px;">'
+      +   '<label style="display:block; font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:6px;">Server URL</label>'
+      +   '<input type="url" id="add-witness-url" placeholder="https://witness.example.org" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:16px; font-family:var(--mono); box-sizing:border-box;">'
+      + '</div>'
+      + '<div style="margin-bottom:14px;">'
+      +   '<label style="display:block; font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:6px;">Server public key</label>'
+      +   '<input type="text" id="add-witness-pubkey" placeholder="64-character hex string" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-family:var(--mono); box-sizing:border-box;">'
+      + '</div>'
+      + '<div id="add-witness-status" style="min-height:20px; font-size:var(--fs-sm); margin-bottom:14px; line-height:1.5;"></div>'
+      + '<button id="add-witness-submit" onclick="App.verifyAndAddWitness()" style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer;">Verify and add</button>'
+      + '</div>';
+    showModal('add-witness');
+  }
+
+  async function verifyAndAddWitness() {
+    var urlInput = document.getElementById('add-witness-url');
+    var pubkeyInput = document.getElementById('add-witness-pubkey');
+    var statusEl = document.getElementById('add-witness-status');
+    var submitBtn = document.getElementById('add-witness-submit');
+    if (!urlInput || !pubkeyInput || !statusEl || !submitBtn) return;
+
+    var url = urlInput.value.trim().replace(/\/+$/, '');
+    var pubkey = pubkeyInput.value.trim().toLowerCase();
+
+    statusEl.textContent = '';
+    statusEl.style.color = '';
+
+    if (!url) { statusEl.textContent = 'Enter a server URL'; statusEl.style.color = 'var(--red)'; return; }
+    if (!/^https?:\/\//i.test(url)) { statusEl.textContent = 'URL must start with http:// or https://'; statusEl.style.color = 'var(--red)'; return; }
+    if (!pubkey) { statusEl.textContent = 'Enter the server public key'; statusEl.style.color = 'var(--red)'; return; }
+    if (!/^[0-9a-f]{64}$/i.test(pubkey)) { statusEl.textContent = 'Public key must be 64 hex characters'; statusEl.style.color = 'var(--red)'; return; }
+
+    statusEl.textContent = 'Verifying\u2026';
+    statusEl.style.color = 'var(--text-dim)';
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '0.6';
+
+    try {
+      var resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) {
+        statusEl.textContent = 'Server responded with HTTP ' + resp.status;
+        statusEl.style.color = 'var(--red)';
+        return;
+      }
+      var data = await resp.json();
+      if (!data || typeof data.server_pubkey !== 'string') {
+        statusEl.textContent = 'Server response missing server_pubkey';
+        statusEl.style.color = 'var(--red)';
+        return;
+      }
+      var serverPubkey = data.server_pubkey.trim().toLowerCase();
+      if (serverPubkey !== pubkey) {
+        statusEl.textContent = 'Key does not match. Server reported: ' + serverPubkey.substring(0,16) + '\u2026';
+        statusEl.style.color = 'var(--red)';
+        return;
+      }
+
+      addUserWitness(url, pubkey);
+      statusEl.textContent = 'Verified. Server added.';
+      statusEl.style.color = 'var(--green)';
+      setTimeout(function() {
+        closeModal('add-witness');
+        renderSettingsTab();
+      }, 700);
+    } catch(e) {
+      var msg = (e && e.message) ? e.message : 'unknown error';
+      if (e && e.name === 'TimeoutError') msg = 'Request timed out after 8 seconds';
+      statusEl.textContent = 'Could not reach server: ' + msg;
+      statusEl.style.color = 'var(--red)';
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+    }
+  }
+
+  function confirmRemoveWitness(pubkey) {
+    if (!confirm('Remove this server from your trust set? You can add it again later.')) return;
+    removeUserWitness(pubkey);
+    renderSettingsTab();
+  }
+
   function renderSettingsTab() {
     var el = document.getElementById('tab-settings-content');
     if (!el) return;
@@ -10639,6 +10846,57 @@ function init() {
     html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Witness server</div><div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Checking\u2026</div></div>';
     html += '<button aria-label="Re-check connection" style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); padding:6px 12px; font-size:16px; cursor:pointer; line-height:1;" onclick="App.checkWitnessStatus()">\u21bb</button>';
     html += '</div></div>';
+
+    // Your witness server — operator self-registration surface.
+    // Gated by an opt-in toggle so the cryptographic-string-typing UI
+    // doesn't appear for users who aren't running a server. If the
+    // user has already added one or more servers, the section is
+    // shown unconditionally so they can still see and manage them.
+    var showOperatorSurface = getShowOperatorSurface();
+    var userWitnesses = getUserWitnesses();
+    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Your witness server</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">I run a witness server</div><div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Register a server you operate</div></div>';
+    html += '<div class="switch ' + (showOperatorSurface ? 'on' : '') + '" id="switch-operator-surface" onclick="App.toggleOperatorSurface()"></div>';
+    html += '</div>';
+
+    if (showOperatorSurface) {
+      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
+      html += 'Add the address and public key of a witness server you run. The app verifies the key against the live server before adding. Servers you add here are counted as trusted alongside the default trust set.';
+      html += '</div>';
+
+      if (userWitnesses.length === 0) {
+        html += '<button style="width:100%; padding:12px; background:var(--accent); border:none; border-radius:var(--radius-sm); color:var(--bg); font-size:var(--fs-sm); font-weight:500; margin-top:14px; cursor:pointer;" onclick="App.openAddWitnessModal()">+ Add server</button>';
+      } else {
+        // List user-added witnesses
+        html += '<div style="margin-top:14px;">';
+        for (var i = 0; i < userWitnesses.length; i++) {
+          var w = userWitnesses[i];
+          var host = '';
+          try { host = new URL(w.url).host; } catch(e) { host = w.url; }
+          var keyShort = (w.pubkey || '').substring(0, 16);
+          var added = '';
+          try {
+            var d = new Date(w.addedAt);
+            if (!isNaN(d)) added = 'Added ' + d.toLocaleDateString();
+          } catch(e) {}
+          html += '<div style="padding:12px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:10px;">';
+          html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">';
+          html += '<div style="flex:1; min-width:0;">';
+          html += '<div style="font-size:var(--fs-sm); color:var(--text); font-weight:500; word-break:break-all;">' + esc(host) + '</div>';
+          html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); font-family:var(--mono); margin-top:4px; word-break:break-all;">key ' + esc(keyShort) + '\u2026</div>';
+          if (added) html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:4px;">' + esc(added) + '</div>';
+          html += '</div>';
+          html += '<button style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--red); padding:6px 10px; font-size:var(--fs-xs); cursor:pointer; flex-shrink:0;" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button>';
+          html += '</div>';
+          html += '</div>';
+        }
+        html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-top:4px; cursor:pointer;" onclick="App.openAddWitnessModal()">+ Add another</button>';
+        html += '</div>';
+      }
+    }
+    html += '</div>';
 
     // Install to home screen (prominent)
     html += '<div style="margin-bottom:16px;">';
@@ -10850,6 +11108,7 @@ function init() {
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
     checkWitnessStatus,
+    toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
