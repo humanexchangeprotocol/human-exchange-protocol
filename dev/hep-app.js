@@ -4949,6 +4949,41 @@ const PAIR_CODE_LENGTH = 4;
     return raw;
   }
 
+  // === PHASE C.1: ATTESTATION SIGNATURE VERIFICATION ===
+  // Look up the trusted Ed25519 pubkey for a witness URL, sourced from
+  // HEP_SEEDS (and, in later slices, from gossip-discovered peers signed
+  // into the trusted set by a seed witness). Returns null when the URL
+  // is not in the trusted set; submitWitness treats that as "verification
+  // skipped, user is talking to a witness they chose manually."
+  //
+  // URL normalization mirrors getWitnessUrl: trailing slash stripped,
+  // case-insensitive scheme/host comparison.
+  function getTrustedPubkeyForUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    if (typeof HEP_SEEDS === 'undefined' || !Array.isArray(HEP_SEEDS)) return null;
+    const normalized = url.trim().replace(/\/+$/, '').toLowerCase();
+    for (var i = 0; i < HEP_SEEDS.length; i++) {
+      var seed = HEP_SEEDS[i];
+      if (seed && seed.url && seed.pubkey) {
+        var seedUrl = seed.url.trim().replace(/\/+$/, '').toLowerCase();
+        if (seedUrl === normalized) return seed.pubkey;
+      }
+    }
+    return null;
+  }
+
+  // Phase C.1 ships in observe-only mode: verification runs on every
+  // attestation against real production traffic, the result is logged
+  // with [phase-c] tags, but the attestation is stored regardless of
+  // verdict and reputation is not touched on failure. Flipping this to
+  // true rejects unverified attestations (no witnessAttestation stored,
+  // record stays as a valid local-only mint) and records the failure
+  // against the server's reputation. Pattern follows the May 7
+  // Phase B observe-before-enforce cycle pinned in registry under
+  // "Observe before enforce."
+  const PHASE_C_ENFORCE = false;
+
+
   // Wrapper for all server fetch calls - adds headers needed for tunneling services
   function serverFetch(url, opts) {
     opts = opts || {};
@@ -5131,6 +5166,37 @@ const PAIR_CODE_LENGTH = 4;
       const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none');
       const rttMs = Date.now() - rttStart;
       if (attestation && attestation.witnessed) {
+        // === PHASE C.1: VERIFY THE WITNESS SIGNATURE ===
+        // Look up the trusted pubkey for the witness we just spoke to.
+        // Build the same UTF-8 message the witness signed
+        // (mint_hash + ':' + server_timestamp), verify the Ed25519
+        // signature against the trusted pubkey. Behavior is gated on
+        // PHASE_C_ENFORCE (defined near getWitnessUrl above): observe-
+        // only logs and stores regardless; enforce mode rejects on
+        // failure and records server reputation hit.
+        const witnessUrl = getWitnessUrl();
+        const expectedPubkey = getTrustedPubkeyForUrl(witnessUrl);
+        if (!expectedPubkey) {
+          console.log('[phase-c] no trusted pubkey for ' + witnessUrl + '; verification skipped');
+        } else if (typeof attestation.server_signature !== 'string' || typeof attestation.server_timestamp === 'undefined') {
+          console.warn('[phase-c] attestation from ' + witnessUrl + ' is missing signature or timestamp fields');
+          if (PHASE_C_ENFORCE) {
+            recordServerFailure(witnessUrl, 'malformed attestation');
+            return false;
+          }
+        } else {
+          const verifyMessage = mintHash + ':' + attestation.server_timestamp;
+          const verified = await HCP.verifyWitnessAttestation(verifyMessage, attestation.server_signature, expectedPubkey);
+          if (verified) {
+            console.log('[phase-c] OK signature verified on attestation from ' + witnessUrl);
+          } else {
+            console.warn('[phase-c] SIGNATURE FAILED on attestation from ' + witnessUrl + ' against pubkey ' + expectedPubkey.substring(0, 16) + '...');
+            if (PHASE_C_ENFORCE) {
+              recordServerFailure(witnessUrl, 'invalid signature on attestation');
+              return false;
+            }
+          }
+        }
         record.witnessAttestation = {
           server_pubkey: attestation.server_pubkey,
           server_timestamp: attestation.server_timestamp,

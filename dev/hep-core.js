@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.61.57';
+const APP_VERSION='2.61.58';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -585,7 +585,35 @@ async function vwp(payload,publicKeyHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp}
+// --- Witness attestation verification (Phase C, slice C.1) ---
+// The /witness endpoint signs a plain UTF-8 string of the form
+// `mint_hash + ':' + server_timestamp`, not a canonical-JSON envelope.
+// Distinct from vwp above (which verifies envelope-style /peers
+// responses). Same Ed25519 primitive, different message bytes.
+//
+// Witness server reference: server.js sign() uses nacl.sign.detached
+// over naclUtil.decodeUTF8(message), producing a 64-byte signature
+// returned as hex. Client must reproduce the exact UTF-8 bytes; both
+// sides coerce integer timestamps to decimal strings via JS '+' coercion.
+//
+// vws returns Promise<boolean>. Inputs: the message string, the hex
+// signature, and the hex-encoded 32-byte Ed25519 public key of the
+// expected witness.
+async function vws(msg,sigHex,pubHex){
+  if(typeof msg!=='string')return false;
+  if(typeof sigHex!=='string'||!/^[0-9a-f]+$/i.test(sigHex))return false;
+  if(typeof pubHex!=='string'||!/^[0-9a-f]{64}$/i.test(pubHex))return false;
+  try{
+    const sigBuf=htb(sigHex);
+    if(sigBuf.byteLength!==64)return false;
+    const pubBuf=htb(pubHex);
+    if(pubBuf.byteLength!==32)return false;
+    const pubKey=await crypto.subtle.importKey('raw',pubBuf,{name:'Ed25519'},false,['verify']);
+    return await crypto.subtle.verify('Ed25519',pubKey,sigBuf,u8.encode(msg));
+  }catch{return false}
+}
+
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================
