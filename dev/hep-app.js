@@ -5161,7 +5161,14 @@ const PAIR_CODE_LENGTH = 4;
     } catch(e) { return null; }
   }
 
-  async function submitWitness(record, counterpartyPub) {
+  // submitWitnessOnce: a single attestation attempt with verification.
+  // Returns true if the witness produced a verifiable attestation that
+  // was attached to the record, false otherwise. Used by both the live
+  // exchange flow (via the submitWitness wrapper below) and the deferred
+  // retry loop (retryPendingAttestations). Does NOT enqueue on failure;
+  // the wrapper handles that for the live path, and the retry path
+  // manages its own queue.
+  async function submitWitnessOnce(record, counterpartyPub) {
     try {
       const mintHash = await HCP.computeMintHash(state.publicKeyJwk, counterpartyPub, record.timestamp);
       const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(state.publicKeyJwk)))));
@@ -5219,6 +5226,146 @@ const PAIR_CODE_LENGTH = 4;
     } catch(e) { console.log('[witness] Submit failed:', e.message); }
     return false;
   }
+
+  // submitWitness: live-path entry point. Tries once via submitWitnessOnce,
+  // and on failure enqueues the record for asynchronous retry. The retry
+  // queue persists across app restarts and is walked on boot and on
+  // every 'online' window event, so a record whose attestation didn't
+  // land at exchange time eventually catches up the next time any
+  // witness in the trusted set is reachable.
+  //
+  // Refinement from the May 12 design conversation: failures stop being
+  // terminal. The local-only mint is a valid record on both phones'
+  // chains the moment they sign it; the witness attestation is an
+  // additive overlay that can land at any later moment, from any
+  // witness, on either phone's timeline independently. Multi-witness
+  // attestation later in the roadmap composes naturally: each pending
+  // entry collects signatures from multiple witnesses over time.
+  async function submitWitness(record, counterpartyPub) {
+    const ok = await submitWitnessOnce(record, counterpartyPub);
+    if (!ok) {
+      enqueuePendingAttestation(record, counterpartyPub);
+    }
+    return ok;
+  }
+
+  // === PENDING ATTESTATIONS QUEUE ===
+  // Records whose witness attestation didn't land at exchange time are
+  // queued here for asynchronous retry. localStorage-persisted so the
+  // queue survives app restarts.
+  //
+  // Entry shape:
+  //   recordTimestamp:  number, primary key (matches record.timestamp)
+  //   counterpartyJwk:  object, the counterparty pubkey JWK needed to
+  //                     recompute mintHash for resubmission
+  //   firstAttemptAt:   ISO date, when the entry was first enqueued
+  //   lastAttemptAt:    ISO date | null, last retry attempt
+  //   attempts:         number, count of retry attempts
+  //
+  // The chain record itself remains canonical for the exchange data.
+  // This queue holds only what's needed to re-derive the mintHash and
+  // resubmit. When attestation lands, the witnessAttestation field is
+  // written to the chain record and the queue entry is removed.
+
+  const PENDING_ATTESTATIONS_KEY = 'hep_pending_attestations';
+
+  function getPendingAttestations() {
+    try {
+      var raw = localStorage.getItem(PENDING_ATTESTATIONS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch(e) { return []; }
+  }
+
+  function setPendingAttestations(list) {
+    try { localStorage.setItem(PENDING_ATTESTATIONS_KEY, JSON.stringify(list)); } catch(e) {}
+  }
+
+  function enqueuePendingAttestation(record, counterpartyPub) {
+    if (!record || typeof record.timestamp !== 'number' || !counterpartyPub) return;
+    var list = getPendingAttestations();
+    // De-duplicate: a record only needs one queue entry, even if it
+    // failed multiple times during the live flow.
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].recordTimestamp === record.timestamp) return;
+    }
+    list.push({
+      recordTimestamp: record.timestamp,
+      counterpartyJwk: counterpartyPub,
+      firstAttemptAt: new Date().toISOString(),
+      lastAttemptAt: null,
+      attempts: 0,
+    });
+    setPendingAttestations(list);
+    console.log('[attest-queue] enqueued record ts=' + record.timestamp + '; queue size=' + list.length);
+  }
+
+  // retryPendingAttestations: walk the queue, attempt to attest each
+  // pending record against the currently-configured witness. Called on
+  // boot (delayed past initial render) and on the 'online' window event.
+  // Idempotent and concurrent-safe enough: the same record being attested
+  // in parallel by the live flow and the retry loop just produces two
+  // identical attestation submissions, which the witness's idempotency
+  // logic at /witness already handles (same mint_hash returns the same
+  // stored attestation).
+  async function retryPendingAttestations() {
+    if (!navigator.onLine) {
+      console.log('[attest-retry] offline; skipping');
+      return;
+    }
+    var pending = getPendingAttestations();
+    if (pending.length === 0) return;
+
+    console.log('[attest-retry] walking queue, ' + pending.length + ' record(s) pending');
+
+    var succeeded = 0;
+    var remaining = [];
+
+    for (var i = 0; i < pending.length; i++) {
+      var entry = pending[i];
+      // Find the chain record by timestamp. Chain records are immutable
+      // once appended, so timestamp is a stable key.
+      var record = null;
+      for (var j = 0; j < state.chain.length; j++) {
+        if (state.chain[j].timestamp === entry.recordTimestamp) {
+          record = state.chain[j];
+          break;
+        }
+      }
+      if (!record) {
+        console.warn('[attest-retry] no chain record for ts=' + entry.recordTimestamp + '; dropping queue entry');
+        continue;
+      }
+      if (record.witnessAttestation) {
+        // Already attested through some other path. Drop the entry.
+        continue;
+      }
+
+      entry.attempts = (entry.attempts || 0) + 1;
+      entry.lastAttemptAt = new Date().toISOString();
+
+      var ok = await submitWitnessOnce(record, entry.counterpartyJwk);
+      if (ok) {
+        succeeded++;
+      } else {
+        remaining.push(entry);
+      }
+    }
+
+    setPendingAttestations(remaining);
+    if (succeeded > 0) {
+      console.log('[attest-retry] ' + succeeded + ' attestation(s) caught up; ' + remaining.length + ' still pending');
+      try { if (typeof refreshHome === 'function') refreshHome(); } catch(e) {}
+    }
+  }
+
+  // Re-attempt pending attestations when the browser reports we have
+  // network again. Catches the case where the user has the app open and
+  // moves from offline to online; without this, the queue would only
+  // get walked on next app launch.
+  window.addEventListener('online', function() {
+    console.log('[attest-retry] online event; walking queue');
+    retryPendingAttestations();
+  });
 
   // ==========================================================
   // GENESIS PING — Proof-of-Human Heartbeat
@@ -6587,6 +6734,12 @@ function init() {
     // not contend with initial UI render. Fire-and-forget; the
     // function swallows its own errors.
     setTimeout(function() { checkSeedWitnessSignedPeers(); }, 5000);
+    // C.2.1 deferred attestation retry: walk the pending-attestations
+    // queue and resubmit each record to the currently-configured
+    // witness. Delayed by 7s so it runs after Phase B has had a chance
+    // to confirm the witness is reachable. Fire-and-forget; the
+    // function swallows its own errors.
+    setTimeout(function() { retryPendingAttestations(); }, 7000);
   }
   
   // After setup completes, check for guided intro
