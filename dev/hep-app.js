@@ -5112,8 +5112,8 @@ const PAIR_CODE_LENGTH = 4;
     return rep[url].trust;
   }
 
-  async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig) {
-    const url = getWitnessUrl();
+  async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
+    const url = urlOverride || getWitnessUrl();
     if (!url) return null;
     try {
       const resp = await serverFetch(url + '/witness', {
@@ -5168,13 +5168,15 @@ const PAIR_CODE_LENGTH = 4;
   // retry loop (retryPendingAttestations). Does NOT enqueue on failure;
   // the wrapper handles that for the live path, and the retry path
   // manages its own queue.
-  async function submitWitnessOnce(record, counterpartyPub) {
+  async function submitWitnessOnce(record, counterpartyPub, witnessUrlOverride) {
     try {
+      const witnessUrl = witnessUrlOverride || getWitnessUrl();
+      if (!witnessUrl) return false;
       const mintHash = await HCP.computeMintHash(state.publicKeyJwk, counterpartyPub, record.timestamp);
       const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(state.publicKeyJwk)))));
       const pubB = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(counterpartyPub)))));
       const rttStart = Date.now();
-      const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none');
+      const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none', witnessUrl);
       const rttMs = Date.now() - rttStart;
       if (attestation && attestation.witnessed) {
         // === PHASE C.1: VERIFY THE WITNESS SIGNATURE ===
@@ -5185,7 +5187,6 @@ const PAIR_CODE_LENGTH = 4;
         // PHASE_C_ENFORCE (defined near getWitnessUrl above): observe-
         // only logs and stores regardless; enforce mode rejects on
         // failure and records server reputation hit.
-        const witnessUrl = getWitnessUrl();
         const expectedPubkey = getTrustedPubkeyForUrl(witnessUrl);
         if (!expectedPubkey) {
           console.log('[phase-c] no trusted pubkey for ' + witnessUrl + '; verification skipped');
@@ -5220,7 +5221,7 @@ const PAIR_CODE_LENGTH = 4;
         // and with its normal timestamp subtitle. This is the visible
         // settle moment for the user.
         try { if (typeof refreshHome === 'function') refreshHome(); } catch(rhe) {}
-        console.log('[witness] Attestation received:', mintHash.substring(0, 16) + '...');
+        console.log('[witness] Attestation received from ' + witnessUrl + ':', mintHash.substring(0, 16) + '...');
         return true;
       }
     } catch(e) { console.log('[witness] Submit failed:', e.message); }
@@ -5300,13 +5301,22 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // retryPendingAttestations: walk the queue, attempt to attest each
-  // pending record against the currently-configured witness. Called on
-  // boot (delayed past initial render) and on the 'online' window event.
-  // Idempotent and concurrent-safe enough: the same record being attested
-  // in parallel by the live flow and the retry loop just produces two
-  // identical attestation submissions, which the witness's idempotency
-  // logic at /witness already handles (same mint_hash returns the same
-  // stored attestation).
+  // pending record against every trusted witness in HEP_SEEDS that has
+  // a bootstrap URL and isn't currently quarantined by reputation. The
+  // first witness to produce a verifiable attestation wins; later
+  // witnesses are skipped for that record. Called on boot (delayed
+  // past initial render) and on the 'online' window event. Idempotent
+  // and concurrent-safe: the same record attested in parallel by the
+  // live flow and the retry just produces two identical /witness POSTs,
+  // which the server's idempotency at /witness already handles
+  // (same mint_hash returns the same stored attestation).
+  //
+  // Cross-witness retry is what makes the queue self-healing. C.2.1
+  // shipped retry against the configured witness only, which left
+  // records stuck if that single witness was permanently dead. C.2.2
+  // (this slice) iterates the full trusted set, so as long as ANY
+  // trusted witness is reachable, every pending record catches up
+  // eventually.
   async function retryPendingAttestations() {
     if (!navigator.onLine) {
       console.log('[attest-retry] offline; skipping');
@@ -5315,15 +5325,34 @@ const PAIR_CODE_LENGTH = 4;
     var pending = getPendingAttestations();
     if (pending.length === 0) return;
 
-    console.log('[attest-retry] walking queue, ' + pending.length + ' record(s) pending');
+    // Build the candidate witness list: every HEP_SEEDS entry that has
+    // a bootstrap URL and isn't below the trust threshold. Order is
+    // HEP_SEEDS order, which is deterministic across phones running
+    // the same build (relevant later for cross-device convergence).
+    var candidates = [];
+    if (typeof HEP_SEEDS !== 'undefined' && Array.isArray(HEP_SEEDS)) {
+      for (var s = 0; s < HEP_SEEDS.length; s++) {
+        var seed = HEP_SEEDS[s];
+        if (!seed || !seed.url || !seed.pubkey) continue;
+        var trust = getServerTrust(seed.url);
+        if (trust < SERVER_TRUST_THRESHOLD) {
+          continue; // quarantined locally
+        }
+        candidates.push({ url: seed.url, pubkey: seed.pubkey });
+      }
+    }
+    if (candidates.length === 0) {
+      console.log('[attest-retry] no candidate witnesses available; skipping');
+      return;
+    }
+
+    console.log('[attest-retry] walking queue, ' + pending.length + ' record(s) pending, ' + candidates.length + ' candidate(s)');
 
     var succeeded = 0;
     var remaining = [];
 
     for (var i = 0; i < pending.length; i++) {
       var entry = pending[i];
-      // Find the chain record by timestamp. Chain records are immutable
-      // once appended, so timestamp is a stable key.
       var record = null;
       for (var j = 0; j < state.chain.length; j++) {
         if (state.chain[j].timestamp === entry.recordTimestamp) {
@@ -5343,8 +5372,18 @@ const PAIR_CODE_LENGTH = 4;
       entry.attempts = (entry.attempts || 0) + 1;
       entry.lastAttemptAt = new Date().toISOString();
 
-      var ok = await submitWitnessOnce(record, entry.counterpartyJwk);
-      if (ok) {
+      // Try each candidate until one produces a verifiable attestation
+      // or all of them fail. The first success short-circuits.
+      var attested = false;
+      for (var c = 0; c < candidates.length; c++) {
+        var ok = await submitWitnessOnce(record, entry.counterpartyJwk, candidates[c].url);
+        if (ok) {
+          attested = true;
+          break;
+        }
+      }
+
+      if (attested) {
         succeeded++;
       } else {
         remaining.push(entry);
