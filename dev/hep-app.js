@@ -4981,7 +4981,11 @@ const PAIR_CODE_LENGTH = 4;
   // against the server's reputation. Pattern follows the May 7
   // Phase B observe-before-enforce cycle pinned in registry under
   // "Observe before enforce."
-  const PHASE_C_ENFORCE = false;
+  //
+  // Flipped to true in v2.61.59 (slice C.1.1) after the May 12
+  // validation exchange logged a clean [phase-c] OK against IONOS
+  // production traffic on v2.61.58.
+  const PHASE_C_ENFORCE = true;
 
 
   // Wrapper for all server fetch calls - adds headers needed for tunneling services
