@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.61.61';
+const APP_VERSION='2.61.62';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -70,6 +70,32 @@ const HEP_SEEDS = [
   {
     pubkey: 'de484188af83bfad5cf0e9ad5c4e636e6ef00a986623bdecd9e13928fa24e59b',
     url: 'https://witness.thesitefit.com',
+  },
+  // IONOS witness-2 through witness-5: additional instances on the same
+  // VPS (108.175.13.197), each on its own port behind nginx with a
+  // DuckDNS subdomain and Let's Encrypt cert. Shipped May 12, 2026 as
+  // the multi-witness testbed. Not real decentralization (same VPS,
+  // same operator, same network), but real protocol-level multi-witness
+  // for testing rotation, deferred attestation queue retry, gossip, and
+  // multi-witness attestation. Each instance has a distinct keypair
+  // and produces independent signatures. As community-operated
+  // witnesses come online on different infrastructure, these are
+  // candidates for retirement.
+  {
+    pubkey: '21214fb745c23a573445c4f3d501df58d29c0ba0a30d2f53bbcf2c485e9affe3',
+    url: 'https://hepwitness2.duckdns.org',
+  },
+  {
+    pubkey: 'd52e9f1d5b1a4ff48be82f703a37bcaffe542441fd91bda46e605d5f30abbca1',
+    url: 'https://hepwitness3.duckdns.org',
+  },
+  {
+    pubkey: '60a7bbbbcdedd5401f5347ed0677ff0b7d6b6d9bff95b8af163831e427c93c52',
+    url: 'https://hepwitness4.duckdns.org',
+  },
+  {
+    pubkey: 'a5de62413185a63c4fb9574cb9c57dde66a796a2068f6e731f1726a559486625',
+    url: 'https://hepwitness5.duckdns.org',
   },
   // Michael's PC instance. LAN-only (no public exposure), but reachable
   // at http://127.0.0.1:3141 from a browser running on the same PC.
