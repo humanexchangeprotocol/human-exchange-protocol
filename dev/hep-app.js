@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.62.3
+// APPLICATION LAYER v2.62.4
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -5248,42 +5248,27 @@ const PAIR_CODE_LENGTH = 4;
     return url + separator + 'hw=' + encoded;
   }
 
-  // === SLICE 6: WITNESS SUGGESTIONS RECEIVE + CONSENT (May 13, 2026) ===
+  // === SLICE 6: WITNESS SUGGESTIONS SILENT MERGE (May 13, 2026) ===
   // When the app boots with a '?hw=' query param, decode the suggestion
-  // list and stash it in localStorage. A consent modal fires once the
-  // user has a chain (so the prompt is meaningful and not interrupting
-  // setup). Suggestions are never auto-merged: the user must explicitly
-  // accept each one, and every accepted entry is independently
-  // re-verified via /status on the recipient side before being added
-  // to their trust set. A tampered share carrying a fake URL+pubkey
-  // pair fails verification at the recipient and is not added.
+  // list and silently verify-and-add each entry to the user's trust set.
+  // No consent UI: per the project's "surfaces that satisfy designer
+  // concern rather than user need" principle, asking a new user to
+  // approve "witness servers" raises friction without giving them any
+  // basis for a real decision. The verification at use (every /status
+  // probe, every signed-peer check) is what protects them, not a one-
+  // shot modal at add-time.
   //
-  // Storage shape: array of { u: url, p: pubkey }.
-  const PENDING_SUGGESTIONS_KEY = 'hep_pending_witness_suggestions';
-
-  function getPendingWitnessSuggestions() {
-    try {
-      var raw = localStorage.getItem(PENDING_SUGGESTIONS_KEY);
-      if (!raw) return [];
-      var parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch(e) { return []; }
-  }
-
-  function setPendingWitnessSuggestions(list) {
-    try { localStorage.setItem(PENDING_SUGGESTIONS_KEY, JSON.stringify(list || [])); } catch(e) {}
-  }
-
-  function clearPendingWitnessSuggestions() {
-    try { localStorage.removeItem(PENDING_SUGGESTIONS_KEY); } catch(e) {}
-  }
-
-  // Decode a base64url-encoded suggestion payload (from a share URL's
-  // '?hw=' param) and merge with any already-pending suggestions, keeping
-  // the most recently received version of each pubkey. Tolerates malformed
-  // payloads silently: a bad share should never crash the app.
+  // Each entry runs the same /status + pubkey-match check used by the
+  // Settings-UI verifyAndAddWitness. On match: added via addUserWitness
+  // (which dedupes by pubkey, so a re-share with a refreshed entry
+  // overwrites the older one). On failure: silently dropped. A tampered
+  // share carrying a fake URL+pubkey pair fails at the recipient and is
+  // not added.
+  //
+  // Entries already in HEP_SEEDS or the user-added list are skipped.
   function ingestWitnessSuggestionsFromShareParam(encoded) {
     if (!encoded || typeof encoded !== 'string') return;
+    var clean;
     try {
       // base64url decode (reverse of encoder)
       var base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
@@ -5292,7 +5277,7 @@ const PAIR_CODE_LENGTH = 4;
       var parsed = JSON.parse(json);
       if (!Array.isArray(parsed)) return;
       // Validate each entry: url must look like http(s), pubkey 64 hex.
-      var clean = [];
+      clean = [];
       for (var i = 0; i < parsed.length; i++) {
         var entry = parsed[i];
         if (!entry || typeof entry !== 'object') continue;
@@ -5302,38 +5287,59 @@ const PAIR_CODE_LENGTH = 4;
         if (!/^[0-9a-f]{64}$/.test(p)) continue;
         clean.push({ u: u, p: p });
       }
-      if (clean.length === 0) return;
-      // Merge with existing pending: dedupe by pubkey, new entries win.
-      var existing = getPendingWitnessSuggestions();
-      var byPubkey = {};
-      for (var j = 0; j < existing.length; j++) byPubkey[existing[j].p] = existing[j];
-      for (var k = 0; k < clean.length; k++) byPubkey[clean[k].p] = clean[k];
-      var merged = Object.keys(byPubkey).map(function(pk) { return byPubkey[pk]; });
-      setPendingWitnessSuggestions(merged);
-      console.log('[slice-6] Ingested ' + clean.length + ' witness suggestion(s) from share URL');
     } catch(e) {
-      console.log('[slice-6] ingestWitnessSuggestionsFromShareParam failed:', e.message);
+      console.log('[slice-6] decode failed:', e.message);
+      return;
     }
+    if (!clean || clean.length === 0) return;
+    // Filter out entries already in the effective trust set.
+    var trusted = {};
+    var effective = getEffectiveTrustSet();
+    for (var t = 0; t < effective.length; t++) trusted[effective[t].pubkey] = true;
+    var toVerify = clean.filter(function(s) { return !trusted[s.p]; });
+    if (toVerify.length === 0) {
+      console.log('[slice-6] All ' + clean.length + ' suggestion(s) already trusted; nothing to do.');
+      return;
+    }
+    console.log('[slice-6] Silent-verifying ' + toVerify.length + ' witness suggestion(s) from share URL');
+    // Fire and forget. Each verify is independent; failures don't block
+    // siblings. Logged for debugging, no UI surface.
+    toVerify.forEach(function(s) {
+      silentVerifyAndAddWitness(s.u, s.p).catch(function(e) {
+        console.log('[slice-6] verify failed for ' + s.u + ':', e && e.message ? e.message : e);
+      });
+    });
   }
 
-  // Filter pending suggestions by trust-set state. Returns an object:
-  //   { fresh: [...], alreadyTrusted: [...] }
-  // 'alreadyTrusted' entries match a pubkey in HEP_SEEDS or the user's
-  // user-added list. 'fresh' entries are net-new and require consent.
-  function categorizePendingSuggestions() {
-    var trustedPubkeys = {};
-    var effective = getEffectiveTrustSet();
-    for (var i = 0; i < effective.length; i++) {
-      trustedPubkeys[effective[i].pubkey] = true;
+  // Pure verification + add. Returns Promise<bool> for success.
+  // Same /status + pubkey-match check used by the Settings UI's
+  // verifyAndAddWitness, without DOM coupling.
+  async function silentVerifyAndAddWitness(url, pubkey) {
+    try {
+      var resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) {
+        console.log('[slice-6] ' + url + ' returned HTTP ' + resp.status);
+        return false;
+      }
+      var data = await resp.json();
+      if (!data || typeof data.server_pubkey !== 'string') {
+        console.log('[slice-6] ' + url + ' /status missing server_pubkey');
+        return false;
+      }
+      var serverPubkey = data.server_pubkey.trim().toLowerCase();
+      if (serverPubkey !== pubkey) {
+        console.log('[slice-6] ' + url + ' pubkey mismatch (got ' + serverPubkey.substring(0,16) + '...)');
+        return false;
+      }
+      addUserWitness(url, pubkey);
+      console.log('[slice-6] Added ' + url + ' (' + pubkey.substring(0,12) + '...) to trust set');
+      return true;
+    } catch(e) {
+      var msg = (e && e.message) ? e.message : 'unknown';
+      if (e && e.name === 'TimeoutError') msg = 'timeout';
+      console.log('[slice-6] ' + url + ' unreachable: ' + msg);
+      return false;
     }
-    var pending = getPendingWitnessSuggestions();
-    var fresh = [], alreadyTrusted = [];
-    for (var j = 0; j < pending.length; j++) {
-      var s = pending[j];
-      if (trustedPubkeys[s.p]) alreadyTrusted.push(s);
-      else fresh.push(s);
-    }
-    return { fresh: fresh, alreadyTrusted: alreadyTrusted };
   }
 
   async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
@@ -6396,10 +6402,9 @@ const PAIR_CODE_LENGTH = 4;
         state.pendingIncoming = { type: 'settlement', payload: b64Decode(st) };
       } catch(e) {}
     }
-    // Check for witness suggestions (slice 6). Stored in localStorage
-    // rather than state.pendingIncoming because suggestions persist
-    // across reloads until the user decides on them. The consent modal
-    // fires later, once the user has a chain.
+    // Check for witness suggestions (slice 6). Silently verifies each
+    // entry against /status and adds matches to the user's trust set.
+    // No UI surface: failures are dropped and logged to console.
     const hw = params.get('hw');
     if (hw) {
       try { ingestWitnessSuggestionsFromShareParam(hw); } catch(e) {}
@@ -7012,11 +7017,6 @@ function init() {
     // to confirm the witness is reachable. Fire-and-forget; the
     // function swallows its own errors.
     setTimeout(function() { retryPendingAttestations(); }, 7000);
-    // Slice 6: surface witness suggestions if pending. Delayed by 9s
-    // so it lands after Phase B logs and after the initial UI has
-    // fully rendered. Gates internally on chain existing; no-op when
-    // the user has no chain yet (new install still in setup).
-    setTimeout(function() { try { maybeOpenWitnessSuggestionsModal(); } catch(e) {} }, 9000);
   }
   
   // After setup completes, check for guided intro
@@ -7027,10 +7027,6 @@ function init() {
     showPendingUpdateBanner();
     showGuidedIntro();
     resumePendingPair();
-    // Slice 6: a new install that arrived via a share link with witness
-    // suggestions now has a chain. Surface the consent modal after a
-    // short pause so the home screen has time to settle.
-    setTimeout(function() { try { maybeOpenWitnessSuggestionsModal(); } catch(e) {} }, 2500);
   }
 
   // ============================================================
@@ -10948,214 +10944,6 @@ function init() {
     renderSettingsTab();
   }
 
-  // === SLICE 6 CONSENT MODAL ===
-  // Fires once per session boot, after the user has a chain and pending
-  // suggestions exist (the user received a share URL with '?hw='). Lists
-  // each fresh suggestion with URL + short pubkey and three actions:
-  // Accept all, Choose individually, Skip. Each accepted entry runs the
-  // same /status + pubkey-match verification used by verifyAndAddWitness.
-  //
-  // Already-trusted entries (pubkey in HEP_SEEDS or user-added list) are
-  // shown as "Already trusted" and excluded from verification. If all
-  // pending entries are already trusted, the modal does not open and the
-  // pending state is silently cleared.
-
-  var _suggestionsModalIndividualMode = false;
-  var _suggestionsModalSelected = {}; // pubkey -> bool
-
-  function maybeOpenWitnessSuggestionsModal() {
-    // Gate: require chain exists. Without a chain the user has not gone
-    // through setup; a witness decision would be meaningless.
-    if (!state || !state.chain || state.chain.length === 0) return;
-    if (!state.fingerprint) return;
-    var pending = getPendingWitnessSuggestions();
-    if (!pending || pending.length === 0) return;
-    var cat = categorizePendingSuggestions();
-    if (cat.fresh.length === 0) {
-      // Nothing to ask about. Silently clear so we don't keep checking.
-      clearPendingWitnessSuggestions();
-      return;
-    }
-    openWitnessSuggestionsModal();
-  }
-
-  function openWitnessSuggestionsModal() {
-    _suggestionsModalIndividualMode = false;
-    _suggestionsModalSelected = {};
-    renderWitnessSuggestionsModal();
-    showModal('witness-suggestions');
-  }
-
-  function renderWitnessSuggestionsModal() {
-    var body = document.getElementById('witness-suggestions-body');
-    if (!body) return;
-    var cat = categorizePendingSuggestions();
-    var fresh = cat.fresh;
-    var alreadyTrusted = cat.alreadyTrusted;
-
-    var html = '<div style="padding:0 4px;">';
-
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:18px;">';
-    html += 'Someone who shared the app with you suggests adding these witness servers to your trust set. Adding a witness lets your phone use it for attestation. The app re-verifies each one against the live server before adding.';
-    html += '</div>';
-
-    // Fresh entries list
-    fresh.forEach(function(s, idx) {
-      var checked = !!_suggestionsModalSelected[s.p];
-      var shortPub = s.p.substring(0, 12) + '\u2026' + s.p.substring(s.p.length - 8);
-      html += '<div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:10px;">';
-      if (_suggestionsModalIndividualMode) {
-        html += '<label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">';
-        html += '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="App.toggleWitnessSuggestion(\'' + s.p + '\')" style="margin-top:3px; flex-shrink:0;">';
-        html += '<div style="flex:1; min-width:0;">';
-      } else {
-        html += '<div>';
-      }
-      html += '<div style="font-family:var(--mono); font-size:13px; color:var(--text); word-break:break-all; margin-bottom:4px;">' + esc(s.u) + '</div>';
-      html += '<div style="font-family:var(--mono); font-size:11px; color:var(--text-dim);">' + esc(shortPub) + '</div>';
-      html += '<div id="sugg-status-' + idx + '" style="font-size:12px; margin-top:6px; min-height:0;"></div>';
-      if (_suggestionsModalIndividualMode) {
-        html += '</div></label>';
-      } else {
-        html += '</div>';
-      }
-      html += '</div>';
-    });
-
-    // Already-trusted notice if any
-    if (alreadyTrusted.length > 0) {
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin:14px 0 4px;">';
-      html += alreadyTrusted.length + (alreadyTrusted.length === 1 ? ' suggestion is' : ' suggestions are') + ' already in your trust set and will be skipped.';
-      html += '</div>';
-    }
-
-    // Action buttons
-    html += '<div style="margin-top:18px; display:flex; flex-direction:column; gap:8px;">';
-    if (_suggestionsModalIndividualMode) {
-      var anySelected = Object.keys(_suggestionsModalSelected).some(function(k) { return _suggestionsModalSelected[k]; });
-      html += '<button id="sugg-add-selected" onclick="App.acceptSelectedWitnessSuggestions()" ' + (anySelected ? '' : 'disabled') + ' style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:' + (anySelected ? 'pointer' : 'not-allowed') + '; opacity:' + (anySelected ? '1' : '0.5') + ';">Verify and add selected</button>';
-      html += '<button onclick="App.dismissWitnessSuggestions()" style="width:100%; padding:12px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:var(--fs-md); cursor:pointer;">Skip</button>';
-    } else {
-      html += '<button onclick="App.acceptAllWitnessSuggestions()" style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer;">Accept all</button>';
-      html += '<button onclick="App.switchWitnessSuggestionsToIndividual()" style="width:100%; padding:12px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:var(--fs-md); cursor:pointer;">Choose individually</button>';
-      html += '<button onclick="App.dismissWitnessSuggestions()" style="width:100%; padding:12px; background:none; border:none; color:var(--text-dim); font-size:var(--fs-md); cursor:pointer;">Skip</button>';
-    }
-    html += '</div>';
-
-    html += '</div>';
-    body.innerHTML = html;
-  }
-
-  function switchWitnessSuggestionsToIndividual() {
-    _suggestionsModalIndividualMode = true;
-    _suggestionsModalSelected = {};
-    renderWitnessSuggestionsModal();
-  }
-
-  function toggleWitnessSuggestion(pubkey) {
-    _suggestionsModalSelected[pubkey] = !_suggestionsModalSelected[pubkey];
-    renderWitnessSuggestionsModal();
-  }
-
-  async function acceptAllWitnessSuggestions() {
-    var cat = categorizePendingSuggestions();
-    await verifyAndAddSuggestionBatch(cat.fresh);
-  }
-
-  async function acceptSelectedWitnessSuggestions() {
-    var cat = categorizePendingSuggestions();
-    var selected = cat.fresh.filter(function(s) { return _suggestionsModalSelected[s.p]; });
-    if (selected.length === 0) return;
-    await verifyAndAddSuggestionBatch(selected);
-  }
-
-  // For each suggestion, do the same /status + pubkey-match verification
-  // used by verifyAndAddWitness, then add on success. Run in parallel
-  // for speed. Update each row's status line as results arrive.
-  async function verifyAndAddSuggestionBatch(suggestions) {
-    var body = document.getElementById('witness-suggestions-body');
-    if (!body) return;
-    // Disable all buttons in the modal during verification.
-    var allBtns = body.querySelectorAll('button, input[type="checkbox"]');
-    allBtns.forEach(function(b) { b.disabled = true; b.style.opacity = '0.6'; });
-
-    // Map suggestions to their row index in the current rendered list so
-    // we can update status text per row.
-    var cat = categorizePendingSuggestions();
-    var indexByPubkey = {};
-    cat.fresh.forEach(function(s, idx) { indexByPubkey[s.p] = idx; });
-
-    var addedCount = 0, failedCount = 0;
-    var results = await Promise.all(suggestions.map(async function(s) {
-      var rowIdx = indexByPubkey[s.p];
-      var statusEl = document.getElementById('sugg-status-' + rowIdx);
-      if (statusEl) { statusEl.textContent = 'Verifying\u2026'; statusEl.style.color = 'var(--text-dim)'; }
-      try {
-        var resp = await serverFetch(s.u + '/status', { signal: AbortSignal.timeout(8000) });
-        if (!resp.ok) {
-          if (statusEl) { statusEl.textContent = 'Server responded with HTTP ' + resp.status; statusEl.style.color = 'var(--red)'; }
-          return { ok: false, pubkey: s.p };
-        }
-        var data = await resp.json();
-        if (!data || typeof data.server_pubkey !== 'string') {
-          if (statusEl) { statusEl.textContent = 'Server response missing server_pubkey'; statusEl.style.color = 'var(--red)'; }
-          return { ok: false, pubkey: s.p };
-        }
-        var serverPubkey = data.server_pubkey.trim().toLowerCase();
-        if (serverPubkey !== s.p) {
-          if (statusEl) { statusEl.textContent = 'Key mismatch (server reports a different pubkey)'; statusEl.style.color = 'var(--red)'; }
-          return { ok: false, pubkey: s.p };
-        }
-        addUserWitness(s.u, s.p);
-        if (statusEl) { statusEl.textContent = 'Verified and added'; statusEl.style.color = 'var(--green)'; }
-        return { ok: true, pubkey: s.p };
-      } catch(e) {
-        var msg = (e && e.message) ? e.message : 'unknown error';
-        if (e && e.name === 'TimeoutError') msg = 'Request timed out';
-        if (statusEl) { statusEl.textContent = 'Could not reach server: ' + msg; statusEl.style.color = 'var(--red)'; }
-        return { ok: false, pubkey: s.p };
-      }
-    }));
-
-    results.forEach(function(r) { if (r.ok) addedCount++; else failedCount++; });
-
-    // Remove successfully-added entries from pending. Leave failures so
-    // the user can retry on the next surface (or skip later).
-    var pending = getPendingWitnessSuggestions();
-    var stillPending = pending.filter(function(s) {
-      return !results.some(function(r) { return r.ok && r.pubkey === s.p; });
-    });
-    if (stillPending.length === 0) clearPendingWitnessSuggestions();
-    else setPendingWitnessSuggestions(stillPending);
-
-    // Show a summary and a Done button after a brief moment.
-    setTimeout(function() {
-      var body2 = document.getElementById('witness-suggestions-body');
-      if (!body2) return;
-      var summary = '<div style="padding:18px 4px; text-align:center;">';
-      if (addedCount > 0 && failedCount === 0) {
-        summary += '<div style="font-size:var(--fs-md); color:var(--green); margin-bottom:14px;">Added ' + addedCount + ' witness' + (addedCount === 1 ? '' : 'es') + '.</div>';
-      } else if (addedCount > 0 && failedCount > 0) {
-        summary += '<div style="font-size:var(--fs-md); color:var(--text); margin-bottom:14px;">Added ' + addedCount + ', could not verify ' + failedCount + '.</div>';
-      } else {
-        summary += '<div style="font-size:var(--fs-md); color:var(--red); margin-bottom:14px;">Could not verify any of the suggested witnesses.</div>';
-      }
-      summary += '<button onclick="App.dismissWitnessSuggestions()" style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer;">Done</button>';
-      summary += '</div>';
-      body2.innerHTML = summary;
-    }, 1200);
-  }
-
-  function dismissWitnessSuggestions() {
-    clearPendingWitnessSuggestions();
-    _suggestionsModalIndividualMode = false;
-    _suggestionsModalSelected = {};
-    closeModal('witness-suggestions');
-    // If the user has the Settings tab open, refresh to reflect any
-    // newly-added witnesses.
-    try { renderSettingsTab(); } catch(e) {}
-  }
-
   function renderSettingsTab() {
     var el = document.getElementById('tab-settings-content');
     if (!el) return;
@@ -11471,8 +11259,6 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    acceptAllWitnessSuggestions, acceptSelectedWitnessSuggestions,
-    switchWitnessSuggestionsToIndividual, toggleWitnessSuggestion, dismissWitnessSuggestions,
     exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
