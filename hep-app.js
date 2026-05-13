@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.7
+// APPLICATION LAYER v2.63.0
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -1059,7 +1059,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function inviteViaText() {
-    const url = getAppBase();
+    const url = appendWitnessSuggestionsToShareUrl(getAppBase());
     const msg = 'Try the Human Exchange Protocol \u2014 record your cooperative acts. ' + url;
     if (navigator.share) { navigator.share({ title: 'Human Exchange Protocol', text: msg }).catch(() => {}); }
     else { navigator.clipboard.writeText(msg).then(() => toast('Link copied \u2014 paste in a message')).catch(() => toast('Could not copy')); }
@@ -5199,6 +5199,149 @@ const PAIR_CODE_LENGTH = 4;
     return set;
   }
 
+  // === SLICE 5: WITNESS SUGGESTIONS IN SHARE PAYLOAD (May 13, 2026) ===
+  // When the user shares the app, the share URL carries the sender's
+  // user-added witnesses as suggestions. The recipient sees a consent
+  // prompt on first run (slice 6) and re-verifies each accepted entry
+  // before adding to their own trust set. HEP_SEEDS is NOT propagated
+  // through shares because both sender and receiver already ship with
+  // it compiled into hep-core.js; only user-added witnesses are net-new
+  // information for the receiver.
+  //
+  // Soft cap: at most MAX_SHARED_WITNESSES entries per share. The cap is
+  // a UX boundary (URL length and QR density), not a security boundary;
+  // the user's own trust set can hold more entries for personal use.
+  // When the user has more than the cap, the most recently added ones
+  // ride along (matches operator intent: "I just added these new ones").
+  // See registry.md "Witness network takedown resistance as a marketable
+  // property" pin (May 13, 2026) for the design rationale.
+  const MAX_SHARED_WITNESSES = 10;
+
+  function encodeWitnessSuggestionsForShare() {
+    try {
+      var list = getUserWitnesses();
+      if (!list || list.length === 0) return '';
+      // Most recently added first. Defensive: addedAt may be missing on
+      // legacy entries; fall back to original order for those.
+      var sorted = list.slice().sort(function(a, b) {
+        var ta = a.addedAt ? Date.parse(a.addedAt) : 0;
+        var tb = b.addedAt ? Date.parse(b.addedAt) : 0;
+        return tb - ta;
+      });
+      var capped = sorted.slice(0, MAX_SHARED_WITNESSES);
+      // Compact shape: { u: url, p: pubkey }. Omit addedAt (local metadata
+      // with no value to the receiver) and source (always 'user' here).
+      var payload = capped.map(function(w) { return { u: w.url, p: w.pubkey }; });
+      var json = JSON.stringify(payload);
+      // base64url: standard base64 with -/_ swap and trimmed padding
+      return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    } catch(e) {
+      console.log('[slice-5] encodeWitnessSuggestionsForShare failed:', e.message);
+      return '';
+    }
+  }
+
+  function appendWitnessSuggestionsToShareUrl(url) {
+    var encoded = encodeWitnessSuggestionsForShare();
+    if (!encoded) return url;
+    var separator = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + separator + 'hw=' + encoded;
+  }
+
+  // === SLICE 6: WITNESS SUGGESTIONS SILENT MERGE (May 13, 2026) ===
+  // When the app boots with a '?hw=' query param, decode the suggestion
+  // list and silently verify-and-add each entry to the user's trust set.
+  // No consent UI: per the project's "surfaces that satisfy designer
+  // concern rather than user need" principle, asking a new user to
+  // approve "witness servers" raises friction without giving them any
+  // basis for a real decision. The verification at use (every /status
+  // probe, every signed-peer check) is what protects them, not a one-
+  // shot modal at add-time.
+  //
+  // Each entry runs the same /status + pubkey-match check used by the
+  // Settings-UI verifyAndAddWitness. On match: added via addUserWitness
+  // (which dedupes by pubkey, so a re-share with a refreshed entry
+  // overwrites the older one). On failure: silently dropped. A tampered
+  // share carrying a fake URL+pubkey pair fails at the recipient and is
+  // not added.
+  //
+  // Entries already in HEP_SEEDS or the user-added list are skipped.
+  function ingestWitnessSuggestionsFromShareParam(encoded) {
+    if (!encoded || typeof encoded !== 'string') return;
+    var clean;
+    try {
+      // base64url decode (reverse of encoder)
+      var base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      var json = atob(base64);
+      var parsed = JSON.parse(json);
+      if (!Array.isArray(parsed)) return;
+      // Validate each entry: url must look like http(s), pubkey 64 hex.
+      clean = [];
+      for (var i = 0; i < parsed.length; i++) {
+        var entry = parsed[i];
+        if (!entry || typeof entry !== 'object') continue;
+        var u = String(entry.u || '').trim().replace(/\/+$/, '');
+        var p = String(entry.p || '').trim().toLowerCase();
+        if (!/^https?:\/\//i.test(u)) continue;
+        if (!/^[0-9a-f]{64}$/.test(p)) continue;
+        clean.push({ u: u, p: p });
+      }
+    } catch(e) {
+      console.log('[slice-6] decode failed:', e.message);
+      return;
+    }
+    if (!clean || clean.length === 0) return;
+    // Filter out entries already in the effective trust set.
+    var trusted = {};
+    var effective = getEffectiveTrustSet();
+    for (var t = 0; t < effective.length; t++) trusted[effective[t].pubkey] = true;
+    var toVerify = clean.filter(function(s) { return !trusted[s.p]; });
+    if (toVerify.length === 0) {
+      console.log('[slice-6] All ' + clean.length + ' suggestion(s) already trusted; nothing to do.');
+      return;
+    }
+    console.log('[slice-6] Silent-verifying ' + toVerify.length + ' witness suggestion(s) from share URL');
+    // Fire and forget. Each verify is independent; failures don't block
+    // siblings. Logged for debugging, no UI surface.
+    toVerify.forEach(function(s) {
+      silentVerifyAndAddWitness(s.u, s.p).catch(function(e) {
+        console.log('[slice-6] verify failed for ' + s.u + ':', e && e.message ? e.message : e);
+      });
+    });
+  }
+
+  // Pure verification + add. Returns Promise<bool> for success.
+  // Same /status + pubkey-match check used by the Settings UI's
+  // verifyAndAddWitness, without DOM coupling.
+  async function silentVerifyAndAddWitness(url, pubkey) {
+    try {
+      var resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) {
+        console.log('[slice-6] ' + url + ' returned HTTP ' + resp.status);
+        return false;
+      }
+      var data = await resp.json();
+      if (!data || typeof data.server_pubkey !== 'string') {
+        console.log('[slice-6] ' + url + ' /status missing server_pubkey');
+        return false;
+      }
+      var serverPubkey = data.server_pubkey.trim().toLowerCase();
+      if (serverPubkey !== pubkey) {
+        console.log('[slice-6] ' + url + ' pubkey mismatch (got ' + serverPubkey.substring(0,16) + '...)');
+        return false;
+      }
+      addUserWitness(url, pubkey);
+      console.log('[slice-6] Added ' + url + ' (' + pubkey.substring(0,12) + '...) to trust set');
+      return true;
+    } catch(e) {
+      var msg = (e && e.message) ? e.message : 'unknown';
+      if (e && e.name === 'TimeoutError') msg = 'timeout';
+      console.log('[slice-6] ' + url + ' unreachable: ' + msg);
+      return false;
+    }
+  }
+
   async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
     const url = urlOverride || getWitnessUrl();
     if (!url) return null;
@@ -6182,25 +6325,25 @@ const PAIR_CODE_LENGTH = 4;
   // --- Share / Onboarding ---
   function openShare() {
     showModal('share');
-    const baseUrl = getAppBase();
-    const refUrl = baseUrl + '?ref=' + state.fingerprint;
+    const baseUrl = appendWitnessSuggestionsToShareUrl(getAppBase());
+    const refUrl = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
     document.getElementById('share-url').textContent = baseUrl;
     document.getElementById('share-url-ref').textContent = refUrl;
     try { QR.generate(baseUrl, document.getElementById('share-qr'), 280); } catch(e) {}
   }
 
   function copyShareLink() {
-    navigator.clipboard.writeText(getAppBase()).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
+    navigator.clipboard.writeText(appendWitnessSuggestionsToShareUrl(getAppBase())).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
   }
 
   function copyShareLinkRef() {
-    const url = getAppBase() + '?ref=' + state.fingerprint;
+    const url = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
     navigator.clipboard.writeText(url).then(() => toast('Introduction link copied')).catch(() => toast('Could not copy'));
   }
 
   function shareViaSystem() {
     if (navigator.share) {
-      navigator.share({ title: 'Human Exchange Protocol', text: 'Record your cooperative acts. The value trust creates.', url: getAppBase() }).catch(() => {});
+      navigator.share({ title: 'Human Exchange Protocol', text: 'Record your cooperative acts. The value trust creates.', url: appendWitnessSuggestionsToShareUrl(getAppBase()) }).catch(() => {});
     } else { copyShareLink(); }
   }
 
@@ -6259,8 +6402,15 @@ const PAIR_CODE_LENGTH = 4;
         state.pendingIncoming = { type: 'settlement', payload: b64Decode(st) };
       } catch(e) {}
     }
+    // Check for witness suggestions (slice 6). Silently verifies each
+    // entry against /status and adds matches to the user's trust set.
+    // No UI surface: failures are dropped and logged to console.
+    const hw = params.get('hw');
+    if (hw) {
+      try { ingestWitnessSuggestionsFromShareParam(hw); } catch(e) {}
+    }
     // Clean URL without reload
-    if (ref || hs || cf || cv || st) {
+    if (ref || hs || cf || cv || st || hw) {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }
@@ -9113,8 +9263,8 @@ function init() {
   function renderShareTab() {
     var el = document.getElementById('tab-share-content');
     if (!el) return;
-    var baseUrl = getAppBase();
-    var refUrl = baseUrl + '?ref=' + state.fingerprint;
+    var baseUrl = appendWitnessSuggestionsToShareUrl(getAppBase());
+    var refUrl = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
 
     var html = '';
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -10955,7 +11105,7 @@ function init() {
   }
 
   function shareApp() {
-    var url = getAppBase();
+    var url = appendWitnessSuggestionsToShareUrl(getAppBase());
     if (navigator.share) {
       navigator.share({ title: 'Human Exchange Protocol', text: 'Record cooperative acts between people.', url: url }).catch(function() {});
     } else {
