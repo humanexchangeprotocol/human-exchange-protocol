@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.39.7
+// APPLICATION LAYER v2.62.2
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -1059,7 +1059,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function inviteViaText() {
-    const url = getAppBase();
+    const url = appendWitnessSuggestionsToShareUrl(getAppBase());
     const msg = 'Try the Human Exchange Protocol \u2014 record your cooperative acts. ' + url;
     if (navigator.share) { navigator.share({ title: 'Human Exchange Protocol', text: msg }).catch(() => {}); }
     else { navigator.clipboard.writeText(msg).then(() => toast('Link copied \u2014 paste in a message')).catch(() => toast('Could not copy')); }
@@ -5199,6 +5199,55 @@ const PAIR_CODE_LENGTH = 4;
     return set;
   }
 
+  // === SLICE 5: WITNESS SUGGESTIONS IN SHARE PAYLOAD (May 13, 2026) ===
+  // When the user shares the app, the share URL carries the sender's
+  // user-added witnesses as suggestions. The recipient sees a consent
+  // prompt on first run (slice 6) and re-verifies each accepted entry
+  // before adding to their own trust set. HEP_SEEDS is NOT propagated
+  // through shares because both sender and receiver already ship with
+  // it compiled into hep-core.js; only user-added witnesses are net-new
+  // information for the receiver.
+  //
+  // Soft cap: at most MAX_SHARED_WITNESSES entries per share. The cap is
+  // a UX boundary (URL length and QR density), not a security boundary;
+  // the user's own trust set can hold more entries for personal use.
+  // When the user has more than the cap, the most recently added ones
+  // ride along (matches operator intent: "I just added these new ones").
+  // See registry.md "Witness network takedown resistance as a marketable
+  // property" pin (May 13, 2026) for the design rationale.
+  const MAX_SHARED_WITNESSES = 10;
+
+  function encodeWitnessSuggestionsForShare() {
+    try {
+      var list = getUserWitnesses();
+      if (!list || list.length === 0) return '';
+      // Most recently added first. Defensive: addedAt may be missing on
+      // legacy entries; fall back to original order for those.
+      var sorted = list.slice().sort(function(a, b) {
+        var ta = a.addedAt ? Date.parse(a.addedAt) : 0;
+        var tb = b.addedAt ? Date.parse(b.addedAt) : 0;
+        return tb - ta;
+      });
+      var capped = sorted.slice(0, MAX_SHARED_WITNESSES);
+      // Compact shape: { u: url, p: pubkey }. Omit addedAt (local metadata
+      // with no value to the receiver) and source (always 'user' here).
+      var payload = capped.map(function(w) { return { u: w.url, p: w.pubkey }; });
+      var json = JSON.stringify(payload);
+      // base64url: standard base64 with -/_ swap and trimmed padding
+      return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    } catch(e) {
+      console.log('[slice-5] encodeWitnessSuggestionsForShare failed:', e.message);
+      return '';
+    }
+  }
+
+  function appendWitnessSuggestionsToShareUrl(url) {
+    var encoded = encodeWitnessSuggestionsForShare();
+    if (!encoded) return url;
+    var separator = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + separator + 'hw=' + encoded;
+  }
+
   async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
     const url = urlOverride || getWitnessUrl();
     if (!url) return null;
@@ -6182,25 +6231,25 @@ const PAIR_CODE_LENGTH = 4;
   // --- Share / Onboarding ---
   function openShare() {
     showModal('share');
-    const baseUrl = getAppBase();
-    const refUrl = baseUrl + '?ref=' + state.fingerprint;
+    const baseUrl = appendWitnessSuggestionsToShareUrl(getAppBase());
+    const refUrl = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
     document.getElementById('share-url').textContent = baseUrl;
     document.getElementById('share-url-ref').textContent = refUrl;
     try { QR.generate(baseUrl, document.getElementById('share-qr'), 280); } catch(e) {}
   }
 
   function copyShareLink() {
-    navigator.clipboard.writeText(getAppBase()).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
+    navigator.clipboard.writeText(appendWitnessSuggestionsToShareUrl(getAppBase())).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
   }
 
   function copyShareLinkRef() {
-    const url = getAppBase() + '?ref=' + state.fingerprint;
+    const url = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
     navigator.clipboard.writeText(url).then(() => toast('Introduction link copied')).catch(() => toast('Could not copy'));
   }
 
   function shareViaSystem() {
     if (navigator.share) {
-      navigator.share({ title: 'Human Exchange Protocol', text: 'Record your cooperative acts. The value trust creates.', url: getAppBase() }).catch(() => {});
+      navigator.share({ title: 'Human Exchange Protocol', text: 'Record your cooperative acts. The value trust creates.', url: appendWitnessSuggestionsToShareUrl(getAppBase()) }).catch(() => {});
     } else { copyShareLink(); }
   }
 
@@ -9113,8 +9162,8 @@ function init() {
   function renderShareTab() {
     var el = document.getElementById('tab-share-content');
     if (!el) return;
-    var baseUrl = getAppBase();
-    var refUrl = baseUrl + '?ref=' + state.fingerprint;
+    var baseUrl = appendWitnessSuggestionsToShareUrl(getAppBase());
+    var refUrl = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
 
     var html = '';
     html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
@@ -10955,7 +11004,7 @@ function init() {
   }
 
   function shareApp() {
-    var url = getAppBase();
+    var url = appendWitnessSuggestionsToShareUrl(getAppBase());
     if (navigator.share) {
       navigator.share({ title: 'Human Exchange Protocol', text: 'Record cooperative acts between people.', url: url }).catch(function() {});
     } else {
