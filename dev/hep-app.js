@@ -11339,6 +11339,14 @@ function init() {
     html += '<div style="font-size:13px; color:var(--text-dim);">Enter the code the other person gave you</div></div>';
     html += '</button>';
 
+    // Invite pipeline slice 1: inviting someone who does not have the
+    // app is the third answer to "how are you connecting?"
+    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.closeModal(\'exchange\'); App.openInvite()">';
+    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div>';
+    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Invite</div>';
+    html += '<div style="font-size:13px; color:var(--text-dim);">They don\'t have the app yet? One code brings them in and opens the exchange</div></div>';
+    html += '</button>';
+
     html += '</div>';
     document.getElementById('ex-connect-content').innerHTML = html;
   }
