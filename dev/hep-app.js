@@ -6400,7 +6400,33 @@ const PAIR_CODE_LENGTH = 4;
     return appendWitnessSuggestionsToShareUrl(url);
   }
 
-  function openInvite() {
+  // Attempt pipe creation on one witness. Returns 'created',
+  // 'not_supported' (server predates the pipe protocol), or 'error'.
+  async function tryCreatePipeOn(witnessUrl, pipeCode) {
+    try {
+      var resp = await serverFetch(witnessUrl + '/pipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipe_code: pipeCode,
+          fingerprint: state.fingerprint,
+          public_key: state.publicKeyJwk,
+          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+          max_redemptions: 1, // single invite; room mode is slice 2
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.status === 404) return 'not_supported';
+      if (!resp.ok) return 'error';
+      var data = await resp.json();
+      return (data && data.created) ? 'created' : 'error';
+    } catch(e) {
+      console.log('[invite] ' + witnessUrl + ' unreachable:', e && e.message ? e.message : e);
+      return 'error';
+    }
+  }
+
+  async function openInvite() {
     showModal('invite');
     var status = document.getElementById('invite-status');
     var qrWrap = document.getElementById('invite-qr-wrap');
@@ -6411,59 +6437,61 @@ const PAIR_CODE_LENGTH = 4;
     closeBtn.style.display = 'none';
     status.textContent = 'Creating invite...';
 
-    var witnessUrl = getWitnessUrl();
-    if (!witnessUrl) {
+    // Candidate witnesses: the selected witness first, then the rest of
+    // the effective trust set (seeds plus user-added). The pipe lives on
+    // whichever server accepts it, and the QR cargo names that host
+    // (pw=), so the scanner follows regardless. This makes the invite
+    // feature self-routing during version-skewed rollouts: servers that
+    // predate the pipe protocol answer 404 and the app walks on.
+    var candidates = [];
+    var seen = {};
+    var primary = getWitnessUrl();
+    if (primary) { candidates.push(primary); seen[primary.toLowerCase()] = true; }
+    var trustSet = getEffectiveTrustSet();
+    for (var i = 0; i < trustSet.length; i++) {
+      var u = trustSet[i] && trustSet[i].url ? trustSet[i].url.trim().replace(/\/+$/, '') : null;
+      if (!u || seen[u.toLowerCase()]) continue;
+      seen[u.toLowerCase()] = true;
+      candidates.push(u);
+    }
+    if (candidates.length === 0) {
       status.textContent = 'No server available. An invite needs a witness server to carry the introduction.';
       return;
     }
 
     var pipeCode = generatePipeCode();
-    serverFetch(witnessUrl + '/pipe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pipe_code: pipeCode,
-        fingerprint: state.fingerprint,
-        public_key: state.publicKeyJwk,
-        name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
-        max_redemptions: 1, // single invite; room mode is slice 2
-      }),
-    }).then(function(resp) {
-      if (resp.status === 404) {
-        // The selected witness predates the pipe protocol (pre-v2.6.0).
-        status.textContent = 'Your witness server does not support invites yet. You can pick a different server in Settings.';
-        return;
-      }
-      if (!resp.ok) {
-        status.textContent = 'The server could not create the invite. Try again.';
-        return;
-      }
-      return resp.json().then(function(data) {
-        if (!data || !data.created) {
-          status.textContent = 'Could not create the invite. Try again.';
-          return;
-        }
-        var inviteUrl = buildInviteUrl(pipeCode, witnessUrl);
-        // Persist the open pipe so it survives closing the app. The
-        // invited person may take minutes to install and onboard; the
-        // pipe waits up to 24 hours (server TTL is the backstop).
-        try {
-          localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify({
-            code: pipeCode, witness: witnessUrl, openedAt: Date.now(),
-          }));
-        } catch(_) {}
-        status.textContent = 'Have them scan this code';
-        qrWrap.style.display = '';
-        urlEl.style.display = '';
-        urlEl.textContent = inviteUrl;
-        try { QR.generate(inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
-        closeBtn.style.display = '';
-        console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + witnessUrl);
-      });
-    }).catch(function(e) {
-      status.textContent = 'Could not reach the witness server. Check your connection and try again.';
-      console.log('[invite] Pipe create failed:', e && e.message ? e.message : e);
-    });
+    var host = null;
+    var sawNotSupported = false;
+    for (var c = 0; c < candidates.length; c++) {
+      var result = await tryCreatePipeOn(candidates[c], pipeCode);
+      if (result === 'created') { host = candidates[c]; break; }
+      if (result === 'not_supported') sawNotSupported = true;
+      console.log('[invite] ' + candidates[c] + ': ' + result + ', trying next');
+    }
+
+    if (!host) {
+      status.textContent = sawNotSupported
+        ? 'None of your witness servers support invites yet. This feature needs an updated server.'
+        : 'Could not reach a witness server. Check your connection and try again.';
+      return;
+    }
+
+    var inviteUrl = buildInviteUrl(pipeCode, host);
+    // Persist the open pipe so it survives closing the app. The invited
+    // person may take minutes to install and onboard; the pipe waits up
+    // to 24 hours (server TTL is the backstop).
+    try {
+      localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify({
+        code: pipeCode, witness: host, openedAt: Date.now(),
+      }));
+    } catch(_) {}
+    status.textContent = 'Have them scan this code';
+    qrWrap.style.display = '';
+    urlEl.style.display = '';
+    urlEl.textContent = inviteUrl;
+    try { QR.generate(inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
+    closeBtn.style.display = '';
+    console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + host);
   }
 
   function closeInvitePipe() {
