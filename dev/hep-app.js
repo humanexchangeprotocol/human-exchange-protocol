@@ -6446,6 +6446,8 @@ const PAIR_CODE_LENGTH = 4;
     qrWrap.style.display = 'none';
     urlEl.style.display = 'none';
     closeBtn.style.display = 'none';
+    var introReset = document.getElementById('invite-intro');
+    if (introReset) introReset.style.display = '';
     status.textContent = 'Creating invite...';
 
     // Candidate witnesses: the selected witness first, then the rest of
@@ -6496,7 +6498,10 @@ const PAIR_CODE_LENGTH = 4;
         code: pipeCode, witness: host, openedAt: Date.now(),
       }));
     } catch(_) {}
-    status.textContent = 'Have them scan this code';
+    var intro = document.getElementById('invite-intro');
+    if (intro) intro.style.display = 'none';
+    status.innerHTML = '<div style="font-size:16px; font-weight:600; color:var(--text);">Have them scan this code</div>' +
+      '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">When they scan, they\'ll appear here</div>';
     qrWrap.style.display = '';
     urlEl.style.display = '';
     urlEl.textContent = inviteUrl;
@@ -6562,17 +6567,20 @@ const PAIR_CODE_LENGTH = 4;
     // one tap, then both phones connect.
     var overlay = document.getElementById('invite-overlay');
     if (!overlay || !overlay.classList.contains('active')) showModal('invite');
-    var who = r.name ? esc(r.name) : 'They';
+    var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
     document.getElementById('invite-qr-wrap').style.display = 'none';
     document.getElementById('invite-url').style.display = 'none';
     document.getElementById('invite-close-pipe').style.display = 'none';
+    var intro2 = document.getElementById('invite-intro');
+    if (intro2) intro2.style.display = 'none';
+    var anchor = r.name ? who : 'them';
     var status = document.getElementById('invite-status');
     status.innerHTML =
-      '<div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px;">' + who + (r.name ? ' is' : ' are') + ' in</div>' +
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:16px;">How does this first exchange start?</div>' +
+      '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + ' is in</div>' +
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
-      '<button class="btn btn-primary" onclick="App.invitePipeConnect(\'provider\')">I provided something</button>' +
-      '<button class="btn btn-secondary" onclick="App.invitePipeConnect(\'receiver\')">I received something</button>' +
+      '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + anchor + '</button>' +
+      '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + anchor + '</button>' +
       '</div>';
   }
 
