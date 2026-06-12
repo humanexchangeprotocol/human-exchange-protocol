@@ -834,6 +834,7 @@ const PAIR_CODE_LENGTH = 4;
         showPendingUpdateBanner();
         checkForUpdates();
         handleIncomingPayload();
+        checkPendingInvite();
         resumePendingPair();
         checkPingOnOpen();
         checkPhotoNudge();
@@ -2029,6 +2030,14 @@ const PAIR_CODE_LENGTH = 4;
   // An ephemeral pipe between two phones, opened by pairing codes.
   // Carries: thread snapshots, proposals, confirmations.
   // The server is just a relay — it never interprets the data.
+  //
+  // Invite pipeline: a session introduced by a pipe lives on the pipe's
+  // host witness, which may differ from the device's default (the cargo
+  // names the host so both phones agree). sessionWitnessUrl overrides
+  // the default for the lifetime of one session; cleanupSession resets
+  // it. Manual-code sessions never set it, so nothing changes for them.
+  let sessionWitnessUrl = null;
+  function getSessionWitnessUrl() { return sessionWitnessUrl || getWitnessUrl(); }
 
   let sessionPollTimer = null;
   let sessionRole = null; // 'proposer' or 'confirmer'
@@ -2195,7 +2204,7 @@ const PAIR_CODE_LENGTH = 4;
   // Encrypt and send snapshot via POST /session/:code/thread
   async function sendEncryptedSnapshot(extras) {
     if (!sessionSharedKey || !sessionCode) return;
-    var url = getWitnessUrl();
+    var url = getSessionWitnessUrl();
     if (!url) return;
     var snap = buildSnapshotForSharing(extras);
     if (!snap) return;
@@ -2215,7 +2224,7 @@ const PAIR_CODE_LENGTH = 4;
   // Poll for partner's encrypted snapshot, decrypt when found
   function startSnapshotPoll(onReceived) {
     stopSnapshotPoll();
-    var url = getWitnessUrl();
+    var url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
     var attempts = 0;
     function doCheck() {
@@ -2304,6 +2313,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function generateSessionCode() {
+    sessionWitnessUrl = null; // manual-code sessions always use the default witness
     _sessionWritten = false; // reset for new session
     _pollBusy = false;
     const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -2337,7 +2347,7 @@ const PAIR_CODE_LENGTH = 4;
         return;
       }
 
-      const url = getWitnessUrl();
+      const url = getSessionWitnessUrl();
       if (!url) {
         toast('No server available');
         if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
@@ -2767,7 +2777,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function submitSessionProposal() {
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !state.pendingProposal) return;
 
     const pp = state.pendingProposal;
@@ -2859,7 +2869,7 @@ const PAIR_CODE_LENGTH = 4;
   function startSessionPoll() {
     stopSessionPoll();
     _pollBusy = false;
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     let attempts = 0;
@@ -2888,7 +2898,7 @@ const PAIR_CODE_LENGTH = 4;
 
   async function checkSessionState() {
     if (_sessionWritten) return; // already wrote a record for this session
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     try {
@@ -3080,7 +3090,7 @@ const PAIR_CODE_LENGTH = 4;
 
   async function sessionConfirm() {
     if (_sessionWritten) return; // prevent duplicate writes
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     // Disable button and show spinner
@@ -3121,7 +3131,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function sessionReject() {
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     try {
@@ -3409,6 +3419,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function cleanupSession() {
     stopSessionPoll();
+    sessionWitnessUrl = null;
     stopSnapshotPoll();
     sessionCode = null;
     sessionTheirCode = null;
@@ -6199,7 +6210,7 @@ const PAIR_CODE_LENGTH = 4;
       state.settings.witnessUrl = DEFAULT_WITNESS_URL;
       state.pin = pin; await saveKeys(pin); save(); state.initialized = true; refreshHome();
       showScreen('home'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
-      handleIncomingPayload(); checkPingOnOpen(); checkPhotoNudge();
+      handleIncomingPayload(); checkPendingInvite(); checkPingOnOpen(); checkPhotoNudge();
     } catch(e) { console.error('Import error:', e); toast('Import failed: ' + e.message); }
     event.target.value = '';
   }
@@ -6492,9 +6503,11 @@ const PAIR_CODE_LENGTH = 4;
     try { QR.generate(inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
     closeBtn.style.display = '';
     console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + host);
+    startInvitePoll({ code: pipeCode, witness: host });
   }
 
   function closeInvitePipe() {
+    stopInvitePoll();
     var open = null;
     try { open = JSON.parse(localStorage.getItem(OPEN_PIPE_KEY) || 'null'); } catch(_) {}
     try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
@@ -6509,6 +6522,179 @@ const PAIR_CODE_LENGTH = 4;
     }).catch(function(_) {});
     toast('Invite closed');
     console.log('[invite] Pipe closed: ' + open.code);
+  }
+
+  // --- Inviter side: poll the pipe for redemptions ---
+  var invitePollTimer = null;
+  var _pipeRedemption = null; // first redemption, held until direction chosen
+  var _pipeHost = null;
+
+  function stopInvitePoll() {
+    if (invitePollTimer) { clearInterval(invitePollTimer); invitePollTimer = null; }
+  }
+
+  function startInvitePoll(open) {
+    stopInvitePoll();
+    var attempts = 0;
+    invitePollTimer = setInterval(async function() {
+      attempts++;
+      if (attempts > 400) { stopInvitePoll(); return; } // ~20 minutes; resumable pipe is slice 1d
+      try {
+        var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner?fingerprint=' + encodeURIComponent(state.fingerprint), { signal: AbortSignal.timeout(8000) });
+        if (!resp.ok) return;
+        var data = await resp.json();
+        if (data && data.found && Array.isArray(data.redemptions) && data.redemptions.length > 0) {
+          stopInvitePoll();
+          inviteRedemptionArrived(open, data.redemptions[0]);
+        }
+      } catch(e) {}
+    }, 3000);
+  }
+
+  function inviteRedemptionArrived(open, r) {
+    _pipeRedemption = r;
+    _pipeHost = open.witness;
+    // The pipe is claimed (cap 1); its job is done.
+    try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    // Surface the direction choice in the invite modal. Reopen it if the
+    // inviter closed it while waiting; this moment is what they were
+    // waiting for. Direction stays free (no forced "start positive"):
+    // one tap, then both phones connect.
+    var overlay = document.getElementById('invite-overlay');
+    if (!overlay || !overlay.classList.contains('active')) showModal('invite');
+    var who = r.name ? esc(r.name) : 'They';
+    document.getElementById('invite-qr-wrap').style.display = 'none';
+    document.getElementById('invite-url').style.display = 'none';
+    document.getElementById('invite-close-pipe').style.display = 'none';
+    var status = document.getElementById('invite-status');
+    status.innerHTML =
+      '<div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px;">' + who + (r.name ? ' is' : ' are') + ' in</div>' +
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:16px;">How does this first exchange start?</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<button class="btn btn-primary" onclick="App.invitePipeConnect(\'provider\')">I provided something</button>' +
+      '<button class="btn btn-secondary" onclick="App.invitePipeConnect(\'receiver\')">I received something</button>' +
+      '</div>';
+  }
+
+  function invitePipeConnect(role) {
+    var r = _pipeRedemption;
+    var host = _pipeHost;
+    _pipeRedemption = null;
+    _pipeHost = null;
+    if (!r || !host) { toast('The connection details were lost. Open a new invite.'); closeModal('invite'); return; }
+    cleanupSession();
+    sessionWitnessUrl = host; // the session lives where the pipe lives
+    exFlowActive = true;
+    exConnectMode = 'start';
+    exInitiatorRole = role;
+    sessionRole = 'proposer';
+    sessionCode = r.owner_code;       // server-allocated for this pairing
+    sessionTheirCode = r.redeemer_code;
+    closeModal('invite');
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'New exchange';
+    showExStep('connect');
+    var who = r.name ? esc(r.name) : 'them';
+    document.getElementById('ex-connect-content').innerHTML =
+      '<div style="text-align:center; padding:24px 0;">' +
+      '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
+      '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
+      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '</div></div>';
+    exPostJoin(sessionCode, sessionTheirCode);
+  }
+
+  // --- Redeemer side: redeem a pending invite on app open ---
+  // Called after init/unlock alongside handleIncomingPayload. For an
+  // initialized person this is the fast path: scan, open, connected.
+  // For a brand-new person the invite waits here through onboarding
+  // (slice 1c). Timing discipline: this runs at app load, never inside
+  // the proposal/confirm path.
+  async function checkPendingInvite() {
+    if (!state.initialized) return;
+    var inv = null;
+    try { inv = JSON.parse(localStorage.getItem(PENDING_INVITE_KEY) || 'null'); } catch(_) {}
+    if (!inv || !inv.pi || !inv.pw) return;
+
+    if (inv.ts && (Date.now() - inv.ts > PIPE_TTL_MS)) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      return;
+    }
+    // Self-scan guard: redeeming your own pipe would be a confusing
+    // self-exchange. The server would allow it; the app declines.
+    if (inv.pf && inv.pf === state.fingerprint) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      console.log('[invite] Self-scan discarded for pipe ' + inv.pi);
+      return;
+    }
+
+    var bytes = crypto.getRandomValues(new Uint8Array(4));
+    var redeemerCode = Array.from(bytes).map(function(b) { return PAIR_CHARS[b % PAIR_CHARS.length]; }).join('');
+
+    var data;
+    try {
+      var resp = await serverFetch(inv.pw + '/pipe/' + inv.pi + '/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redeemer_code: redeemerCode,
+          fingerprint: state.fingerprint,
+          public_key: state.publicKeyJwk,
+          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.status === 404) { localStorage.removeItem(PENDING_INVITE_KEY); toast('That invite is no longer available'); return; }
+      if (!resp.ok) { console.log('[invite] Redeem HTTP ' + resp.status + '; will retry next open'); return; }
+      data = await resp.json();
+    } catch(e) {
+      // Network trouble: keep the invite and retry on next open.
+      console.log('[invite] Redeem failed, keeping for retry:', e && e.message ? e.message : e);
+      return;
+    }
+
+    if (!data || !data.accepted) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      var reason = data && data.reason;
+      if (reason === 'claimed') toast('That invite was already used');
+      else if (reason === 'expired' || reason === 'closed') toast('That invite has expired or was closed');
+      else toast('That invite is no longer available');
+      return;
+    }
+
+    // Hostile-host guard: the redeem response must describe the same
+    // inviter the QR named. A pipe host cannot substitute a different
+    // owner without detection (the per-record signature downstream is
+    // still the real gate; this just fails fast and loud).
+    if (inv.pf && data.owner && data.owner.fingerprint && data.owner.fingerprint !== inv.pf) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      console.warn('[invite] Owner fingerprint mismatch: cargo ' + inv.pf + ' vs server ' + data.owner.fingerprint);
+      toast('Invite could not be verified');
+      return;
+    }
+
+    localStorage.removeItem(PENDING_INVITE_KEY);
+    console.log('[invite] Redeemed pipe ' + inv.pi + '; joining session as ' + redeemerCode + ' -> ' + data.owner_code);
+
+    cleanupSession();
+    sessionWitnessUrl = inv.pw; // the session lives where the pipe lives
+    exFlowActive = true;
+    exConnectMode = 'join';
+    exInitiatorRole = null; // joiner; role announced by the inviter
+    sessionRole = 'confirmer';
+    sessionCode = redeemerCode;
+    sessionTheirCode = data.owner_code;
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'New exchange';
+    showExStep('connect');
+    var who = (data.owner && data.owner.name) ? esc(data.owner.name) : (inv.pn ? esc(inv.pn) : 'them');
+    document.getElementById('ex-connect-content').innerHTML =
+      '<div style="text-align:center; padding:24px 0;">' +
+      '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
+      '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
+      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '</div></div>';
+    exPostJoin(sessionCode, sessionTheirCode);
   }
 
 
@@ -7364,7 +7550,7 @@ function init() {
 
   async function exPostJoin(myCode, theirCode) {
     try {
-      var url = getWitnessUrl();
+      var url = getSessionWitnessUrl();
       if (!url) { toast('No server available'); return; }
 
       var joinPayload = {
@@ -7432,7 +7618,7 @@ function init() {
 
   function exStartConnectPoll() {
     exStopConnectPoll();
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     let attempts = 0;
@@ -11442,7 +11628,7 @@ function init() {
     openWallet, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
-    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe,
+    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
