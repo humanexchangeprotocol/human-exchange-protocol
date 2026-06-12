@@ -3405,6 +3405,9 @@ const PAIR_CODE_LENGTH = 4;
     // directly on Home with the new exchange visible.
     closeExchange();
 
+    // Invite pipeline room sweep: return the inviter to the queue.
+    try { roomExchangeCompleted(); } catch(_) {}
+
     // Schedule a follow-up refresh so the row exits the In flight
     // hold and drops to Recent at the right moment. Without this,
     // refreshHome only fires when state changes (witness attestation,
@@ -6413,7 +6416,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // Attempt pipe creation on one witness. Returns 'created',
   // 'not_supported' (server predates the pipe protocol), or 'error'.
-  async function tryCreatePipeOn(witnessUrl, pipeCode) {
+  async function tryCreatePipeOn(witnessUrl, pipeCode, cap) {
     try {
       var resp = await serverFetch(witnessUrl + '/pipe', {
         method: 'POST',
@@ -6423,7 +6426,7 @@ const PAIR_CODE_LENGTH = 4;
           fingerprint: state.fingerprint,
           public_key: state.publicKeyJwk,
           name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
-          max_redemptions: 1, // single invite; room mode is slice 2
+          max_redemptions: (cap === undefined ? 1 : cap), // 1 = single invite, 0 = uncapped room
         }),
         signal: AbortSignal.timeout(8000),
       });
@@ -6437,25 +6440,56 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
-  async function openInvite() {
+  function loadOpenPipe() {
+    try {
+      var p = JSON.parse(localStorage.getItem(OPEN_PIPE_KEY) || 'null');
+      if (p && p.code && p.witness && p.openedAt && (Date.now() - p.openedAt < PIPE_TTL_MS)) return p;
+    } catch(_) {}
+    return null;
+  }
+  function saveOpenPipe(p) {
+    try { localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify(p)); } catch(_) {}
+  }
+
+  function inviteResetSurfaces() {
+    document.getElementById('invite-qr-wrap').style.display = 'none';
+    document.getElementById('invite-url').style.display = 'none';
+    document.getElementById('invite-close-pipe').style.display = 'none';
+    document.getElementById('invite-queue').innerHTML = '';
+  }
+
+  function openInvite() {
     showModal('invite');
+    inviteResetSurfaces();
+    var intro = document.getElementById('invite-intro');
     var status = document.getElementById('invite-status');
-    var qrWrap = document.getElementById('invite-qr-wrap');
-    var urlEl = document.getElementById('invite-url');
-    var closeBtn = document.getElementById('invite-close-pipe');
-    qrWrap.style.display = 'none';
-    urlEl.style.display = 'none';
-    closeBtn.style.display = 'none';
-    var introReset = document.getElementById('invite-intro');
-    if (introReset) introReset.style.display = '';
+
+    // Resume an open pipe instead of orphaning it. A room must survive
+    // the inviter wandering off mid-evening; a single invite must
+    // survive a closed modal while the invited person installs.
+    var open = loadOpenPipe();
+    if (open) {
+      if (intro) intro.style.display = 'none';
+      resumeInvitePipe(open);
+      return;
+    }
+
+    if (intro) intro.style.display = '';
+    status.innerHTML =
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">How many people are you inviting?</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<button class="btn btn-primary" onclick="App.createInvitePipe(\'single\')">One person</button>' +
+      '<button class="btn btn-secondary" onclick="App.createInvitePipe(\'room\')">Several people, same code</button>' +
+      '</div>';
+  }
+
+  async function createInvitePipe(mode) {
+    var status = document.getElementById('invite-status');
+    var intro = document.getElementById('invite-intro');
+    if (intro) intro.style.display = 'none';
+    inviteResetSurfaces();
     status.textContent = 'Creating invite...';
 
-    // Candidate witnesses: the selected witness first, then the rest of
-    // the effective trust set (seeds plus user-added). The pipe lives on
-    // whichever server accepts it, and the QR cargo names that host
-    // (pw=), so the scanner follows regardless. This makes the invite
-    // feature self-routing during version-skewed rollouts: servers that
-    // predate the pipe protocol answer 404 and the app walks on.
     var candidates = [];
     var seen = {};
     var primary = getWitnessUrl();
@@ -6473,10 +6507,11 @@ const PAIR_CODE_LENGTH = 4;
     }
 
     var pipeCode = generatePipeCode();
+    var cap = (mode === 'room') ? 0 : 1; // server: 0 = uncapped room
     var host = null;
     var sawNotSupported = false;
     for (var c = 0; c < candidates.length; c++) {
-      var result = await tryCreatePipeOn(candidates[c], pipeCode);
+      var result = await tryCreatePipeOn(candidates[c], pipeCode, cap);
       if (result === 'created') { host = candidates[c]; break; }
       if (result === 'not_supported') sawNotSupported = true;
       console.log('[invite] ' + candidates[c] + ': ' + result + ', trying next');
@@ -6490,34 +6525,45 @@ const PAIR_CODE_LENGTH = 4;
     }
 
     var inviteUrl = buildInviteUrl(pipeCode, host);
-    // Persist the open pipe so it survives closing the app. The invited
-    // person may take minutes to install and onboard; the pipe waits up
-    // to 24 hours (server TTL is the backstop).
-    try {
-      localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify({
-        code: pipeCode, witness: host, openedAt: Date.now(),
-      }));
-    } catch(_) {}
-    var intro = document.getElementById('invite-intro');
-    if (intro) intro.style.display = 'none';
+    var open = { code: pipeCode, witness: host, openedAt: Date.now(), mode: mode, inviteUrl: inviteUrl, done: {} };
+    saveOpenPipe(open);
+    console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + host + ' (mode ' + mode + ')');
+    renderInviteLive(open);
+    startInvitePoll(open);
+  }
+
+  function renderInviteLive(open) {
+    inviteResetSurfaces();
+    var status = document.getElementById('invite-status');
+    var hint = (open.mode === 'room')
+      ? 'Anyone can scan it. People appear below as they come in.'
+      : "When they scan, they'll appear here";
     status.innerHTML = '<div style="font-size:16px; font-weight:600; color:var(--text);">Have them scan this code</div>' +
-      '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">When they scan, they\'ll appear here</div>';
-    qrWrap.style.display = '';
+      '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">' + hint + '</div>';
+    document.getElementById('invite-qr-wrap').style.display = '';
+    var urlEl = document.getElementById('invite-url');
     urlEl.style.display = '';
-    urlEl.textContent = inviteUrl;
-    try { QR.generate(inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
-    closeBtn.style.display = '';
-    console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + host);
-    startInvitePoll({ code: pipeCode, witness: host });
+    urlEl.textContent = open.inviteUrl;
+    try { QR.generate(open.inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
+    document.getElementById('invite-close-pipe').style.display = '';
+    if (open.mode === 'room') renderRoomQueue(open);
+  }
+
+  function resumeInvitePipe(open) {
+    renderInviteLive(open);
+    startInvitePoll(open);
   }
 
   function closeInvitePipe() {
     stopInvitePoll();
-    var open = null;
-    try { open = JSON.parse(localStorage.getItem(OPEN_PIPE_KEY) || 'null'); } catch(_) {}
+    var open = loadOpenPipe();
     try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    _roomRedemptions = [];
+    _pipeRedemption = null;
+    _pipeHost = null;
+    _activeRedemption = null;
     closeModal('invite');
-    if (!open || !open.code || !open.witness) return;
+    if (!open) return;
     // Fire and forget. Redemptions already made stay valid; the server
     // TTL cleans up if this request never lands.
     serverFetch(open.witness + '/pipe/' + open.code + '/close', {
@@ -6531,8 +6577,10 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Inviter side: poll the pipe for redemptions ---
   var invitePollTimer = null;
-  var _pipeRedemption = null; // first redemption, held until direction chosen
+  var _pipeRedemption = null;  // single mode: held until direction chosen
   var _pipeHost = null;
+  var _roomRedemptions = [];   // room mode: live list from the server
+  var _activeRedemption = null; // the redemption whose exchange is in progress
 
   function stopInvitePoll() {
     if (invitePollTimer) { clearInterval(invitePollTimer); invitePollTimer = null; }
@@ -6543,12 +6591,16 @@ const PAIR_CODE_LENGTH = 4;
     var attempts = 0;
     invitePollTimer = setInterval(async function() {
       attempts++;
-      if (attempts > 400) { stopInvitePoll(); return; } // ~20 minutes; resumable pipe is slice 1d
+      if (attempts > 2400) { stopInvitePoll(); return; } // ~2h; server TTL is the real lifetime
       try {
         var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner?fingerprint=' + encodeURIComponent(state.fingerprint), { signal: AbortSignal.timeout(8000) });
         if (!resp.ok) return;
         var data = await resp.json();
-        if (data && data.found && Array.isArray(data.redemptions) && data.redemptions.length > 0) {
+        if (!data || !data.found || !Array.isArray(data.redemptions)) return;
+        if (open.mode === 'room') {
+          _roomRedemptions = data.redemptions;
+          renderRoomQueue(open);
+        } else if (data.redemptions.length > 0) {
           stopInvitePoll();
           inviteRedemptionArrived(open, data.redemptions[0]);
         }
@@ -6556,31 +6608,82 @@ const PAIR_CODE_LENGTH = 4;
     }, 3000);
   }
 
+  // Room mode: the QR stays on the table; the queue grows beneath it.
+  function renderRoomQueue(open) {
+    var el = document.getElementById('invite-queue');
+    if (!el) return;
+    var current = loadOpenPipe();
+    var done = (current && current.done) || open.done || {};
+    if (_roomRedemptions.length === 0) { el.innerHTML = ''; return; }
+    var html = '<div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">';
+    for (var i = 0; i < _roomRedemptions.length; i++) {
+      var r = _roomRedemptions[i];
+      var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
+      html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0;">';
+      html += '<div style="font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
+      if (done[r.redeemer_code]) {
+        html += '<div style="font-size:13px; color:var(--text-dim); flex-shrink:0;">Recorded</div>';
+      } else {
+        html += '<button class="btn btn-primary" style="flex-shrink:0; padding:8px 14px; font-size:14px;" onclick="App.roomStartExchange(\'' + esc(r.redeemer_code) + '\')">Start exchange</button>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  function roomStartExchange(redeemerCode) {
+    var open = loadOpenPipe();
+    if (!open) { toast('The invite is no longer open'); return; }
+    var r = null;
+    for (var i = 0; i < _roomRedemptions.length; i++) {
+      if (_roomRedemptions[i].redeemer_code === redeemerCode) { r = _roomRedemptions[i]; break; }
+    }
+    if (!r) return;
+    _pipeRedemption = r;
+    _pipeHost = open.witness;
+    var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
+    document.getElementById('invite-qr-wrap').style.display = 'none';
+    document.getElementById('invite-url').style.display = 'none';
+    document.getElementById('invite-queue').innerHTML = '';
+    document.getElementById('invite-close-pipe').style.display = 'none';
+    var status = document.getElementById('invite-status');
+    status.innerHTML =
+      '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + '</div>' +
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this exchange:</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
+      '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
+      '</div>' +
+      '<div style="text-align:center; margin-top:14px;"><span style="font-size:14px; color:var(--accent); cursor:pointer;" onclick="App.roomBackToQueue()">Back to the list</span></div>';
+  }
+
+  function roomBackToQueue() {
+    _pipeRedemption = null;
+    _pipeHost = null;
+    var open = loadOpenPipe();
+    if (open) renderInviteLive(open);
+  }
+
+  // Single mode: first redemption claims the pipe.
   function inviteRedemptionArrived(open, r) {
     _pipeRedemption = r;
     _pipeHost = open.witness;
     // The pipe is claimed (cap 1); its job is done.
     try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
-    // Surface the direction choice in the invite modal. Reopen it if the
-    // inviter closed it while waiting; this moment is what they were
-    // waiting for. Direction stays free (no forced "start positive"):
-    // one tap, then both phones connect.
     var overlay = document.getElementById('invite-overlay');
     if (!overlay || !overlay.classList.contains('active')) showModal('invite');
     var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
-    document.getElementById('invite-qr-wrap').style.display = 'none';
-    document.getElementById('invite-url').style.display = 'none';
-    document.getElementById('invite-close-pipe').style.display = 'none';
+    inviteResetSurfaces();
     var intro2 = document.getElementById('invite-intro');
     if (intro2) intro2.style.display = 'none';
-    var anchor = r.name ? who : 'them';
     var status = document.getElementById('invite-status');
     status.innerHTML =
       '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + ' is in</div>' +
       '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
-      '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + anchor + '</button>' +
-      '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + anchor + '</button>' +
+      '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
+      '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
       '</div>';
   }
 
@@ -6592,6 +6695,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!r || !host) { toast('The connection details were lost. Open a new invite.'); closeModal('invite'); return; }
     cleanupSession();
     sessionWitnessUrl = host; // the session lives where the pipe lives
+    _activeRedemption = r;    // marked done on record write (room sweep)
     exFlowActive = true;
     exConnectMode = 'start';
     exInitiatorRole = role;
@@ -6602,7 +6706,7 @@ const PAIR_CODE_LENGTH = 4;
     showModal('exchange');
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
-    var who = r.name ? esc(r.name) : 'them';
+    var who = r.name ? esc(String(r.name).slice(0, 40)) : 'them';
     document.getElementById('ex-connect-content').innerHTML =
       '<div style="text-align:center; padding:24px 0;">' +
       '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
@@ -6610,6 +6714,28 @@ const PAIR_CODE_LENGTH = 4;
       '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
       '</div></div>';
     exPostJoin(sessionCode, sessionTheirCode);
+  }
+
+  // Called from writeSessionRecord after a completed exchange. In room
+  // mode, mark this person recorded and return to the queue so the
+  // inviter can sweep to the next; in single mode, a no-op beyond
+  // clearing the active marker.
+  function roomExchangeCompleted() {
+    var r = _activeRedemption;
+    _activeRedemption = null;
+    if (!r) return;
+    var open = loadOpenPipe();
+    if (!open || open.mode !== 'room') return;
+    open.done = open.done || {};
+    open.done[r.redeemer_code] = true;
+    saveOpenPipe(open);
+    setTimeout(function() {
+      showModal('invite');
+      var intro = document.getElementById('invite-intro');
+      if (intro) intro.style.display = 'none';
+      renderInviteLive(open);
+      if (!invitePollTimer) startInvitePoll(open);
+    }, 800);
   }
 
   // --- Redeemer side: redeem a pending invite on app open ---
@@ -11636,7 +11762,7 @@ function init() {
     openWallet, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
-    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect,
+    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
