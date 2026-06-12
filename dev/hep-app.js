@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.62.4
+// APPLICATION LAYER v2.64.0
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -1357,6 +1357,7 @@ const PAIR_CODE_LENGTH = 4;
       html += '<p>As you cooperate with people, your acts will appear here. Each one can be reused with a single tap.</p>';
       html += '<button class="btn btn-primary" onclick="App.coopNewAct()">Start your first act</button>';
       html += '<button class="coop-receive-btn" style="margin-top:12px;" onclick="App.coopReceiveProposal()">Receive a proposal</button>';
+      html += '<button class="coop-receive-btn" style="margin-top:8px;" onclick="App.closeModal(\'cooperate\'); App.openInvite()">Invite someone new</button>';
       html += '</div>';
       body.innerHTML = html;
       showModal('cooperate');
@@ -1423,6 +1424,14 @@ const PAIR_CODE_LENGTH = 4;
     receiveBtn.textContent = 'Receive a proposal';
     receiveBtn.addEventListener('click', () => coopReceiveProposal());
     body.appendChild(receiveBtn);
+
+    // Invite someone new (invite pipeline slice 1)
+    const inviteBtn = document.createElement('button');
+    inviteBtn.className = 'coop-receive-btn';
+    inviteBtn.style.marginTop = '8px';
+    inviteBtn.textContent = 'Invite someone new';
+    inviteBtn.addEventListener('click', () => { closeModal('cooperate'); openInvite(); });
+    body.appendChild(inviteBtn);
 
     // Reusable acts below
     const hdr = document.createElement('div');
@@ -6347,6 +6356,134 @@ const PAIR_CODE_LENGTH = 4;
     } else { copyShareLink(); }
   }
 
+  // === INVITE PIPELINE SLICE 1 (June 2026) ===
+  // One QR does two jobs: front door for someone without the app, and an
+  // open exchange pipe so the invitation and the first cooperative act
+  // are the same gesture. The QR carries the pipe (a temporary rendezvous
+  // reference), never the exchange; the mint always requires the second
+  // leg after the invitee has keys. Design: writing/invite-pipeline.md in
+  // hep-project-state. Server half: witness-server v2.6.0 pipe endpoints.
+  //
+  // The pipe lives on exactly one witness server (wherever the inviter's
+  // app created it), so the QR cargo names that host explicitly (pw=).
+  // Without it, redemption breaks whenever the two phones have different
+  // witness settings -- and during the v2.6.0 rollout only part of the
+  // cohort speaks the pipe protocol at all.
+  //
+  // Cargo params: pi (10-char pipe code), pw (pipe host URL, base64url),
+  // pf (inviter fingerprint, for cross-checking the redeem response so a
+  // hostile pipe host cannot substitute a different inviter), pn (inviter
+  // display name). The existing ?hw= witness suggestions ride along
+  // unchanged (silent merge, registry pin 141).
+
+  var OPEN_PIPE_KEY = 'hcp_dev_open_pipe';
+  var PENDING_INVITE_KEY = 'hcp_dev_pending_invite';
+  var PIPE_TTL_MS = 24 * 60 * 60 * 1000; // mirror of server-side retention
+
+  function generatePipeCode() {
+    // 10 chars from the language-proof charset; matches the server's
+    // validPipeCode. Longer than session codes because a pipe is
+    // semi-public (displayed in a room) and lives up to 24 hours.
+    var bytes = crypto.getRandomValues(new Uint8Array(10));
+    var out = '';
+    for (var i = 0; i < 10; i++) out += PAIR_CHARS[bytes[i] % PAIR_CHARS.length];
+    return out;
+  }
+
+  function buildInviteUrl(pipeCode, witnessUrl) {
+    var url = getAppBase() +
+      '?pi=' + pipeCode +
+      '&pw=' + b64Encode(witnessUrl) +
+      '&pf=' + encodeURIComponent(state.fingerprint || '');
+    var name = (state.declarations.name || '').trim().slice(0, 40);
+    if (name) url += '&pn=' + encodeURIComponent(name);
+    return appendWitnessSuggestionsToShareUrl(url);
+  }
+
+  function openInvite() {
+    showModal('invite');
+    var status = document.getElementById('invite-status');
+    var qrWrap = document.getElementById('invite-qr-wrap');
+    var urlEl = document.getElementById('invite-url');
+    var closeBtn = document.getElementById('invite-close-pipe');
+    qrWrap.style.display = 'none';
+    urlEl.style.display = 'none';
+    closeBtn.style.display = 'none';
+    status.textContent = 'Creating invite...';
+
+    var witnessUrl = getWitnessUrl();
+    if (!witnessUrl) {
+      status.textContent = 'No server available. An invite needs a witness server to carry the introduction.';
+      return;
+    }
+
+    var pipeCode = generatePipeCode();
+    serverFetch(witnessUrl + '/pipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pipe_code: pipeCode,
+        fingerprint: state.fingerprint,
+        public_key: state.publicKeyJwk,
+        name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+        max_redemptions: 1, // single invite; room mode is slice 2
+      }),
+    }).then(function(resp) {
+      if (resp.status === 404) {
+        // The selected witness predates the pipe protocol (pre-v2.6.0).
+        status.textContent = 'Your witness server does not support invites yet. You can pick a different server in Settings.';
+        return;
+      }
+      if (!resp.ok) {
+        status.textContent = 'The server could not create the invite. Try again.';
+        return;
+      }
+      return resp.json().then(function(data) {
+        if (!data || !data.created) {
+          status.textContent = 'Could not create the invite. Try again.';
+          return;
+        }
+        var inviteUrl = buildInviteUrl(pipeCode, witnessUrl);
+        // Persist the open pipe so it survives closing the app. The
+        // invited person may take minutes to install and onboard; the
+        // pipe waits up to 24 hours (server TTL is the backstop).
+        try {
+          localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify({
+            code: pipeCode, witness: witnessUrl, openedAt: Date.now(),
+          }));
+        } catch(_) {}
+        status.textContent = 'Have them scan this code';
+        qrWrap.style.display = '';
+        urlEl.style.display = '';
+        urlEl.textContent = inviteUrl;
+        try { QR.generate(inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
+        closeBtn.style.display = '';
+        console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + witnessUrl);
+      });
+    }).catch(function(e) {
+      status.textContent = 'Could not reach the witness server. Check your connection and try again.';
+      console.log('[invite] Pipe create failed:', e && e.message ? e.message : e);
+    });
+  }
+
+  function closeInvitePipe() {
+    var open = null;
+    try { open = JSON.parse(localStorage.getItem(OPEN_PIPE_KEY) || 'null'); } catch(_) {}
+    try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    closeModal('invite');
+    if (!open || !open.code || !open.witness) return;
+    // Fire and forget. Redemptions already made stay valid; the server
+    // TTL cleans up if this request never lands.
+    serverFetch(open.witness + '/pipe/' + open.code + '/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: state.fingerprint }),
+    }).catch(function(_) {});
+    toast('Invite closed');
+    console.log('[invite] Pipe closed: ' + open.code);
+  }
+
+
   // Canonical app URL — all share surfaces, QR codes, and clipboard links
   // resolve to this URL regardless of where the user is running from
   // (local dev, alternate domain, installed PWA). Sharing always points
@@ -6409,8 +6546,28 @@ const PAIR_CODE_LENGTH = 4;
     if (hw) {
       try { ingestWitnessSuggestionsFromShareParam(hw); } catch(e) {}
     }
+    // Invite pipeline (slice 1): a scanned invite QR carries a pipe
+    // reference. Persist it immediately -- the URL is stripped below,
+    // and for a brand-new person redemption happens minutes from now,
+    // at onboarding completion. One pending invite; a newer scan wins.
+    const pi = params.get('pi');
+    if (pi && /^[ACDEFGHJKMNPQRTUVWXYZ]{10}$/.test(pi)) {
+      try {
+        const pw = b64Decode(params.get('pw') || '');
+        if (/^https?:\/\//i.test(pw)) {
+          localStorage.setItem(PENDING_INVITE_KEY, JSON.stringify({
+            pi: pi,
+            pw: pw.trim().replace(/\/+$/, ''),
+            pf: (params.get('pf') || '').trim(),
+            pn: (params.get('pn') || '').trim().slice(0, 80),
+            ts: Date.now(),
+          }));
+          console.log('[invite] Pending invite stored for pipe ' + pi);
+        }
+      } catch(e) { console.log('[invite] Could not parse invite cargo:', e.message); }
+    }
     // Clean URL without reload
-    if (ref || hs || cf || cv || st || hw) {
+    if (ref || hs || cf || cv || st || hw || pi) {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }
@@ -11249,7 +11406,7 @@ function init() {
     openWallet, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
-    openShare, copyShareLink, copyShareLinkRef, shareViaSystem,
+    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
