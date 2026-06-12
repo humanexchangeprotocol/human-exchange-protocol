@@ -363,8 +363,14 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('setup-' + step).classList.add('active');
     // Scroll to top of setup screen
     document.getElementById('setup').scrollTop = 0;
+    if (step === 'name' && inviteOnboardingActive()) {
+      var nameStepEl = document.getElementById('setup-name');
+      if (nameStepEl && !document.getElementById('invite-name-hint')) {
+        nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size:14px; color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
+      }
+    }
     if (step === 'pin') buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
-    else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep('photo'); } else shake(); });
+    else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep(inviteOnboardingActive() ? 'name' : 'photo'); } else shake(); });
   }
 
   function capturePhoto() { document.getElementById('photo-capture-input').click(); }
@@ -380,12 +386,18 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations.about = document.getElementById('setup-about').value.trim();
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
+    // Invite pipeline 1c: the trimmed path generates identity now.
+    // Photo, sensors, and the rest of the declaration stay available
+    // afterward; the protocol already treats them as optional, and a
+    // chain that grounds itself over time looks like what it is.
+    if (inviteOnboardingActive()) { setupStep('generating'); generateIdentity(state.pin); return; }
     // Skip range exercise (now available in Learn tab as "Find Your Unit")
     setupStep('sensors');
   }
   function skipDeclarations() {
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
+    if (inviteOnboardingActive()) { setupStep('generating'); generateIdentity(state.pin); return; }
     setupStep('sensors');
   }
 
@@ -735,6 +747,15 @@ const PAIR_CODE_LENGTH = 4;
 
     await saveKeys(pin); save();
     document.getElementById('setup-fp').textContent = state.fingerprint;
+    // Invite pipeline 1c: an invited person skips the done branching
+    // screen entirely; the exchange they were invited into IS the next
+    // step. state.initialized is true by this point, so the redemption
+    // proceeds.
+    if (hasPendingInvite()) {
+      showScreen('home'); refreshHome(); showPendingUpdateBanner();
+      checkPendingInvite();
+      return;
+    }
     setupStep('done');
   }
   function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); }
@@ -1513,6 +1534,18 @@ const PAIR_CODE_LENGTH = 4;
 
   function closeExchange() {
     var wasDone = _sessionWritten || (state.doneSummary && state.doneSummary.length > 0);
+    // Invite pipeline: backing out of a pipe-born connection marks the
+    // redeemed record dismissed so foreground re-checks stop reopening
+    // it; the next full app open retries.
+    try {
+      if (!_sessionWritten && sessionCode) {
+        var _ri = JSON.parse(localStorage.getItem('hcp_dev_redeemed_invite') || 'null');
+        if (_ri && _ri.redeemer_code === sessionCode) {
+          _ri.dismissed = true;
+          localStorage.setItem('hcp_dev_redeemed_invite', JSON.stringify(_ri));
+        }
+      }
+    } catch(_) {}
     state.pendingProposal = null;
     localStorage.removeItem('hcp_dev_pending_proposal');
     exStopConnectPoll();
@@ -3407,6 +3440,9 @@ const PAIR_CODE_LENGTH = 4;
 
     // Invite pipeline room sweep: return the inviter to the queue.
     try { roomExchangeCompleted(); } catch(_) {}
+    // Invite pipeline redeemer side: clear the redeemed record and
+    // surface the install step for a fresh invitee.
+    try { inviteRedeemedCompleted(); } catch(_) {}
 
     // Schedule a follow-up refresh so the row exits the In flight
     // hold and drops to Recent at the right moment. Without this,
@@ -6392,7 +6428,19 @@ const PAIR_CODE_LENGTH = 4;
 
   var OPEN_PIPE_KEY = 'hcp_dev_open_pipe';
   var PENDING_INVITE_KEY = 'hcp_dev_pending_invite';
+  var REDEEMED_INVITE_KEY = 'hcp_dev_redeemed_invite';
   var PIPE_TTL_MS = 24 * 60 * 60 * 1000; // mirror of server-side retention
+
+  function hasPendingInvite() {
+    try {
+      var inv = JSON.parse(localStorage.getItem(PENDING_INVITE_KEY) || 'null');
+      return !!(inv && inv.pi && inv.pw && (!inv.ts || Date.now() - inv.ts < PIPE_TTL_MS));
+    } catch(_) { return false; }
+  }
+  // True only during onboarding of a person who arrived via an invite.
+  function inviteOnboardingActive() {
+    return !state.initialized && hasPendingInvite();
+  }
 
   function generatePipeCode() {
     // 10 chars from the language-proof charset; matches the server's
@@ -6744,8 +6792,27 @@ const PAIR_CODE_LENGTH = 4;
   // For a brand-new person the invite waits here through onboarding
   // (slice 1c). Timing discipline: this runs at app load, never inside
   // the proposal/confirm path.
-  async function checkPendingInvite() {
+  async function checkPendingInvite(fromForeground) {
     if (!state.initialized) return;
+    if (exFlowActive) return; // never interrupt a live exchange
+
+    // A redemption that already happened resumes with its ORIGINAL
+    // code pair. The server is idempotent per person but returns the
+    // first owner_code; re-redeeming with a fresh code would pair the
+    // two phones on different codes and they would never connect.
+    var rec = null;
+    try { rec = JSON.parse(localStorage.getItem(REDEEMED_INVITE_KEY) || 'null'); } catch(_) {}
+    if (rec && rec.redeemer_code && rec.owner_code && rec.host) {
+      if (rec.ts && (Date.now() - rec.ts > PIPE_TTL_MS)) {
+        localStorage.removeItem(REDEEMED_INVITE_KEY);
+      } else if (rec.dismissed && fromForeground) {
+        return; // they backed out; only a full app open retries
+      } else {
+        enterRedeemedSession(rec);
+        return;
+      }
+    }
+
     var inv = null;
     try { inv = JSON.parse(localStorage.getItem(PENDING_INVITE_KEY) || 'null'); } catch(_) {}
     if (!inv || !inv.pi || !inv.pw) return;
@@ -6808,20 +6875,32 @@ const PAIR_CODE_LENGTH = 4;
     }
 
     localStorage.removeItem(PENDING_INVITE_KEY);
+    var rec2 = {
+      pi: inv.pi,
+      host: inv.pw,
+      redeemer_code: redeemerCode,
+      owner_code: data.owner_code,
+      owner_name: (data.owner && data.owner.name) ? data.owner.name : (inv.pn || ''),
+      ts: Date.now(),
+    };
+    try { localStorage.setItem(REDEEMED_INVITE_KEY, JSON.stringify(rec2)); } catch(_) {}
     console.log('[invite] Redeemed pipe ' + inv.pi + '; joining session as ' + redeemerCode + ' -> ' + data.owner_code);
+    enterRedeemedSession(rec2);
+  }
 
+  function enterRedeemedSession(rec) {
     cleanupSession();
-    sessionWitnessUrl = inv.pw; // the session lives where the pipe lives
+    sessionWitnessUrl = rec.host; // the session lives where the pipe lives
     exFlowActive = true;
     exConnectMode = 'join';
     exInitiatorRole = null; // joiner; role announced by the inviter
     sessionRole = 'confirmer';
-    sessionCode = redeemerCode;
-    sessionTheirCode = data.owner_code;
+    sessionCode = rec.redeemer_code;
+    sessionTheirCode = rec.owner_code;
     showModal('exchange');
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
-    var who = (data.owner && data.owner.name) ? esc(data.owner.name) : (inv.pn ? esc(inv.pn) : 'them');
+    var who = rec.owner_name ? esc(String(rec.owner_name).slice(0, 40)) : 'them';
     document.getElementById('ex-connect-content').innerHTML =
       '<div style="text-align:center; padding:24px 0;">' +
       '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
@@ -6829,6 +6908,27 @@ const PAIR_CODE_LENGTH = 4;
       '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
       '</div></div>';
     exPostJoin(sessionCode, sessionTheirCode);
+  }
+
+  // Called on every session record write. Clears the redeemed-invite
+  // record and, for a fresh invitee still in the browser, surfaces the
+  // install step now that the exchange they came for is on their chain.
+  function inviteRedeemedCompleted() {
+    var rec = null;
+    try { rec = JSON.parse(localStorage.getItem(REDEEMED_INVITE_KEY) || 'null'); } catch(_) {}
+    if (!rec) return;
+    localStorage.removeItem(REDEEMED_INVITE_KEY);
+    try { localStorage.removeItem(PENDING_INVITE_KEY); } catch(_) {}
+    if (detectInstallPlatform() !== 'installed') {
+      setTimeout(function() {
+        if (deferredInstallPrompt) {
+          try { deferredInstallPrompt.prompt(); return; } catch(_) {}
+        }
+        var banner = document.getElementById('install-banner');
+        if (banner) banner.classList.add('show');
+        toast('Your exchange is recorded. Install HEP to keep your chain with you.');
+      }, 1500);
+    }
   }
 
 
@@ -7444,6 +7544,11 @@ const PAIR_CODE_LENGTH = 4;
 
   // Welcome screen Get Started routing: install-first if installable and not skipped, otherwise straight to PIN.
   function goToInstallOrPin() {
+    // Invite pipeline 1c: an invited new person stays in the browser.
+    // The pending invite lives in this tab's storage, and on iOS the
+    // installed app cannot see it. Install comes after the first
+    // exchange, not before.
+    if (inviteOnboardingActive()) { setupStep('pin'); return; }
     const platform = detectInstallPlatform();
     if (platform === 'installed' || localStorage.getItem('hcp_dev_skip_install')) {
       setupStep('pin');
@@ -7486,6 +7591,10 @@ function init() {
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible' && state.fingerprint) {
         checkForUpdates();
+        // Invite pipeline: an invite scanned in another tab lands in
+        // shared storage; pick it up when this tab comes forward
+        // instead of only at boot.
+        try { checkPendingInvite(true); } catch(_) {}
       }
     });
 
