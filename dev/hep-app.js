@@ -6499,6 +6499,35 @@ const PAIR_CODE_LENGTH = 4;
     try { localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify(p)); } catch(_) {}
   }
 
+  function inviteTimeAgo(ts) {
+    if (!ts) return '';
+    var delta = Math.max(0, Date.now() - ts);
+    var min = Math.floor(delta / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return min + ' min ago';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+    return Math.floor(hr / 24) + ' days ago';
+  }
+
+  // Start a fresh invite: close the open pipe and reopen the chooser.
+  function inviteStartFresh() {
+    stopInvitePoll();
+    var open = loadOpenPipe();
+    try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    _roomRedemptions = [];
+    _pipeRedemption = null;
+    _pipeHost = null;
+    if (open) {
+      serverFetch(open.witness + '/pipe/' + open.code + '/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint: state.fingerprint }),
+      }).catch(function(_) {});
+    }
+    openInvite();
+  }
+
   function inviteResetSurfaces() {
     document.getElementById('invite-qr-wrap').style.display = 'none';
     document.getElementById('invite-url').style.display = 'none';
@@ -6519,6 +6548,13 @@ const PAIR_CODE_LENGTH = 4;
     if (open) {
       if (intro) intro.style.display = 'none';
       resumeInvitePipe(open);
+      // Make the resumption visible. The user came in expecting either
+      // a fresh chooser or their active room; either way they deserve
+      // to know which pipe they are looking at.
+      var openedAgo = inviteTimeAgo(open.openedAt);
+      var resumeBanner = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px; font-size:13px; color:var(--text-dim); line-height:1.5;">You have an invite open from earlier (' + esc(openedAgo) + '). <span style="color:var(--accent); cursor:pointer;" onclick="App.inviteStartFresh()">Start a new invite instead</span></div>';
+      var statusEl = document.getElementById('invite-status');
+      statusEl.innerHTML = resumeBanner + statusEl.innerHTML;
       return;
     }
 
@@ -6667,8 +6703,10 @@ const PAIR_CODE_LENGTH = 4;
     for (var i = 0; i < _roomRedemptions.length; i++) {
       var r = _roomRedemptions[i];
       var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
+      var ago = inviteTimeAgo(r.created_at);
       html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0;">';
-      html += '<div style="font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
+      html += '<div style="min-width:0; flex:1;"><div style="font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
+      html += '<div style="font-size:12px; color:var(--text-faint);">' + esc(ago) + '</div></div>';
       if (done[r.redeemer_code]) {
         html += '<div style="font-size:13px; color:var(--text-dim); flex-shrink:0;">Recorded</div>';
       } else {
@@ -11871,7 +11909,7 @@ function init() {
     openWallet, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
-    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue,
+    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
