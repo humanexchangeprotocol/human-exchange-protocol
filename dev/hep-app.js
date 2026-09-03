@@ -1246,7 +1246,29 @@ const PAIR_CODE_LENGTH = 4;
     // gets called here so an open wallet modal also refreshes in place.
     renderHomeTab();
     renderStandingTab();
+    renderBrowserStorageBanner();
   }
+
+  // iOS-only: when the app is running in a Safari tab (not installed to
+  // the home screen), the chain lives only in this browser's storage and
+  // will not carry over on install. Show a persistent, dismissible-by-
+  // installing reminder with a one-tap export. Non-iOS and installed
+  // contexts render nothing.
+  function renderBrowserStorageBanner() {
+    var host = document.getElementById('home');
+    if (!host) return;
+    var existing = document.getElementById('browser-storage-banner');
+    var isiOS = detectInstallPlatform() === 'ios';
+    if (!isiOS) { if (existing) existing.remove(); return; }
+    if (existing) return;
+    var b = document.createElement('div');
+    b.id = 'browser-storage-banner';
+    b.style.cssText = 'background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:var(--radius); padding:12px 14px; margin:12px 0; font-size:13px; color:var(--text-dim); line-height:1.5;';
+    b.innerHTML = 'You are using HEP in the browser. On iPhone your records live here, not on your phone, and will not carry over when you install. ' +
+      '<button style="display:block; margin-top:8px; background:var(--accent); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:600;" onclick="App.exportBackup()">Save a backup now</button>';
+    host.insertBefore(b, host.firstChild);
+  }
+
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -7598,6 +7620,13 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function skipInstallFirst() {
+    // iPhone/iPad: the browser and the installed app are separate storage
+    // boxes. Anything created here does not carry over on install. Warn
+    // plainly before letting an iOS user proceed in the browser.
+    if (detectInstallPlatform() === 'ios') {
+      var ok = window.confirm('On iPhone, anything you create in the browser stays in the browser. When you install HEP later, you will start fresh unless you export a backup first. Continue in the browser only if you are just looking.');
+      if (!ok) return;
+    }
     localStorage.setItem('hcp_dev_skip_install', '1');
     setupStep('pin');
   }
