@@ -1,6 +1,6 @@
 # HEP app design rules
 
-One page. Every surface we touch follows these rules from the day they are written. Nothing is swept; screens convert when they are next worked on. To change a rule, edit this page and the matching token in the stylesheet, then convert on contact as before.
+One page. Read it before designing or mocking up any surface. Every mockup starts from the dev stylesheet (the tokens and the `exs-` classes in `dev/index.html`), never from a fresh drawing. Every surface we touch follows these rules from the day they are written. Nothing is swept; screens convert when they are next worked on. To change a rule, edit this page and the matching token in the stylesheet, then convert on contact as before.
 
 ## Surfaces
 
@@ -19,7 +19,7 @@ One page. Every surface we touch follows these rules from the day they are writt
 5. Five sizes, no others: caption 12, label 13, body 15, title 18, display 32 (`--fs-caption` to `--fs-display`). A number that is the moment (an agreed value, a standing) may use display.
 6. Two weights: regular and semibold. Mono is for keys and hashes only.
 7. Center for moments, left for reading. A question, a name, a number, a one-line sentence may be centered. Anything a person reads as prose, any list, and anything that wraps past two lines is left-aligned. Centered and left-aligned text never share a screen; reading lives in a reading sheet.
-8. The unit beside a number is the HEP mark, small and muted, never a coin or a money glyph. The words currency and cosmic share appear only where the sign of standing is the point (the wallet, the wave).
+8. The unit beside a number is the HEP mark, small and muted, never a coin or a money glyph. Words for the totals (ruled Oct 2): currency is the running total of what you have produced, cosmic share the running total of what you have received, standing the difference. A standing is shown unsigned with "above" or "below" ("2,000 below"), never a minus sign, never red.
 
 ## Disclosure
 
@@ -41,3 +41,12 @@ One page. Every surface we touch follows these rules from the day they are writt
 
 16. Four meanings, never a fifth hue: blue is you and action; amber is received and cosmic share; green is confirmed; red is danger only, and rare. All colors come from the tokens.
 17. Two radii only: `--radius` for sheets and cards, `--radius-sm` for fields and buttons. Circles for avatars.
+
+## Open questions
+
+A design question these rules do not answer is written here when it comes up, ruled by Michael, then moved into the rules above. Nothing is designed around an open question silently.
+
+- Segmented controls (Actual / Typical, Each / Week / Month / Year on the textures): no rule yet. The mockup uses a quiet pill row on `--bg-input`.
+- Charts (line weights, fills, axis labels, bar strips): no rule yet beyond rule 16's colours.
+- Icons on list rows: the exchange rows carry none; the Home doors row carries one per door. Which pattern My chain follows is open.
+- The word for standing in the wallet: "Standing" is in use; whether it is final is open.
