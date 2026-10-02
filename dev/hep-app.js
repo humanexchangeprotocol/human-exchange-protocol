@@ -1303,6 +1303,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function formatDuration(mins) {
+    if (mins >= 1440 && mins % 1440 === 0) { var dd = mins / 1440; return dd + (dd === 1 ? ' day' : ' days'); }
     if (mins < 60) return mins + 'm';
     const h = Math.floor(mins / 60), m = mins % 60;
     return m > 0 ? h + 'h ' + m + 'm' : h + 'h';
@@ -1325,6 +1326,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Exchange (Initiator Side) ---
   function showExStep(step) {
+    var _xb = document.getElementById('exchange-close'); if (_xb) _xb.style.visibility = '';
     document.querySelectorAll('#exchange-body .hs-step').forEach(s => s.classList.remove('active'));
     document.getElementById('ex-step-' + step).classList.add('active');
     // Sync 3-step indicator (role-aware).
@@ -1651,13 +1653,17 @@ const PAIR_CODE_LENGTH = 4;
   function exParseDuration(text) {
     if (!text || !text.trim()) return 0;
     text = text.trim().toLowerCase();
-    // Try patterns: "2 hours", "2h", "2.5 hours", "30 min", "30m", "1h 30m", "90"
-    var totalMins = 0;
-    var hMatch = text.match(/([\d.]+)\s*h/);
-    var mMatch = text.match(/([\d.]+)\s*m/);
-    if (hMatch) totalMins += Math.round(parseFloat(hMatch[1]) * 60);
-    if (mMatch) totalMins += Math.round(parseFloat(mMatch[1]));
-    if (!hMatch && !mMatch) {
+    // "2 hours", "2h", "2.5 hours", "30 min", "30m", "1h 30m", "3 days",
+    // "1 week", "2 months", "90". Days are calendar days (v2.69.0 fix:
+    // "3 days" used to read as 3 hours).
+    var totalMins = 0, hit = false;
+    var add = function(re, per) { var m = text.match(re); if (m) { totalMins += Math.round(parseFloat(m[1]) * per); hit = true; } };
+    add(/([\d.]+)\s*mo/, 30 * 1440);
+    add(/([\d.]+)\s*w/, 7 * 1440);
+    add(/([\d.]+)\s*d/, 1440);
+    add(/([\d.]+)\s*h/, 60);
+    add(/([\d.]+)\s*m(?!o)/, 1);
+    if (!hit) {
       // Plain number -- if > 10 assume minutes, otherwise hours
       var n = parseFloat(text);
       if (!isNaN(n)) totalMins = n > 10 ? Math.round(n) : Math.round(n * 60);
@@ -9286,8 +9292,38 @@ function init() {
     if (!p) return;
     // Processing and Settled (ruled Oct 2, eleventh session) have their
     // own layout: no description header, nothing but the moment.
+    var xb = document.getElementById('exchange-close');
+    if (xb) xb.style.visibility = (st === 'flow' || st === 'done') ? 'hidden' : '';
     if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
     if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
+    // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
+    // item's layout, left-aligned. Review has Confirm, This doesn't look
+    // right, and Cancel exchange; Wait has only the pulsing line.
+    if (st === 'review' || st === 'wait') {
+      exFrameHeader();
+      var o = _exRV.other || exPartnerName();
+      var iProvide = p.myDirection === 'provided';
+      var cap = st === 'wait' ? 'Sent to ' + esc(o) : (iProvide ? 'You are providing to ' + esc(o) : esc(o) + ' is providing to you');
+      var giver = iProvide ? esc(o) + ' gives' : 'You give';
+      var kd = exKindDur(p.category, p.duration ? formatDuration(p.duration) : '');
+      var h = '<div class="exs-cap">' + cap + '</div>';
+      h += '<div class="exs-t" style="margin-top:2px">' + esc(p.task) + '</div>';
+      if (kd) h += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+      h += '<div style="height:24px"></div>';
+      h += '<div class="exs-lab">' + giver + '</div>';
+      h += '<div class="exs-disp">' + (Number(p.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
+      h += '<div style="height:28px"></div>';
+      if (st === 'review') {
+        h += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%;" onclick="App.sessionConfirm()">Confirm</button>';
+        h += '<button class="exs-quiet" onclick="App.exRVDecline()">This doesn\'t look right</button>';
+        h += exCancelHTML();
+      } else {
+        h += '<div class="exs-wait" style="justify-content:flex-start"><i></i><span>Waiting for ' + esc(o) + ' to confirm</span></div>';
+        h += '<div class="exs-grow"></div>';
+      }
+      host.innerHTML = h;
+      return;
+    }
     var other = _exRV.other || exPartnerName();
     var ts = exRVTs();
     var sh = exShieldRead(ts);
@@ -9563,22 +9599,24 @@ function init() {
   }
 
   // ===== Screen 6: the proposal, three beats (ruled Oct 1) =====
-  var _exBeat = { dir: null, task: '', meta: '', value: '', list: null };
+  var _exBeat = { dir: null, task: '', kind: '', dur: '', value: '', list: null, view: 'who', from: 'doors', q: '' };
   function exPartnerName() {
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
     return (ts && ts._name) || 'The other person';
   }
   function exBeatsOpen() {
-    _exBeat = { dir: null, task: '', meta: '', value: '', list: null };
+    _exBeat = { dir: null, task: '', kind: '', dur: '', value: '', list: null, view: 'who', from: 'doors', q: '' };
     ['ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
     // "Use previous" from the FAB lands on beat 3 with the fields live.
     if (window._fabPrefill) {
       var pf = window._fabPrefill; window._fabPrefill = null;
       _exBeat.dir = pf.energyState === 'received' ? 'received' : 'provided';
       _exBeat.task = pf.description || '';
-      _exBeat.meta = exMetaLine(pf.category, pf.duration);
+      _exBeat.kind = pf.category || '';
+      _exBeat.dur = pf.duration ? formatDuration(pf.duration) : '';
       _exBeat.value = pf.value || '';
+      _exBeat.from = 'doors';
       setDirection(_exBeat.dir);
       exRenderBeat(3);
       return;
@@ -9602,9 +9640,6 @@ function init() {
     var path = r ? 'M42 12 H14' : 'M2 12 H30';
     var head = r ? '14,6 2,12 14,18' : '30,6 42,12 30,18';
     return '<div class="exs-arr"><svg viewBox="0 0 44 24"><path class="shaft" d="' + path + '"/><polygon class="head" points="' + head + '"/></svg></div>';
-  }
-  function exBeatBottom(back, backFn) {
-    return '<div class="exs-grow"></div><div class="exs-bottom"><button onclick="' + backFn + '">' + back + '</button><button onclick="App.closeExchange()">Not now</button></div>';
   }
   function exOwnActs(dir) {
     var map = {};
@@ -9634,105 +9669,194 @@ function init() {
       + '<div class="amt"><span data-say-amt>' + v.toLocaleString() + '</span><small>currency</small></div>'
       + '</div>';
   }
+  // ===== Batch 1 (Oct 2 surface rulings, built v2.69.0) =====
+  // Views inside the proposal sheet: who -> doors -> list -> item -> form.
+  // X goes back one step (DESIGN 2a). Cancel exchange sits bottom left
+  // on every flow sheet (DESIGN 2b). The HEP mark beside every number is
+  // a stand-in (two circles) until the glyph is drawn.
+  function exMarkSVG(px) {
+    px = px || 14;
+    return '<svg class="exs-mark" width="' + px + '" height="' + px + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-label="HEP"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>';
+  }
+  function exCancelHTML() {
+    return '<div class="exs-grow"></div><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
+  }
+  function exCancelExchange() { closeExchange(); }
+  function exFrameHeader() {
+    var h = document.getElementById('exchange-header'); if (h) h.textContent = '';
+  }
+  function exBeatBottom() { return exCancelHTML(); }
+  function exDirCaption(other) {
+    return _exBeat.dir === 'provided' ? 'You are providing to ' + esc(other) : esc(other) + ' is providing';
+  }
+  function exGiverLabel(other) {
+    return _exBeat.dir === 'provided' ? esc(other) + ' gives' : 'You give';
+  }
+  // A service entry or a past act, read the same way.
+  function exItemParts(kind, it) {
+    if (kind === 'services') {
+      var sm = (it.category !== undefined || it.dur !== undefined) ? { category: it.category || '', duration: it.dur || '' } : exSplitMeta(it.meta || '');
+      return { task: it.description || '', kind: sm.category, dur: sm.duration, value: it.value, ts: null };
+    }
+    return { task: it.description || '', kind: it.category || '', dur: it.duration ? formatDuration(it.duration) : '', value: it.value, ts: it.timestamp || null };
+  }
+  function exKindDur(kind, dur) { var a = []; if (kind) a.push(kind); if (dur) a.push(dur); return a.join(', '); }
+  function exFmtDate(ts) {
+    try { var d = new Date(ts); if (isNaN(d)) return ''; return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch(e) { return ''; }
+  }
   function exRenderBeat(n, listKind) {
     var host = document.getElementById('ex-beats');
     if (!host) return;
+    exFrameHeader();
     var other = exPartnerName();
     var html = '';
     if (n === 1) {
-      html += '<div class="exs-h">Who is providing?</div><div class="exs-m">The other person is receiving.</div>';
+      _exBeat.view = 'who';
+      html += '<div class="exs-h" style="text-align:center">Who is providing?</div><div class="exs-m" style="text-align:center">The other person is receiving.</div>';
       html += '<div style="height:40px"></div>';
-      // No arrow (Michael, Oct 2). The one tapped lifts, the other mutes;
-      // tap around to switch; Continue takes you on. Laid out as a row so
-      // a third person can join when group mode comes.
       var d = _exBeat.dir;
       html += '<div class="exs-boxes">'
         + exBoxHTML('You', d === 'provided', "App.exBeatPick('provided')").replace('class="exs-box', 'class="exs-box' + (d && d !== 'provided' ? ' mute' : ''))
         + exBoxHTML(other, d === 'received', "App.exBeatPick('received')").replace('class="exs-box', 'class="exs-box' + (d && d !== 'received' ? ' mute' : ''))
         + '</div>';
       html += '<div class="exs-f" style="text-align:center; margin-top:12px;">' + (d ? (d === 'provided' ? 'You are providing.' : esc(other) + ' is providing.') : 'Tap the one who is providing.') + '</div>';
-      html += '<div class="exs-grow"></div>';
-      html += '<button class="btn btn-primary" style="width:100%;"' + (d ? '' : ' disabled style="width:100%; opacity:.45"') + ' onclick="App.exRenderBeat(2)">Continue</button>';
-      html += '<div class="exs-bottom"><button onclick="App.exBackToTexture()">Back</button><button onclick="App.closeExchange()">Not now</button></div>';
+      html += '<div style="height:32px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;' + (d ? '' : ' opacity:.45') + '"' + (d ? '' : ' disabled') + ' onclick="App.exRenderBeat(2)">Continue</button>';
+      html += exCancelHTML();
     } else if (n === 2 && !listKind) {
+      _exBeat.view = 'doors';
       var svcN = _exBeat.dir === 'provided' ? exServices().length : 0;
       var pastN = exOwnActs(_exBeat.dir).length;
-      var door = function(ic, t, sub, fn) { return '<button class="exs-item" onclick="' + fn + '"><div class="exs-doorrow"><div class="ic">' + ic + '</div><div><div class="t" style="font-size:16px">' + t + '</div><div class="exs-f">' + sub + '</div></div></div></button>'; };
-      html += '<div class="exs-m" style="margin:0 0 2px">' + (_exBeat.dir === 'provided' ? 'You are providing' : esc(other) + ' is providing') + '</div><div class="exs-h">What was provided?</div>';
-      html += '<div style="height:16px"></div>';
-      if (_exBeat.dir === 'provided') html += door('&#9776;', 'Services you offer', svcN ? svcN + ' listed' : 'None yet', "App.exBeatDoor('services')");
-      html += door('&#8635;', 'Past exchanges', pastN ? pastN + ' on your chain' : 'None yet', "App.exBeatDoor('past')");
-      html += door('+', 'Something new', 'Describe it', 'App.exBeatNew()');
-      html += exBeatBottom('Back', 'App.exRenderBeat(1)');
+      var door = function(t, sub, fn) {
+        var live = !!fn;
+        return '<button class="exs-row' + (live ? '' : ' off') + '"' + (live ? ' onclick="' + fn + '"' : ' tabindex="-1"') + '><div class="exs-rowmain"><div class="exs-body">' + t + '</div><div class="exs-cap">' + sub + '</div></div>' + (live ? '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg>' : '') + '</button>';
+      };
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div><div class="exs-t">What was provided?</div>';
+      html += '<div style="height:14px"></div>';
+      if (_exBeat.dir === 'provided') html += door('Services you offer', svcN ? svcN + ' listed' : 'None yet', svcN ? "App.exBeatDoor('services')" : null);
+      html += door('Past exchanges', pastN ? pastN + ' on your chain' : 'None yet', pastN ? "App.exBeatDoor('past')" : null);
+      html += door('Something new', 'Describe it', 'App.exBeatNew()');
+      html += exCancelHTML();
     } else if (n === 2 && listKind) {
+      _exBeat.view = 'list'; _exBeat.listKind = listKind;
       var items = listKind === 'services' ? exServices() : exOwnActs(_exBeat.dir);
       _exBeat.list = items;
-      html += '<div class="exs-m" style="margin:0 0 2px">' + (_exBeat.dir === 'provided' ? 'You are providing' : esc(other) + ' is providing') + '</div><div class="exs-h">' + (listKind === 'services' ? 'Services you offer' : 'Past exchanges') + '</div>';
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div><div class="exs-t">' + (listKind === 'services' ? 'Services you offer' : 'Past exchanges') + '</div>';
       html += '<div style="height:12px"></div>';
-      if (!items.length) html += '<div class="exs-m">Nothing here yet.</div>';
-      items.slice(0, 40).forEach(function(it, i) {
-        var meta = listKind === 'services' ? (it.meta || '') : exMetaLine(it.category, it.duration);
-        html += '<button class="exs-item" onclick="App.exBeatPickItem(\'' + listKind + '\',' + i + ')"><div><div class="t">' + esc(it.description || '') + '</div>' + (meta ? '<div class="exs-f">' + esc(meta) + '</div>' : '') + '</div><div class="v">' + esc(String(it.value || '')) + '</div></button>';
-      });
-      html += exBeatBottom('Back', 'App.exRenderBeat(2)');
-    } else {
-      // Everything centered (Michael, Oct 2). The value and its word sit
-      // together; the statement block says in words who provides and who
-      // gives what, in place of the boxes and the arrow.
-      html += '<div class="exs-m" style="margin:0; text-align:center">' + (_exBeat.dir === 'provided' ? 'You propose to ' + esc(other) : 'You propose that ' + esc(other) + ' provided') + '</div>';
-      html += '<div style="height:10px"></div>';
-      html += '<input class="exs-field c" id="ex-desc" style="font-size:19px; font-weight:600;" placeholder="What was provided?" value="' + esc(_exBeat.task) + '" oninput="App.exBeatField(\'task\', this.value)">';
-      html += '<input class="exs-field c" id="ex-meta" style="font-size:13px; margin-top:4px;" placeholder="kind of work, how long" value="' + esc(_exBeat.meta) + '" oninput="App.exBeatField(\'meta\', this.value)">';
-      html += '<div style="height:16px"></div>';
-      html += '<div class="exs-valc"><input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" size="' + Math.max(3, String(_exBeat.value).length + 1) + '" oninput="App.exBeatField(\'value\', this.value); this.size = Math.max(3, this.value.length + 1);"><small>currency</small></div>';
-      // Save shows only when an existing item was picked and changed
-      // (Michael, Oct 2); a new act needs nothing, it will be a past
-      // exchange once the exchange completes.
-      html += '<div style="text-align:center; min-height:40px"><button class="exs-save" id="ex-beat-save" style="display:' + (exBeatChanged() ? 'inline-flex' : 'none') + '" onclick="App.exBeatSaveService()" aria-label="Save change to your service"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Save change to your service</button></div>';
-      html += '<div style="height:18px"></div>';
-      html += exSayHTML(_exBeat.dir, other, _exBeat.value, 'ex-beat-say');
-      // The proposer can read the other person's device and chain here,
-      // before Send (Michael, Oct 2). Same sheets as the chain read.
-      var bts = exRVTs(); var bsh = exShieldRead(bts);
-      html += '<div style="height:16px"></div>';
-      html += '<div class="exs-icons" style="gap:28px"><button class="exs-icon" onclick="App.exBeatSheet(\'shield\')">' + exShieldSVG(bsh.color, 26) + '<div class="exs-f">' + esc(other) + '\'s device</div></button><button class="exs-icon" onclick="App.exBeatSheet(\'thread\')">' + exThreadSVG(26) + '<div class="exs-f">' + esc(other) + '\'s chain</div></button></div>';
-      html += '<div class="exs-grow"></div>';
+      if (items.length >= 8) html += '<div class="exs-fl" style="margin-bottom:10px"><input class="exs-box-in" id="ex-list-q" placeholder="Search" value="' + esc(_exBeat.q || '') + '" oninput="App.exListFilter(this.value)"></div>';
+      html += '<div id="ex-list-rows">' + exListRowsHTML(listKind, items, _exBeat.q || '') + '</div>';
+      html += exCancelHTML();
+    } else if (n === 'item') {
+      _exBeat.view = 'item';
+      var dateLine = (_exBeat.picked && _exBeat.picked.kindOf === 'past' && _exBeat.picked.ts) ? exFmtDate(_exBeat.picked.ts) : '';
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div>';
+      html += '<div class="exs-t" style="margin-top:2px">' + esc(_exBeat.task) + '</div>';
+      var kd = exKindDur(_exBeat.kind, _exBeat.dur);
+      if (kd) html += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+      if (dateLine) html += '<div class="exs-cap" style="margin-top:2px">Last done ' + esc(dateLine) + '</div>';
+      html += '<div style="height:24px"></div>';
+      html += '<div class="exs-lab">' + exGiverLabel(other) + '</div>';
+      html += '<div class="exs-disp">' + (Number(_exBeat.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
+      html += '<input type="hidden" id="ex-desc" value="' + esc(_exBeat.task) + '"><input type="hidden" id="ex-value" value="' + esc(String(Number(_exBeat.value) || 0)) + '">';
+      html += '<div style="height:28px"></div>';
       html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
-      html += '<div class="exs-bottom"><button onclick="App.exRenderBeat(2)">Back</button><button onclick="App.closeExchange()">Not now</button></div>';
+      html += '<button class="exs-quiet" onclick="App.exBeatEdit()">Edit</button>';
+      html += exCancelHTML();
+    } else {
+      _exBeat.view = 'form';
+      // Option A (ruled): no live sentence; left-aligned; caption with a
+      // small Switch; kind and duration as two boxes.
+      html += '<div class="exs-caprow"><span class="exs-cap">' + exDirCaption(other) + '</span><button class="exs-switch" onclick="App.exBeatSwitch()">Switch</button></div>';
+      html += '<div class="exs-t">What was provided?</div>';
+      html += '<div style="height:14px"></div>';
+      html += '<div class="exs-fl"><label for="ex-desc">Description</label><input class="exs-box-in" id="ex-desc" value="' + esc(_exBeat.task) + '" oninput="App.exBeatField(\'task\', this.value)"></div>';
+      html += '<div class="exs-fl2"><div class="exs-fl"><label for="ex-kind">Kind of work</label><input class="exs-box-in" id="ex-kind" value="' + esc(_exBeat.kind) + '" oninput="App.exBeatField(\'kind\', this.value)"></div>'
+        + '<div class="exs-fl"><label for="ex-dur">How long</label><input class="exs-box-in" id="ex-dur" placeholder="2 hours" value="' + esc(_exBeat.dur) + '" oninput="App.exBeatField(\'dur\', this.value)"></div></div>';
+      html += '<div class="exs-fl"><label for="ex-value">' + exGiverLabel(other) + '</label><div class="exs-bigrow"><input class="exs-box-in big" type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" style="width:calc(' + Math.max(2, String(_exBeat.value).length + 1) + 'ch + 26px)" oninput="App.exBeatField(\'value\', this.value); this.style.width = \'calc(\' + Math.max(2, this.value.length + 1) + \'ch + 26px)\';">' + exMarkSVG(18) + '</div></div>';
+      // Reserved: "From your declaration" (chevron, opens a picker). Built
+      // switched off until the attached-declarations walk and the
+      // Component 1 fingerprint spec.
+      var EX_DECL_ROW = false;
+      if (EX_DECL_ROW) html += '<button class="exs-row"><div class="exs-rowmain"><div class="exs-body">From your declaration</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+      html += '<div style="min-height:40px"><button class="exs-save" id="ex-beat-save" style="display:' + (exBeatChanged() ? 'inline-flex' : 'none') + '" onclick="App.exBeatSaveService()" aria-label="Save change to your service"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Save change to your service</button></div>';
+      html += '<div style="height:8px"></div>';
+      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
+      html += exCancelHTML();
     }
-    if (n === 3 && _exBeat.sheet === 'shield') html += exShieldSheetHTML(exRVTs(), "App.exBeatSheet('shield')");
-    if (n === 3 && _exBeat.sheet === 'thread') html += exThreadPanelHTML(exRVTs(), other, _exChainReadState.shared || 0, '', "App.exBeatSheet('thread')");
     host.innerHTML = html;
-    if (n === 3 && !_exBeat.task && !_exBeat.sheet) { var d = document.getElementById('ex-desc'); if (d) setTimeout(function() { d.focus(); }, 50); }
+    if (_exBeat.view === 'form' && !_exBeat.task) { var dd = document.getElementById('ex-desc'); if (dd) setTimeout(function() { dd.focus(); }, 50); }
   }
-  function exBeatSheet(which) { _exBeat.sheet = _exBeat.sheet === which ? null : which; exRenderBeat(3); }
+  function exListRowsHTML(listKind, items, q) {
+    q = (q || '').trim().toLowerCase();
+    var h = '';
+    var shown = 0;
+    items.forEach(function(it, i) {
+      if (q && (it.description || '').toLowerCase().indexOf(q) < 0) return;
+      if (shown >= 60) return; shown++;
+      var p = exItemParts(listKind, it);
+      var kd = exKindDur(p.kind, p.dur);
+      h += '<button class="exs-row" onclick="App.exBeatPickItem(\'' + listKind + '\',' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(p.task) + '</div>' + (kd ? '<div class="exs-cap">' + esc(kd) + '</div>' : '') + '</div><div class="exs-rowval">' + (Number(p.value) || 0).toLocaleString() + exMarkSVG(12) + '</div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    if (!shown) h += '<div class="exs-cap" style="padding:8px 2px">Nothing matches.</div>';
+    return h;
+  }
+  function exListFilter(q) {
+    _exBeat.q = q;
+    var el = document.getElementById('ex-list-rows');
+    if (el) el.innerHTML = exListRowsHTML(_exBeat.listKind, _exBeat.list || [], q);
+  }
+  // X: back one step, everything entered kept (DESIGN 2a).
+  function exBeatBack() {
+    var v = _exBeat.view;
+    if (v === 'form') { if (_exBeat.from === 'item' && _exBeat.picked) exRenderBeat('item'); else exRenderBeat(2); }
+    else if (v === 'item') exRenderBeat(2, _exBeat.listKind || (_exBeat.picked && _exBeat.picked.kindOf === 'past' ? 'past' : 'services'));
+    else if (v === 'list') { _exBeat.q = ''; exRenderBeat(2); }
+    else if (v === 'doors') exRenderBeat(1);
+    else exBackToTexture();
+  }
+  // The header X routes here. Inside the proposal sheet it goes back one
+  // step. Elsewhere it keeps its old behaviour until Batch 2 rewires the
+  // rest of the flow (Start, Join, Verify, chain read, Review).
+  function exX() {
+    var form = document.getElementById('ex-step-form');
+    if (form && form.classList.contains('active')) { exBeatBack(); return; }
+    var rv = document.getElementById('ex-step-rv');
+    // Interim: X on Wait leaves to Home with the session alive, as Not
+    // now did. Rule 2c (no X on Wait) lands with server presence.
+    if (rv && rv.classList.contains('active') && _exRV.state === 'wait') { exRVLeaveWait(); return; }
+    closeExchange();
+  }
   function exBeatPick(dir) {
     _exBeat.dir = dir;
     setDirection(dir);
     exRenderBeat(1);
   }
-  function exBeatDoor(kind) { exRenderBeat(2, kind); }
-  function exBeatNew() { _exBeat.task = ''; _exBeat.meta = ''; _exBeat.value = ''; _exBeat.picked = null; exRenderBeat(3); }
+  function exBeatDoor(kind) { _exBeat.q = ''; exRenderBeat(2, kind); }
+  function exBeatNew() { _exBeat.task = ''; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = ''; _exBeat.picked = null; _exBeat.from = 'doors'; exRenderBeat(3); }
   function exBeatPickItem(kind, i) {
     var it = _exBeat.list && _exBeat.list[i]; if (!it) return;
-    _exBeat.task = it.description || '';
-    _exBeat.meta = kind === 'services' ? (it.meta || '') : exMetaLine(it.category, it.duration);
-    _exBeat.value = it.value || '';
-    _exBeat.picked = { kind: kind, description: _exBeat.task, meta: _exBeat.meta, value: _exBeat.value };
+    var p = exItemParts(kind, it);
+    _exBeat.task = p.task; _exBeat.kind = p.kind; _exBeat.dur = p.dur; _exBeat.value = p.value || '';
+    _exBeat.picked = { kind: kind, kindOf: kind === 'past' ? 'past' : 'services', ts: p.ts, description: p.task, category: p.kind, dur: p.dur, value: _exBeat.value };
+    exRenderBeat('item');
+  }
+  function exBeatEdit() { _exBeat.from = 'item'; exRenderBeat(3); }
+  function exBeatSwitch() {
+    _exBeat.dir = _exBeat.dir === 'provided' ? 'received' : 'provided';
+    setDirection(_exBeat.dir);
     exRenderBeat(3);
   }
   function exBeatChanged() {
     var pk = _exBeat.picked;
-    if (!pk || _exBeat.dir !== 'provided') return false;
-    return (_exBeat.task || '').trim() !== (pk.description || '').trim() || (_exBeat.meta || '').trim() !== (pk.meta || '').trim() || String(_exBeat.value || '') !== String(pk.value || '');
+    if (!pk || pk.kindOf !== 'services' || _exBeat.dir !== 'provided') return false;
+    return (_exBeat.task || '').trim() !== (pk.description || '').trim() || (_exBeat.kind || '').trim() !== (pk.category || '').trim() || (_exBeat.dur || '').trim() !== (pk.dur || '').trim() || String(_exBeat.value || '') !== String(pk.value || '');
   }
   function exBeatField(k, v) {
     _exBeat[k] = v;
-    if (k === 'value') { var a = document.querySelector('#ex-beat-say [data-say-amt]'); if (a) a.textContent = (Number(v) || 0).toLocaleString(); }
     var sv = document.getElementById('ex-beat-save'); if (sv) sv.style.display = exBeatChanged() ? 'inline-flex' : 'none';
   }
-  // One free-text line holds kind of work and duration, split at the
-  // first comma (accepted tradeoff in the ruling: looser matching).
+  // Legacy one-line meta (services saved before v2.69.0), split at the
+  // first comma.
   function exSplitMeta(meta) {
     meta = (meta || '').trim();
     if (!meta) return { category: '', duration: '' };
@@ -9742,9 +9866,9 @@ function init() {
   }
   function exBeatSend() {
     if (!_exBeat.dir) { toast('Tap who is providing'); exRenderBeat(1); return; }
-    var sm = exSplitMeta(_exBeat.meta);
-    var c = document.getElementById('ex-category'); if (c) c.value = sm.category;
-    var du = document.getElementById('ex-duration'); if (du) du.value = sm.duration;
+    var c = document.getElementById('ex-category'); if (c) c.value = (_exBeat.kind || '').trim();
+    var du = document.getElementById('ex-duration'); if (du) du.value = (_exBeat.dur || '').trim();
+    var ve = document.getElementById('ex-value'); if (ve && String(ve.value).trim() === '') ve.value = '0';
     setDirection(_exBeat.dir);
     var btn = document.getElementById('ex-beat-send'); if (btn) { btn.disabled = true; btn.textContent = 'Sending'; }
     generateProposal().catch(function(e) { toast('Could not send: ' + e.message); }).finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Send proposal'; } });
@@ -9752,12 +9876,13 @@ function init() {
   function exBeatSaveService() {
     if (!_exBeat.task) { toast('Describe the service first'); return; }
     var list = exServices();
-    var key = _exBeat.task.trim().toLowerCase();
+    var key = (_exBeat.picked && _exBeat.picked.description ? _exBeat.picked.description : _exBeat.task).trim().toLowerCase();
     var existing = list.find(function(x) { return (x.description || '').trim().toLowerCase() === key; });
-    var entry = { description: _exBeat.task.trim(), meta: (_exBeat.meta || '').trim(), value: parseFloat(_exBeat.value) || 0 };
+    var kind = (_exBeat.kind || '').trim(), dur = (_exBeat.dur || '').trim();
+    var entry = { description: _exBeat.task.trim(), category: kind, dur: dur, meta: exKindDur(kind, dur), value: parseFloat(_exBeat.value) || 0 };
     if (existing) Object.assign(existing, entry); else list.push(entry);
     save();
-    _exBeat.picked = { kind: 'services', description: entry.description, meta: entry.meta, value: entry.value };
+    _exBeat.picked = { kind: 'services', kindOf: 'services', description: entry.description, category: kind, dur: dur, value: entry.value };
     var sv = document.getElementById('ex-beat-save'); if (sv) sv.style.display = 'none';
     toast(existing ? 'Service updated' : 'Saved to services you offer');
   }
@@ -12805,7 +12930,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatSheet, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exX, exCancelExchange, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

@@ -690,6 +690,34 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 @keyframes exsRide { 0% { opacity: 0; transform: translateY(-26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(26px); } }
 @keyframes exsRideUp { 0% { opacity: 0; transform: translateY(26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(-26px); } }
 @keyframes exsLand { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+/* Batch 1 (Oct 2 surface rulings, v2.69.0): DESIGN.md sizes 12/13/15/18/32,
+   one field style, Cancel exchange bottom left, list rows with chevron. */
+.exs-cap { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+.exs-lab { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+.exs-body { font-size: 15px; color: var(--text); line-height: 1.4; }
+.exs-t { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.exs-disp { font-size: 32px; font-weight: 600; color: var(--text); line-height: 1.15; display: flex; align-items: center; gap: 6px; }
+.exs-mark { color: var(--text-faint); flex-shrink: 0; }
+.exs-cancelrow { display: flex; justify-content: flex-start; padding-top: 12px; }
+.exs-cancel { background: none; border: none; padding: 10px 0; font-size: 12px; color: var(--text-faint); opacity: .8; cursor: pointer; font-family: inherit; text-align: left; }
+.exs-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 4px; background: none; border: none; border-bottom: 1px solid var(--border); text-align: left; cursor: pointer; font-family: inherit; }
+.exs-row.off { cursor: default; }
+.exs-row.off .exs-body { color: var(--text-dim); }
+.exs-rowmain { flex: 1; min-width: 0; }
+.exs-rowval { font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.exs-chev { color: var(--text-faint); flex-shrink: 0; }
+.exs-caprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.exs-switch { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 12px; color: var(--text-dim); cursor: pointer; font-family: inherit; }
+.exs-fl { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
+.exs-fl label { font-size: 12px; color: var(--text-faint); }
+.exs-fl2 { display: flex; gap: 10px; }
+.exs-fl2 .exs-fl { flex: 1; }
+.exs-box-in { width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 15px; color: var(--text); font-family: inherit; outline: none; }
+.exs-box-in:focus { border-color: var(--accent); }
+.exs-bigrow { display: flex; align-items: center; gap: 8px; }
+.exs-box-in.big { width: auto; min-width: 5ch; font-size: 32px; font-weight: 600; padding: 6px 12px; }
+.exs-box-in.big::-webkit-outer-spin-button, .exs-box-in.big::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.exs-box-in.big { -moz-appearance: textfield; }
 .exs-field.c { text-align: center; }
 .exs-box { width: 104px; padding: 12px 8px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-raised); text-align: center; cursor: pointer; font-family: inherit; }
 .exs-box.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
@@ -1494,7 +1522,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2 id="exchange-header">New exchange</h2>
-      <button class="modal-close" id="exchange-close" onclick="App.closeExchange()"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
+      <button class="modal-close" id="exchange-close" onclick="App.exX()" aria-label="Back"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <!-- 3-step progress indicator (role-aware: proposer=green, confirmer=blue).
          JS rebuilds the labels and step states via renderIndicator(). -->
