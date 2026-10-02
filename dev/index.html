@@ -464,7 +464,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
    rather than capping at the default 480px modal width. Other modals keep the cap. */
 #wallet-overlay .modal { max-width: none; }
 /* My chain (v2.77.0): the list and its sheets share the exchange flow's sheet, row, caption and X. Reading screen: everything left-aligned (rule 7). */
-#wallet-overlay .modal.mc { max-width: 420px; }
+#wallet-overlay .modal.mc { max-width: 480px; } /* v2.77.2: same width as the exchange sheet, so no gutter on phones */
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
 .mc-sheet { padding-top: var(--safe-top); }
 .mc-sheet[hidden] { display: none; }
