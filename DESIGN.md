@@ -49,4 +49,6 @@ A design question these rules do not answer is written here when it comes up, ru
 - Segmented controls (Actual / Typical, Each / Week / Month / Year on the textures): no rule yet. The mockup uses a quiet pill row on `--bg-input`.
 - Charts (line weights, fills, axis labels, bar strips): no rule yet beyond rule 16's colours.
 - Icons on list rows: the exchange rows carry none; the Home doors row carries one per door. Which pattern My chain follows is open.
+- One reading sheet opening another (Michael, Oct 2: Numbers links to Standing and People so a number can be seen drawn). Rule 2 says a reading sheet never opens another sheet; rule 2a's X-back-one-step would carry it (X returns to Numbers). Mocked as a stack of two; not ruled.
+- Colour on totals: currency in blue and cosmic share in amber (rule 16), provided and received counts the same. Standing itself stays neutral in the mockup; whether it takes blue above and amber below, as on the wave, is open.
 - The word for standing in the wallet: "Standing" is in use; whether it is final is open.
