@@ -257,6 +257,7 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = Object.assign({ name: '', about: '', photo: null, photoDate: null, skills: [], rangeSimpleVal: 0, rangeComplexVal: 0, rangeDailyVal: 0, valTagsSimple: [], valTagsComplex: [], valTagsDaily: [] }, d.declarations || {});
     if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
     if (!state.declarations.skills) state.declarations.skills = [];
+    if (!Array.isArray(state.declarations.services)) state.declarations.services = [];
     state.settings = Object.assign({ locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
     if (!state.settings.witnessUrl) state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     return true;
@@ -1515,38 +1516,20 @@ const PAIR_CODE_LENGTH = 4;
   function coopNewAct() {
     closeModal('cooperate');
     openExchange();
-    // Clear all fields for fresh entry
-    document.getElementById('ex-desc').value = '';
-    document.getElementById('ex-value').value = '';
-    document.getElementById('ex-category').value = '';
-    document.getElementById('ex-hours').value = '';
-    document.getElementById('ex-minutes').value = '';
-    document.getElementById('ex-city').value = '';
-    document.getElementById('ex-state').value = '';
   }
 
   function coopReuseAct(act) {
     closeModal('cooperate');
+    // The beats read the prefill the same way the FAB "Use previous" does.
+    window._fabPrefill = { description: act.description || '', value: act.value || '', category: act.category || '', duration: act.duration || 0, energyState: act.energyState || 'provided', city: act.city || '', state_field: act.state_field || '' };
     openExchange();
-    setDirection(act.energyState);
-    document.getElementById('ex-desc').value = act.description || '';
-    document.getElementById('ex-value').value = act.value || '';
-    document.getElementById('ex-category').value = act.category || '';
-    if (act.duration) {
-      const hrs = Math.floor(act.duration / 60);
-      const mins = act.duration % 60;
-      document.getElementById('ex-hours').value = hrs || '';
-      document.getElementById('ex-minutes').value = mins || '';
-    }
-    if (act.city) document.getElementById('ex-city').value = act.city;
-    if (act.state_field) document.getElementById('ex-state').value = act.state_field;
-    showPrefillBar(act.description || act.category || 'Previous act');
   }
 
   function openExchange() {
     showModal('exchange');
     showExStep('form');
-    setDirection('provided');
+    exBeatsOpen();
+    setDirection(_exBeat.dir || 'provided');
     state.pendingProposal = null;
     state.proposalPath = 'inperson';
     prefillSource = null;
@@ -9197,66 +9180,11 @@ function init() {
 
   function exContinueFromTexture() {
     if (sessionRole === 'proposer') {
+      // Screen 6, the three beats (ruled Oct 1). The old form setup that
+      // lived here was removed in v2.66.2 (see git history).
       showExStep('form');
-      document.getElementById('exchange-header').textContent = 'Set up the exchange';
-      // Reset form fields
-      document.getElementById('ex-desc').value = '';
-      document.getElementById('ex-value').value = '';
-      document.getElementById('ex-category').value = '';
-      var durEl = document.getElementById('ex-duration');
-      if (durEl) durEl.value = '';
-      document.getElementById('ex-hours').value = '';
-      document.getElementById('ex-minutes').value = '';
-      document.getElementById('ex-city').value = '';
-      document.getElementById('ex-state').value = '';
-      // Render category pills
-      exRenderCategoryPills('');
-      // Clear pricing context
-      var ctx = document.getElementById('ex-pricing-context');
-      if (ctx) ctx.innerHTML = '';
-      // Set partner label
-      var partnerSnap = null;
-      if (sessionPartner && sessionPartner.thread_snapshot) {
-        partnerSnap = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
-      }
-      var partnerName = (partnerSnap && partnerSnap._name) || 'the other person';
-      var labelEl = document.getElementById('ex-form-partner-label');
-      if (labelEl) labelEl.innerHTML = 'Describe the exchange with <strong style="color:var(--text);">' + esc(partnerName) + '</strong>';
-      // Apply prefill from "Use previous" if available
-      if (window._fabPrefill) {
-        var pf = window._fabPrefill;
-        if (pf.description) document.getElementById('ex-desc').value = pf.description;
-        if (pf.value) document.getElementById('ex-value').value = pf.value;
-        if (pf.category) {
-          document.getElementById('ex-category').value = pf.category;
-          exRenderCategoryPills(pf.category);
-          exRenderPricingContext(pf.category);
-        }
-        if (pf.duration && durEl) {
-          var pfHrs = Math.floor(pf.duration / 60);
-          var pfMins = pf.duration % 60;
-          var durText = '';
-          if (pfHrs) durText += pfHrs + ' hour' + (pfHrs > 1 ? 's' : '');
-          if (pfMins) durText += (durText ? ' ' : '') + pfMins + ' min';
-          durEl.value = durText;
-        }
-        setDirection(pf.energyState || 'provided');
-        showPrefillBar(pf.description || pf.category || 'Previous exchange');
-        window._fabPrefill = null;
-      }
-      // Inject back link above the form
-      var formStep = document.getElementById('ex-step-form');
-      var oldBack = document.getElementById('ex-form-back');
-      if (oldBack) oldBack.remove();
-      var oldReuse = document.getElementById('ex-reusable-acts');
-      if (oldReuse) oldReuse.remove();
-      var backLink = document.createElement('div');
-      backLink.id = 'ex-form-back';
-      backLink.style.cssText = 'font-size:13px; color:var(--text-faint); cursor:pointer; margin-bottom:12px;';
-      backLink.textContent = '\u2190 Review their chain';
-      backLink.addEventListener('click', function() { App.exBackToTexture(); });
-      if (formStep) formStep.insertBefore(backLink, formStep.firstChild);
-      exRenderReusableActs();
+      document.getElementById('exchange-header').textContent = 'New exchange';
+      exBeatsOpen();
     } else {
       showExStep('receiver-wait');
       exRenderReceiverWait();
@@ -9270,7 +9198,162 @@ function init() {
     exRenderChainRead();
   }
 
-  // === REUSABLE ACTS IN FORM STEP ===
+  // ===== Screen 6: the proposal, three beats (ruled Oct 1) =====
+  var _exBeat = { dir: null, task: '', meta: '', value: '', list: null };
+  function exPartnerName() {
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
+    return (ts && ts._name) || 'The other person';
+  }
+  function exBeatsOpen() {
+    _exBeat = { dir: null, task: '', meta: '', value: '', list: null };
+    ['ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+    // "Use previous" from the FAB lands on beat 3 with the fields live.
+    if (window._fabPrefill) {
+      var pf = window._fabPrefill; window._fabPrefill = null;
+      _exBeat.dir = pf.energyState === 'received' ? 'received' : 'provided';
+      _exBeat.task = pf.description || '';
+      _exBeat.meta = exMetaLine(pf.category, pf.duration);
+      _exBeat.value = pf.value || '';
+      setDirection(_exBeat.dir);
+      exRenderBeat(3);
+      return;
+    }
+    exRenderBeat(1);
+  }
+  function exMetaLine(category, durationMins) {
+    var parts = [];
+    if (category) parts.push(category);
+    if (durationMins) parts.push(formatDuration(durationMins));
+    return parts.join(', ');
+  }
+  function exInitial(name) { return (name || '?').trim().charAt(0).toUpperCase() || '?'; }
+  function exBoxHTML(name, sel, tap) {
+    return '<button class="exs-box' + (sel ? ' sel' : '') + '"' + (tap ? ' onclick="' + tap + '"' : ' style="cursor:default"') + '><div class="exs-av">' + esc(exInitial(name)) + '</div><div class="exs-n">' + esc(name) + '</div></button>';
+  }
+  // The arrow points toward the provider. You are always on the left.
+  function exArrowHTML(dir) {
+    if (!dir) return '<div class="exs-arr">?</div>';
+    var r = dir === 'provided';
+    var path = r ? 'M42 12 H14' : 'M2 12 H30';
+    var head = r ? '14,6 2,12 14,18' : '30,6 42,12 30,18';
+    return '<div class="exs-arr"><svg viewBox="0 0 44 24"><path class="shaft" d="' + path + '"/><polygon class="head" points="' + head + '"/></svg></div>';
+  }
+  function exBeatBottom(back, backFn) {
+    return '<div class="exs-grow"></div><div class="exs-bottom"><button onclick="' + backFn + '">' + back + '</button><button onclick="App.closeExchange()">Not now</button></div>';
+  }
+  function exOwnActs(dir) {
+    var map = {};
+    state.chain.forEach(function(r) {
+      if (!HCP.isAct(r)) return;
+      if (dir && r.energyState !== dir) return;
+      var key = (r.description || '').trim().toLowerCase();
+      if (!key) return;
+      if (!map[key] || r.timestamp > map[key].timestamp) map[key] = r;
+    });
+    return Object.values(map).sort(function(a, b) { return (b.timestamp > a.timestamp) ? 1 : -1; });
+  }
+  function exServices() {
+    if (!state.declarations) return [];
+    if (!Array.isArray(state.declarations.services)) state.declarations.services = [];
+    return state.declarations.services;
+  }
+  function exRenderBeat(n, listKind) {
+    var host = document.getElementById('ex-beats');
+    if (!host) return;
+    var other = exPartnerName();
+    var html = '';
+    if (n === 1) {
+      html += '<div class="exs-h">Who is providing?</div><div class="exs-m">The other person is receiving.</div>';
+      html += '<div style="height:40px"></div>';
+      html += '<div class="exs-boxes">' + exBoxHTML('You', _exBeat.dir === 'provided', "App.exBeatPick('provided')") + exArrowHTML(_exBeat.dir) + exBoxHTML(other, _exBeat.dir === 'received', "App.exBeatPick('received')") + '</div>';
+      html += '<div class="exs-f" style="text-align:center; margin-top:12px;">Tap the one who is providing.</div>';
+      html += exBeatBottom('Back', 'App.exBackToTexture()');
+    } else if (n === 2 && !listKind) {
+      var svcN = _exBeat.dir === 'provided' ? exServices().length : 0;
+      var pastN = exOwnActs(_exBeat.dir).length;
+      var door = function(ic, t, sub, fn) { return '<button class="exs-item" onclick="' + fn + '"><div class="exs-doorrow"><div class="ic">' + ic + '</div><div><div class="t" style="font-size:16px">' + t + '</div><div class="exs-f">' + sub + '</div></div></div></button>'; };
+      html += '<div class="exs-m" style="margin:0 0 2px">' + (_exBeat.dir === 'provided' ? 'You are providing' : esc(other) + ' is providing') + '</div><div class="exs-h">What was provided?</div>';
+      html += '<div style="height:16px"></div>';
+      if (_exBeat.dir === 'provided') html += door('&#9776;', 'Services you offer', svcN ? svcN + ' listed' : 'None yet', "App.exBeatDoor('services')");
+      html += door('&#8635;', 'Past exchanges', pastN ? pastN + ' on your chain' : 'None yet', "App.exBeatDoor('past')");
+      html += door('+', 'Something new', 'Describe it', 'App.exBeatNew()');
+      html += exBeatBottom('Back', 'App.exRenderBeat(1)');
+    } else if (n === 2 && listKind) {
+      var items = listKind === 'services' ? exServices() : exOwnActs(_exBeat.dir);
+      _exBeat.list = items;
+      html += '<div class="exs-m" style="margin:0 0 2px">' + (_exBeat.dir === 'provided' ? 'You are providing' : esc(other) + ' is providing') + '</div><div class="exs-h">' + (listKind === 'services' ? 'Services you offer' : 'Past exchanges') + '</div>';
+      html += '<div style="height:12px"></div>';
+      if (!items.length) html += '<div class="exs-m">Nothing here yet.</div>';
+      items.slice(0, 40).forEach(function(it, i) {
+        var meta = listKind === 'services' ? (it.meta || '') : exMetaLine(it.category, it.duration);
+        html += '<button class="exs-item" onclick="App.exBeatPickItem(\'' + listKind + '\',' + i + ')"><div><div class="t">' + esc(it.description || '') + '</div>' + (meta ? '<div class="exs-f">' + esc(meta) + '</div>' : '') + '</div><div class="v">' + esc(String(it.value || '')) + '</div></button>';
+      });
+      html += exBeatBottom('Back', 'App.exRenderBeat(2)');
+    } else {
+      html += '<div class="exs-m" style="margin:0">' + (_exBeat.dir === 'provided' ? 'You propose to ' + esc(other) : 'You propose that ' + esc(other) + ' provided') + '</div>';
+      html += '<div style="height:10px"></div>';
+      html += '<input class="exs-field" id="ex-desc" style="font-size:18px; font-weight:600;" placeholder="What was provided?" value="' + esc(_exBeat.task) + '" oninput="App.exBeatField(\'task\', this.value)">';
+      html += '<input class="exs-field" id="ex-meta" style="font-size:13px; margin-top:4px;" placeholder="kind of work, how long" value="' + esc(_exBeat.meta) + '" oninput="App.exBeatField(\'meta\', this.value)">';
+      html += '<div style="height:14px"></div>';
+      html += '<div class="exs-val"><input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" oninput="App.exBeatField(\'value\', this.value)"><small>currency</small></div>';
+      html += '<div style="height:14px"></div>';
+      html += '<div class="exs-boxes">' + exBoxHTML('You', false, '') + exArrowHTML(_exBeat.dir) + exBoxHTML(other, false, '') + '</div>';
+      html += '<div style="height:14px"></div>';
+      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
+      if (_exBeat.dir === 'provided') html += '<button class="exs-link" id="ex-beat-save" onclick="App.exBeatSaveService()">Save as a service you offer</button>';
+      html += exBeatBottom('Back', 'App.exRenderBeat(2)');
+    }
+    host.innerHTML = html;
+    if (n === 3 && !_exBeat.task) { var d = document.getElementById('ex-desc'); if (d) setTimeout(function() { d.focus(); }, 50); }
+  }
+  function exBeatPick(dir) {
+    _exBeat.dir = dir;
+    setDirection(dir);
+    exRenderBeat(1);
+    // The arrow is fixed from here; a short pause lets it be seen.
+    setTimeout(function() { if (_exBeat.dir === dir) exRenderBeat(2); }, 450);
+  }
+  function exBeatDoor(kind) { exRenderBeat(2, kind); }
+  function exBeatNew() { _exBeat.task = ''; _exBeat.meta = ''; _exBeat.value = ''; exRenderBeat(3); }
+  function exBeatPickItem(kind, i) {
+    var it = _exBeat.list && _exBeat.list[i]; if (!it) return;
+    _exBeat.task = it.description || '';
+    _exBeat.meta = kind === 'services' ? (it.meta || '') : exMetaLine(it.category, it.duration);
+    _exBeat.value = it.value || '';
+    exRenderBeat(3);
+  }
+  function exBeatField(k, v) { _exBeat[k] = v; }
+  // One free-text line holds kind of work and duration, split at the
+  // first comma (accepted tradeoff in the ruling: looser matching).
+  function exSplitMeta(meta) {
+    meta = (meta || '').trim();
+    if (!meta) return { category: '', duration: '' };
+    var i = meta.indexOf(',');
+    if (i >= 0) return { category: meta.slice(0, i).trim(), duration: meta.slice(i + 1).trim() };
+    return (exParseDuration(meta) > 0 && /\d/.test(meta)) ? { category: '', duration: meta } : { category: meta, duration: '' };
+  }
+  function exBeatSend() {
+    if (!_exBeat.dir) { toast('Tap who is providing'); exRenderBeat(1); return; }
+    var sm = exSplitMeta(_exBeat.meta);
+    var c = document.getElementById('ex-category'); if (c) c.value = sm.category;
+    var du = document.getElementById('ex-duration'); if (du) du.value = sm.duration;
+    setDirection(_exBeat.dir);
+    var btn = document.getElementById('ex-beat-send'); if (btn) { btn.disabled = true; btn.textContent = 'Sending'; }
+    generateProposal().catch(function(e) { toast('Could not send: ' + e.message); }).finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Send proposal'; } });
+  }
+  function exBeatSaveService() {
+    if (!_exBeat.task) { toast('Describe the service first'); return; }
+    var list = exServices();
+    var key = _exBeat.task.trim().toLowerCase();
+    var existing = list.find(function(x) { return (x.description || '').trim().toLowerCase() === key; });
+    var entry = { description: _exBeat.task.trim(), meta: (_exBeat.meta || '').trim(), value: parseFloat(_exBeat.value) || 0 };
+    if (existing) Object.assign(existing, entry); else list.push(entry);
+    save();
+    toast(existing ? 'Service updated' : 'Saved to services you offer');
+  }
+
+  // === REUSABLE ACTS IN FORM STEP (legacy, no longer called from the relay flow) ===
   function exRenderReusableActs() {
     var target = document.getElementById('ex-prefill-bar');
     if (!target) return;
@@ -9364,6 +9447,8 @@ function init() {
     if (role === 'provider') {
       sessionRole = 'proposer';
       showExStep('form');
+      exBeatsOpen();
+      return;
       document.getElementById('exchange-header').textContent = 'Set up the exchange';
       document.getElementById('ex-desc').value = '';
       document.getElementById('ex-value').value = '';
@@ -9388,6 +9473,24 @@ function init() {
   }
 
   function exRenderReceiverWait() {
+    // The other phone while the proposer writes (ruled Oct 1): one
+    // quiet line and Not now. The counterparty context tiles that used
+    // to render here are off the face of the screen; the chain read
+    // (screen 4) carries that reading now.
+    var proposalEl = document.getElementById('ex-rw-proposal');
+    if (proposalEl) { proposalEl.style.display = 'none'; proposalEl.innerHTML = ''; }
+    var spinnerEl = document.getElementById('ex-rw-spinner');
+    if (spinnerEl) spinnerEl.style.display = 'flex';
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
+    var name = (ts && ts._name) || 'The other person';
+    var spinLabel = document.getElementById('ex-rw-spinner-label');
+    if (spinLabel) spinLabel.textContent = name + ' is writing the proposal';
+    var tilesEl = document.getElementById('ex-rw-tiles');
+    if (tilesEl) { tilesEl.innerHTML = ''; tilesEl.style.display = 'none'; }
+  }
+
+  function exRenderReceiverWait_legacy() {
     // Reset proposal area
     var proposalEl = document.getElementById('ex-rw-proposal');
     if (proposalEl) { proposalEl.style.display = 'none'; proposalEl.innerHTML = ''; }
@@ -12136,7 +12239,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

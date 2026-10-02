@@ -641,6 +641,27 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 14px; }
 .exs-lines { font-size: 15px; color: var(--text-dim); line-height: 1.9; }
 .exs-lines b { color: var(--text); font-weight: 600; }
+.exs-boxes { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.exs-box { width: 104px; padding: 12px 8px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-raised); text-align: center; cursor: pointer; font-family: inherit; }
+.exs-box.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+.exs-box .exs-av { width: 34px; height: 34px; border-radius: 50%; background: var(--bg-input); border: 1px solid var(--border); margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.exs-box .exs-n { font-size: 14px; font-weight: 600; color: var(--text); }
+.exs-arr { width: 44px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--text-faint); font-weight: 600; }
+.exs-arr svg { width: 44px; height: 24px; }
+.exs-arr .shaft { stroke: var(--accent); stroke-width: 3; fill: none; stroke-linecap: round; }
+.exs-arr .head { fill: var(--accent); }
+.exs-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); margin-bottom: 8px; cursor: pointer; text-align: left; width: 100%; font-family: inherit; }
+.exs-item .t { font-size: 15px; font-weight: 500; color: var(--text); }
+.exs-item .v { font-size: 16px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+.exs-doorrow { display: flex; align-items: center; gap: 12px; justify-content: flex-start; }
+.exs-doorrow .ic { width: 36px; height: 36px; border-radius: 8px; background: var(--accent-light); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 18px; flex-shrink: 0; }
+.exs-field { width: 100%; border: none; border-bottom: 1px solid var(--border); background: none; padding: 10px 0; font-family: inherit; color: var(--text); outline: none; }
+.exs-field:focus { border-bottom-color: var(--accent); }
+.exs-val { display: flex; align-items: baseline; gap: 8px; }
+.exs-val input { width: 50%; border: none; border-bottom: 1px solid var(--border); background: none; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); padding: 6px 0; outline: none; }
+.exs-val input:focus { border-bottom-color: var(--accent); }
+.exs-val small { font-size: 13px; color: var(--text-faint); }
+.exs-link { background: none; border: none; color: var(--accent); font-size: 13px; padding: 6px 0; cursor: pointer; font-family: inherit; text-align: left; }
 
 /* 8-step flow progress bar */
 .ex-progress { display: flex; gap: 3px; margin-bottom: 20px; }
@@ -1475,21 +1496,18 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:20px; line-height:1.5;">The provider describes the act and sets the price. The receiver reviews and confirms.</p>
       </div>
 
-      <!-- STEP: Waiting for provider to set up exchange (receiver path) -->
-      <div class="hs-step" id="ex-step-receiver-wait">
-        <!-- Proposal card drops in here when ready -->
+      <!-- STEP: the other phone while the proposer writes (ruled Oct 1):
+           one quiet line and Not now. The proposal card drops into
+           ex-rw-proposal when it arrives (cycle 4 gives it the review layout). -->
+      <div class="hs-step exs" id="ex-step-receiver-wait">
         <div id="ex-rw-proposal" style="display:none;"></div>
-        <!-- Spinner (hidden when proposal arrives) -->
-        <div id="ex-rw-spinner" style="text-align:center; padding:24px 0 16px;">
-          <div style="width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; margin:0 auto 14px; animation:exSpin 1s linear infinite;"></div>
-          <div style="font-size:15px; font-weight:600; color:var(--text); margin-bottom:4px;" id="ex-rw-spinner-label">Waiting for their proposal</div>
-          <div style="font-size:13px; color:var(--text-dim);">Review their chain while you wait</div>
-          <style>@keyframes exSpin { to { transform: rotate(360deg); } }</style>
+        <div id="ex-rw-spinner" style="display:flex; flex-direction:column; flex:1;">
+          <div style="height:120px"></div>
+          <div class="exs-wait"><i></i><span id="ex-rw-spinner-label">Waiting for their proposal</span></div>
+          <div class="exs-grow"></div>
+          <button class="exs-quiet" id="ex-rw-cancel" onclick="App.closeExchange()">Not now</button>
         </div>
-        <!-- Chain data tiles (always available) -->
-        <div id="ex-rw-tiles"></div>
-        <!-- Cancel -->
-        <button class="btn btn-secondary" style="width:100%; margin-top:16px; color:var(--text-faint);" onclick="App.closeExchange()" id="ex-rw-cancel">Cancel exchange</button>
+        <div id="ex-rw-tiles" style="display:none;"></div>
         <!-- Hidden elements for compat -->
         <div id="ex-receiver-wait-title" style="display:none;">Waiting for their proposal</div>
         <div id="ex-receiver-wait-content" style="display:none;"></div>
@@ -1498,51 +1516,24 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- ===== END NEW 8-STEP FLOW ===== -->
 
-      <!-- STEP: Fill form (old flow — preserved for now) -->
-      <div class="hs-step" id="ex-step-form">
-        <div class="prefill-bar" id="ex-prefill-bar" style="display:none;">
-          <div class="pf-text"><span class="pf-label">Pre-filled:</span> <span id="ex-prefill-desc"></span></div>
-          <button class="pf-clear" onclick="App.clearPrefill()" aria-label="Clear"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
-        </div>
-
-        <div id="ex-form-partner-label" style="font-size:15px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;"></div>
-
-        <!-- Direction toggle (segmented control) -->
-        <div class="exf-seg" id="dir-toggle">
-          <button class="exf-seg-btn active" onclick="App.setDirection('provided')" id="dir-providing">I provided</button>
-          <button class="exf-seg-btn" onclick="App.setDirection('received')" id="dir-receiving">I received</button>
-        </div>
-
-        <!-- Category pills -->
-        <div class="exf-section-label">Category</div>
-        <div class="exf-pills" id="ex-cat-pills"></div>
-        <input type="hidden" id="ex-category" value="">
-
-        <!-- Description -->
-        <div class="exf-section-label">What was done</div>
-        <input type="text" id="ex-desc" class="exf-input" placeholder="e.g., Fixed kitchen faucet and under-sink plumbing">
-
-        <!-- Duration -->
-        <div class="exf-section-label">Duration (optional)</div>
-        <input type="text" id="ex-duration" class="exf-input" placeholder="e.g., 2 hours">
-
-        <!-- Value with pricing context -->
-        <div class="exf-section-label">Value</div>
-        <div class="exf-value-card">
-          <input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="Enter value" class="exf-value-input">
-          <div class="exf-value-anchors">
-            <span>Small favor: ~50</span><span>Full day: ~5,000</span><span>Best work: ~50,000+</span>
-          </div>
-          <div id="ex-pricing-context"></div>
-        </div>
-
+      <!-- STEP: The proposal, screen 6, three beats (ruled Oct 1).
+           Beat 1 Who is providing; beat 2 What was provided (three doors
+           and their lists); beat 3 the form. The hidden inputs keep the
+           ids generateProposal and the reuse paths read, so the proposal
+           machinery is untouched. -->
+      <div class="hs-step exs" id="ex-step-form">
+        <div id="ex-beats" style="display:flex; flex-direction:column; flex:1;"></div>
         <!-- Hidden compat fields -->
+        <div id="ex-prefill-bar" style="display:none;"><span id="ex-prefill-desc"></span></div>
+        <div id="ex-form-partner-label" style="display:none;"></div>
+        <div id="ex-cat-pills" style="display:none;"></div>
+        <div id="ex-pricing-context" style="display:none;"></div>
+        <input type="hidden" id="ex-category" value="">
+        <input type="hidden" id="ex-duration" value="">
         <input type="hidden" id="ex-hours" value="">
         <input type="hidden" id="ex-minutes" value="">
         <input type="hidden" id="ex-city" value="">
         <input type="hidden" id="ex-state" value="">
-
-        <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="App.generateProposal()">Send proposal</button>
       </div>
 
       <!-- STEP 2: Transport selection -->
