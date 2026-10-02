@@ -444,7 +444,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === MODAL === */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0); z-index: 100; display: none; align-items: flex-end; justify-content: center; transition: background 0.3s; overflow: hidden; }
 .modal-overlay.active { background: rgba(0,0,0,0.5); }
-.modal { background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: 100dvh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
+.modal { position: relative; background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: 100dvh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
 .modal-overlay.active .modal { transform: translateY(0); }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; padding-top: calc(16px + var(--safe-top)); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .modal-header h2 { font-size: 20px; font-weight: 600; }
@@ -632,6 +632,15 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-wait { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--text-faint); }
 .exs-wait i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
 .exs-center { align-items: center; text-align: center; }
+.exs-icons { display: flex; justify-content: center; gap: 34px; align-items: flex-end; }
+.exs-icon { text-align: center; cursor: pointer; background: none; border: none; padding: 4px; font-family: inherit; }
+.exs-icon .exs-f { margin-top: 2px; }
+.exs-pop { position: absolute; left: 20px; right: 20px; bottom: 90px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.12); font-size: 14px; line-height: 1.5; color: var(--text-dim); z-index: 5; }
+.exs-pop b { color: var(--text); }
+.exs-sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 18%; background: var(--bg); border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; padding: 10px 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; box-shadow: 0 -6px 24px rgba(0,0,0,0.12); }
+.exs-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 14px; }
+.exs-lines { font-size: 15px; color: var(--text-dim); line-height: 1.9; }
+.exs-lines b { color: var(--text); font-weight: 600; }
 
 /* 8-step flow progress bar */
 .ex-progress { display: flex; gap: 3px; margin-bottom: 20px; }
@@ -1447,12 +1456,13 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       </div>
 
       <!-- STEP 3: Texture review -->
-      <div class="hs-step" id="ex-step-texture">
-        <div id="ex-texture-content">
-          <!-- Populated by JS: texture summary + optional tab viewer -->
+      <!-- Screen 4, the chain read (ruled Oct 1). exRenderChainRead fills
+           ex-texture-content: name, the overlap drawing, one line, the
+           two bare icons, Continue, Not now. -->
+      <div class="hs-step exs" id="ex-step-texture">
+        <div id="ex-texture-content" style="display:flex; flex-direction:column; flex:1;">
+          <!-- Populated by JS -->
         </div>
-        <button class="btn btn-primary" style="margin-top:16px;" onclick="App.exContinueFromTexture()">Continue</button>
-        <button class="btn btn-secondary" style="margin-top:8px; width:100%; color:var(--text-faint); background:none; border:none; font-size:14px;" onclick="App.closeExchange()">Cancel exchange</button>
       </div>
 
       <!-- STEP 4: Role selection -->

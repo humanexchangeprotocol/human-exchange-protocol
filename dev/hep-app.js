@@ -3481,6 +3481,7 @@ const PAIR_CODE_LENGTH = 4;
   function cleanupSession() {
     stopSessionPoll();
     sessionWitnessUrl = null;
+    try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false }; } catch(_) {}
     stopSnapshotPoll();
     sessionCode = null;
     sessionTheirCode = null;
@@ -8063,6 +8064,23 @@ function init() {
         });
         extras._services = services;
       }
+      // Screen 4 overlap (ruled Oct 1, count only, never names). We send
+      // how many distinct people this chain has exchanged with, and a
+      // list of their fingerprints hashed with a salt derived from both
+      // session fingerprints. The other phone can only match an entry
+      // against fingerprints it already holds (its own counterparties),
+      // and the hashes mean nothing outside this one session. The app
+      // shows the size of the match, never which people matched.
+      try {
+        var _ppl = exDistinctPeople(state.chain);
+        extras._people = _ppl.length;
+        var _salt = exOverlapSalt();
+        var _hashes = [];
+        for (var _pi = 0; _pi < _ppl.length && _pi < 2000; _pi++) {
+          _hashes.push((await sensorSha256(_salt + ':' + _ppl[_pi])).substring(0, 16));
+        }
+        extras._ppl = _hashes;
+      } catch(ope) { console.log('[ex-flow] overlap extras failed:', ope.message); }
       sendEncryptedSnapshot(extras);
     }
 
@@ -8125,9 +8143,10 @@ function init() {
         // data. Re-invoke exConfirmSAS now so the context cards fill
         // in from the newly arrived snapshot. Same for the receiver-
         // wait screen if we're past Review.
-        var reviewContainer = document.getElementById('ex-review-container');
-        if (reviewContainer && reviewContainer.style.display !== 'none' && reviewContainer.innerHTML.length > 0) {
-          try { exConfirmSAS(); } catch(e) { console.log('[ex-flow] Re-render after snapshot failed:', e.message); }
+        var textureStep = document.getElementById('ex-step-texture');
+        if (textureStep && textureStep.classList.contains('active')) {
+          _textureTs = decrypted || _textureTs;
+          try { exRenderChainRead(); } catch(e) { console.log('[ex-flow] Re-render after snapshot failed:', e.message); }
         }
         var rwTiles = document.getElementById('ex-rw-tiles');
         if (rwTiles) {
@@ -8155,6 +8174,20 @@ function init() {
   }
 
   function exConfirmSAS() {
+    // "It matches" (screen 3) leads to the chain read (screen 4, ruled
+    // Oct 1). The legacy review builder below is kept as
+    // exConfirmSAS_legacyReview and is no longer called.
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
+    _textureTs = ts;
+    showExStep('texture');
+    exRenderChainRead();
+    if (typeof startSessionPoll === 'function') {
+      try { startSessionPoll(); } catch(spe) { console.log('[ex-flow] Session poll start failed:', spe.message); }
+    }
+  }
+
+  function exConfirmSAS_legacyReview() {
     // SAS confirmed — render the Review screen. Partner identity block
     // at top, then counterparty context (chain shape + POH verdict),
     // then the primary Confirm action. All the legacy assessment logic
@@ -8810,6 +8843,184 @@ function init() {
   // MAIN TEXTURE RENDER — Four states
   // =====================================================
 
+  // ===== Screen 4: the chain read (ruled Oct 1) =====
+  // The overlap drawing: you on the left, them on the right, dots are
+  // people each has exchanged with, the middle is people you both know,
+  // labelled by count only. One line about the two of you. Two bare
+  // icons: the shield reads the device, the thread reads the chain.
+  function exDistinctPeople(chain) {
+    var seen = {};
+    (chain || []).forEach(function(r) {
+      if (!HCP.isAct(r)) return;
+      var k = r.counterparty || '';
+      if (k) seen[k] = 1;
+    });
+    return Object.keys(seen);
+  }
+  function exOverlapSalt() {
+    var a = state.fingerprint || '', b = (sessionPartner && sessionPartner.fingerprint) || '';
+    return a < b ? a + '|' + b : b + '|' + a;
+  }
+  var _exOverlapCache = { salt: null, shared: null };
+  async function exComputeShared(theirHashes) {
+    var salt = exOverlapSalt();
+    if (_exOverlapCache.salt === salt && _exOverlapCache.shared !== null) return _exOverlapCache.shared;
+    var set = {};
+    (theirHashes || []).forEach(function(h) { set[h] = 1; });
+    var mine = exDistinctPeople(state.chain);
+    var n = 0;
+    for (var i = 0; i < mine.length; i++) {
+      var h = (await sensorSha256(salt + ':' + mine[i])).substring(0, 16);
+      if (set[h]) n++;
+    }
+    _exOverlapCache = { salt: salt, shared: n };
+    return n;
+  }
+  function exOverlapSVG(mine, theirs, shared, seed) {
+    var s = seed || 7; function rnd() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
+    var W = 264, H = 150, r = 62, cx1 = 92, cx2 = 172, cy = 75;
+    // Past a few hundred the dots become a tone and the figure carries it.
+    var cap = 300, dr = 2.2;
+    function scaleN(n) { if (n <= 60) return n; if (n <= cap) return Math.round(60 + (n - 60) * 0.5); return cap; }
+    var dots = '';
+    function inC(x, y, cx) { return (x - cx) * (x - cx) + (y - cy) * (y - cy) < r * r; }
+    function place(n, want) {
+      var k = 0, tries = 0;
+      while (k < n && tries < 6000) {
+        tries++;
+        var x = 20 + rnd() * (W - 40), y = 10 + rnd() * (H - 20);
+        var a = inC(x, y, cx1), b = inC(x, y, cx2);
+        var ok = want === 'B' ? (a && b) : want === 'L' ? (a && !b) : (!a && b);
+        if (ok) { dots += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + dr + '" fill="var(--text-dim)"/>'; k++; }
+      }
+    }
+    place(scaleN(Math.max(0, mine - shared)), 'L');
+    place(scaleN(Math.max(0, theirs - shared)), 'R');
+    place(scaleN(shared), 'B');
+    var mid = shared > 0 ? shared + ' ' + (shared === 1 ? 'person' : 'people') + ' you both know' : 'no one in common yet';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; max-width:300px; display:block; margin:0 auto;">'
+      + '<circle cx="' + cx1 + '" cy="' + cy + '" r="' + r + '" fill="var(--accent-light)" stroke="var(--border)"/>'
+      + '<circle cx="' + cx2 + '" cy="' + cy + '" r="' + r + '" fill="var(--accent-light)" stroke="var(--border)"/>'
+      + dots
+      + '<text x="' + ((cx1 + cx2) / 2) + '" y="' + (cy + r + 12) + '" text-anchor="middle" font-size="11" fill="var(--text-dim)">' + mid + '</text>'
+      + '<text x="' + (cx1 - r) + '" y="' + (cy + r + 12) + '" font-size="11" fill="var(--text-faint)">you</text>'
+      + '<text x="' + (cx2 + r) + '" y="' + (cy + r + 12) + '" text-anchor="end" font-size="11" fill="var(--text-faint)">them</text>'
+      + '</svg>';
+  }
+  function exShieldSVG(color, size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><path d="M12 2 4 5.5v6c0 5 3.4 8.6 8 10.5 4.6-1.9 8-5.5 8-10.5v-6L12 2z" fill="' + color + '"/></svg>';
+  }
+  function exThreadSVG(size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M3 12c3-6 6-6 9 0s6 6 9 0"/><path d="M3 17c3-6 6-6 9 0s6 6 9 0" opacity=".45"/></svg>';
+  }
+  // The shield reads the device: green when the phone behaves like a
+  // phone, red when the signals alarm, gray when there is not enough to
+  // tell. It says nothing about the person.
+  function exShieldRead(ts) {
+    var v = ts && ts.pohVerdict;
+    if (!v) return { color: '#9B948C', title: 'Not enough history to tell yet.', body: 'This phone is new to HEP. Nothing is wrong; there is just not much to read.' };
+    if (v.tone === 'alarming') return { color: 'var(--red)', title: 'This phone does not behave like a phone.', body: 'Its signals over the last weeks look unlike a person carrying it. That is all this says. It is worth asking about before you continue.' };
+    if (v.tone === 'strong') return { color: 'var(--green)', title: 'This phone behaves like a phone.', body: 'Its movement, timing and sensors over the last weeks look like a person carrying it. That is all this says. It says nothing about the person.' };
+    return { color: '#9B948C', title: 'Not enough history to tell yet.', body: 'This phone has not given HEP much to read. Nothing is wrong; there is just not much there.' };
+  }
+  function exMonthYear(ts) {
+    if (!ts) return '';
+    var d = new Date(ts); if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  function exAgo(ts) {
+    if (!ts) return '';
+    var d = new Date(ts); if (isNaN(d)) return '';
+    var days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return 'today'; if (days === 1) return 'yesterday';
+    if (days < 30) return days + ' days ago';
+    var months = Math.floor(days / 30); if (months < 12) return months + (months === 1 ? ' month ago' : ' months ago');
+    var years = Math.floor(days / 365); return years + (years === 1 ? ' year ago' : ' years ago');
+  }
+  var _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false };
+  function exRenderChainRead() {
+    var container = document.getElementById('ex-texture-content');
+    if (!container) return;
+    var ts = _textureTs;
+    if (!ts && sessionPartner && sessionPartner.thread_snapshot) {
+      ts = sessionPartner.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
+    }
+    var name = (ts && ts._name) || 'The other person';
+    var mine = exDistinctPeople(state.chain).length;
+    var theirs = (ts && typeof ts._people === 'number') ? ts._people : null;
+    var st = _exChainReadState;
+    st.mine = mine; st.theirs = theirs === null ? 0 : theirs;
+    var shared = st.shared;
+    var theirN = (ts && ts.n) || 0;
+
+    // One line about the two of you
+    var line;
+    if (!ts) line = 'Reading their chain';
+    else if (theirs === null) line = 'Their app is an older version, so their reach cannot be drawn yet.';
+    else if (theirN === 0) line = name + '\'s chain is new. No one in common yet; this is new ground.';
+    else {
+      var union = mine + st.theirs - shared;
+      line = 'Your networks hold ' + union + ' ' + (union === 1 ? 'person' : 'people') + ' between them';
+      line += shared > 0 ? '; ' + shared + ' ' + (shared === 1 ? 'is the same person.' : 'are the same people.') : '.';
+    }
+
+    var sh = exShieldRead(ts);
+    var html = '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
+    html += '<div style="height:8px"></div>';
+    html += exOverlapSVG(mine, st.theirs, shared, 11);
+    html += '<div style="height:10px"></div><div class="exs-m" style="text-align:center;">' + esc(line) + '</div>';
+    html += '<div style="height:16px"></div>';
+    html += '<div class="exs-icons">';
+    html += '<button class="exs-icon" onclick="App.exToggleShieldPop()">' + exShieldSVG(sh.color, 34) + '<div class="exs-f">device</div></button>';
+    html += '<button class="exs-icon" onclick="App.exToggleThreadPanel()">' + exThreadSVG(34) + '<div class="exs-f">chain</div></button>';
+    html += '</div>';
+    html += '<div class="exs-grow"></div>';
+    html += '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Continue</button>';
+    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+    if (st.shieldOpen) html += '<div class="exs-pop" onclick="App.exToggleShieldPop()"><b>' + esc(sh.title) + '</b><div style="margin-top:6px">' + esc(sh.body) + '</div></div>';
+    if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
+    container.innerHTML = html;
+
+    // Keep the "Review proposal" relabel if a proposal already arrived
+    if (typeof sessionProposal !== 'undefined' && sessionProposal) {
+      var crBtn = document.getElementById('ex-cr-continue'); if (crBtn) crBtn.textContent = 'Review proposal';
+    }
+
+    // The shared count needs hashing, so it lands a moment after the
+    // first paint. Not on the proposal/confirm path.
+    if (ts && ts._ppl && _exOverlapCache.salt !== exOverlapSalt()) {
+      exComputeShared(ts._ppl).then(function(n) {
+        if (n !== st.shared) { st.shared = n; var t = document.getElementById('ex-step-texture'); if (t && t.classList.contains('active')) exRenderChainRead(); }
+      }).catch(function(e) { console.log('[ex-flow] overlap compute failed:', e.message); });
+    }
+  }
+  // The six-line summary behind the thread icon. The productive pattern
+  // texture replaces most of this when it is built; this is the slot.
+  function exThreadPanelHTML(ts, name, shared) {
+    var lines = [];
+    if (ts) {
+      if (ts.t0) lines.push('Chain started <b>' + esc(exMonthYear(ts.t0)) + '</b>');
+      lines.push('<b>' + (ts.n || 0) + '</b> ' + ((ts.n || 0) === 1 ? 'exchange' : 'exchanges'));
+      if (typeof ts._people === 'number') lines.push('with <b>' + ts._people + '</b> ' + (ts._people === 1 ? 'person' : 'people'));
+      var cats = ts.cats ? Object.keys(ts.cats).filter(function(k) { return k !== 'uncategorized' && k !== 'other'; }).sort(function(a, b) { return ts.cats[b].n - ts.cats[a].n; }).slice(0, 2) : [];
+      if (cats.length) lines.push('mostly ' + cats.map(function(c) { return '<b>' + esc(c.toLowerCase()) + '</b>'; }).join(' and '));
+      lines.push('<b>' + shared + '</b> ' + (shared === 1 ? 'person' : 'people') + ' you both know');
+      if (ts.t1) lines.push('last exchange <b>' + esc(exAgo(ts.t1)) + '</b>');
+    } else {
+      lines.push('Still reading their chain');
+    }
+    var h = '<div class="exs-sheet" id="ex-thread-sheet"><div class="exs-grab" onclick="App.exToggleThreadPanel()"></div>';
+    h += '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>';
+    h += '<div class="exs-grow"></div>';
+    // "See the whole chain" (walkthrough) has nothing behind it yet: the snapshot carries a summary, not records. Added when the productive pattern texture lands here.
+    h += '<button class="exs-quiet" onclick="App.exToggleThreadPanel()">Close</button>';
+    h += '</div>';
+    return h;
+  }
+  function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; exRenderChainRead(); }
+  function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; exRenderChainRead(); }
+
   function exRenderTexture() {
     var container = document.getElementById('ex-texture-content');
     if (!sessionPartner) {
@@ -9055,8 +9266,8 @@ function init() {
   }
 
   function exBackToTexture() {
-    exRenderTexture();
     showExStep('texture');
+    exRenderChainRead();
   }
 
   // === REUSABLE ACTS IN FORM STEP ===
@@ -9274,6 +9485,8 @@ function init() {
       var reviewBtn = reviewContainer.querySelector('button[onclick*="exReviewConfirm"]');
       if (reviewBtn) reviewBtn.textContent = 'Review proposal';
     }
+    var crBtn = document.getElementById('ex-cr-continue');
+    if (crBtn) crBtn.textContent = 'Review proposal';
 
     // Build proposal card
     var html = '';
@@ -11923,7 +12136,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
