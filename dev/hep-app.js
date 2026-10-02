@@ -3031,7 +3031,15 @@ const PAIR_CODE_LENGTH = 4;
       // Check for rejection
       if (sessionRole === 'proposer' && data.proposal && data.proposal.status === 'rejected') {
         stopSessionPoll();
-        if (exRVIsShowing()) { exRenderRV('declined'); }
+        // "This doesn't look right" (ruled Oct 2): the sender goes back to
+        // the screen they sent from, everything still filled in.
+        if (exRVIsShowing()) {
+          _sessionWritten = false;
+          showExStep('form');
+          exRenderBeat(_exBeat.view === 'item' && _exBeat.picked ? 'item' : 3);
+          toast(exPartnerName() + ' said this doesn\u2019t look right');
+          return;
+        }
         document.getElementById('session-status-line').textContent = 'Proposal rejected';
         const content = document.getElementById('session-content');
         const statusDiv = content.querySelector('.pair-status');
@@ -8362,6 +8370,7 @@ function init() {
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     _textureTs = ts;
+    if (sessionRole === 'proposer') exBeatsReset();
     showExStep('texture');
     exRenderChainRead();
     if (typeof startSessionPoll === 'function') {
@@ -9147,7 +9156,7 @@ function init() {
     var sh = exShieldRead(ts);
     var html = '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
     html += '<div style="height:8px"></div>';
-    html += exOverlapSVG(mine, st.theirs, shared, 11);
+    if (sessionRole !== 'proposer') html += exOverlapSVG(mine, st.theirs, shared, 11);
     html += '<div style="height:10px"></div><div class="exs-m" style="text-align:center;">' + esc(line) + '</div>';
     html += '<div style="height:16px"></div>';
     html += '<div class="exs-icons">';
@@ -9415,9 +9424,7 @@ function init() {
   // screen is gone. The proposer keeps Continue until the merged
   // proposer chain read lands.
   function exCRActionHTML() {
-    if (sessionRole === 'proposer') {
-      return '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Continue</button>';
-    }
+    if (sessionRole === 'proposer') return exCRProposerHTML();
     var named = exPartnerName() !== 'The other person';
     var n = esc(exPartnerName());
     if (typeof sessionProposal !== 'undefined' && sessionProposal) {
@@ -9426,6 +9433,37 @@ function init() {
     }
     return '<div class="exs-wait" id="ex-cr-wait" style="padding:15px 0;"><i></i>Waiting for ' + (named ? n + '\u2019s' : 'their') + ' proposal</div>';
   }
+  // The proposer's decision happens on the chain read (ruled Oct 2,
+  // tenth session): below a thin line, Who is providing? with the two
+  // boxes, which collapses after choosing into one sentence with a
+  // small Switch; then the three rows. No Continue. This replaces the
+  // separate who and doors screens.
+  function exCRProposerHTML() {
+    var other = exPartnerName(), d = _exBeat.dir;
+    var h = '<div style="border-top:1px solid var(--border); margin:4px 0 16px;"></div>';
+    if (!d) {
+      h += '<div class="exs-t" style="text-align:center;">Who is providing?</div><div style="height:14px"></div>';
+      h += '<div class="exs-boxes">' + exBoxHTML('You', false, "App.exCRPick('provided')") + exBoxHTML(other, false, "App.exCRPick('received')") + '</div>';
+      return h;
+    }
+    var line = d === 'provided' ? 'You are providing to ' + esc(other) : esc(other) + ' is providing to you';
+    h += '<div class="exs-caprow" style="justify-content:space-between; text-align:left;"><span class="exs-body">' + line + '</span><button class="exs-switch" onclick="App.exCRSwitch()">Switch</button></div>';
+    h += '<div style="height:10px"></div>';
+    var svcN = d === 'provided' ? exServices().length : 0;
+    var pastN = exOwnActs(d).length;
+    var door = function(t, sub, fn) {
+      var live = !!fn;
+      return '<button class="exs-row' + (live ? '' : ' off') + '" style="text-align:left;"' + (live ? ' onclick="' + fn + '"' : ' tabindex="-1"') + '><div class="exs-rowmain"><div class="exs-body">' + t + '</div><div class="exs-cap">' + sub + '</div></div>' + (live ? '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg>' : '') + '</button>';
+    };
+    if (d === 'provided') h += door('Services you offer', svcN ? svcN + ' listed' : 'None yet', svcN ? "App.exCRDoor('services')" : null);
+    h += door('Past exchanges', pastN ? pastN + ' on your chain' : 'None yet', pastN ? "App.exCRDoor('past')" : null);
+    h += door('Something new', 'Describe it', 'App.exCRNew()');
+    return h;
+  }
+  function exCRPick(dir) { _exBeat.dir = dir; setDirection(dir); exCRActionRefresh(); }
+  function exCRSwitch() { exCRPick(_exBeat.dir === 'provided' ? 'received' : 'provided'); }
+  function exCRDoor(kind) { _exBeat.q = ''; showExStep('form'); exRenderBeat(2, kind); }
+  function exCRNew() { showExStep('form'); exBeatNew(); }
   function exCRActionRefresh() {
     var slot = document.getElementById('ex-cr-action');
     if (slot) slot.innerHTML = exCRActionHTML();
@@ -9801,8 +9839,11 @@ function init() {
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
     return (ts && ts._name) || 'The other person';
   }
-  function exBeatsOpen() {
+  function exBeatsReset() {
     _exBeat = { dir: null, task: '', kind: '', dur: '', value: '', list: null, view: 'who', from: 'doors', q: '' };
+  }
+  function exBeatsOpen() {
+    exBeatsReset();
     ['ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
     // "Use previous" from the FAB lands on beat 3 with the fields live.
     if (window._fabPrefill) {
@@ -10031,10 +10072,9 @@ function init() {
   // X: back one step, everything entered kept (DESIGN 2a).
   function exBeatBack() {
     var v = _exBeat.view;
-    if (v === 'form') { if (_exBeat.from === 'item' && _exBeat.picked) exRenderBeat('item'); else exRenderBeat(2); }
+    if (v === 'form') { if (_exBeat.from === 'item' && _exBeat.picked) exRenderBeat('item'); else exBackToTexture(); }
     else if (v === 'item') exRenderBeat(2, _exBeat.listKind || (_exBeat.picked && _exBeat.picked.kindOf === 'past' ? 'past' : 'services'));
-    else if (v === 'list') { _exBeat.q = ''; exRenderBeat(2); }
-    else if (v === 'doors') exRenderBeat(1);
+    else if (v === 'list') { _exBeat.q = ''; exBackToTexture(); }
     else exBackToTexture();
   }
   // The header X routes here: back one step, never ending the exchange
@@ -10098,7 +10138,7 @@ function init() {
     return (exParseDuration(meta) > 0 && /\d/.test(meta)) ? { category: '', duration: meta } : { category: meta, duration: '' };
   }
   function exBeatSend() {
-    if (!_exBeat.dir) { toast('Tap who is providing'); exRenderBeat(1); return; }
+    if (!_exBeat.dir) { toast('Tap who is providing'); exBackToTexture(); return; }
     var c = document.getElementById('ex-category'); if (c) c.value = (_exBeat.kind || '').trim();
     var du = document.getElementById('ex-duration'); if (du) du.value = (_exBeat.dur || '').trim();
     var ve = document.getElementById('ex-value'); if (ve && String(ve.value).trim() === '') ve.value = '0';
@@ -13162,7 +13202,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
