@@ -26,7 +26,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 9. One signal: an underlined phrase in accent blue. Tapping it opens a reading sheet. Nothing else in the app is underlined.
 10. There is no inline expander. If something is short enough to show inline, show it. A disclosure always opens a reading sheet.
-11. A control that goes somewhere else in the flow is a button or a row with a right chevron, never an underlined phrase.
+11. A control that goes somewhere else in the flow is a button or a row with a right chevron, never an underlined phrase. A list of places to go (My chain) is plain rows: word, caption, chevron, no icons, the same row the exchange uses.
 
 ## Fields
 
@@ -40,7 +40,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 ## Color and shape
 
-16. Four meanings, never a fifth hue: blue is you and action; amber is received and cosmic share; green is confirmed; red is danger only, and rare. All colors come from the tokens.
+16. Four meanings, never a fifth hue: blue is you and action; amber is received and cosmic share; green is confirmed; red is danger only, and rare. All colors come from the tokens. Numbers take the colour of their side (ruled Oct 2): currency and anything provided in blue, cosmic share and anything received in amber, a standing in blue when above and amber when below, neutral when even. Counts of exchanges or people stay neutral.
 17. Two radii only: `--radius` for sheets and cards, `--radius-sm` for fields and buttons. Circles for avatars.
 
 ## Open questions
@@ -49,7 +49,5 @@ A design question these rules do not answer is written here when it comes up, ru
 
 - Segmented controls (Actual / Typical, Each / Week / Month / Year on the textures): no rule yet. The mockup uses a quiet pill row on `--bg-input`.
 - Charts (line weights, fills, axis labels, bar strips): no rule yet beyond rule 16's colours.
-- Icons on list rows: the exchange rows carry none; the Home doors row carries one per door. Which pattern My chain follows is open.
-- Colour on totals: currency in blue and cosmic share in amber (rule 16), provided and received counts the same. Standing itself stays neutral in the mockup; whether it takes blue above and amber below, as on the wave, is open.
 - Where Reach is turned on. Ruled off by default, own phone only; the mockup shows it as already on. The switch has no home yet.
 - The word for standing in the wallet: "Standing" is in use; whether it is final is open.

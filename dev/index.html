@@ -463,36 +463,45 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* Wallet modal: fills the viewport like tab screens (Settings, Learn, History),
    rather than capping at the default 480px modal width. Other modals keep the cap. */
 #wallet-overlay .modal { max-width: none; }
-/* My chain (v2.75.0): the list and its sheets share the exchange flow's sheet, row, caption and X */
+/* My chain (v2.77.0): the list and its sheets share the exchange flow's sheet, row, caption and X. Reading screen: everything left-aligned (rule 7). */
 #wallet-overlay .modal.mc { max-width: 420px; }
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
 .mc-sheet { padding-top: var(--safe-top); }
 .mc-sheet[hidden] { display: none; }
-.mc-id { display: flex; flex-direction: column; align-items: center; padding: 4px 0 20px; }
-.mc-id .exs-h { margin-top: 12px; }
-.mc-photo { width: 88px; height: 88px; border-radius: 50%; background: var(--accent-light); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent); }
+.mc-id { display: flex; flex-direction: column; align-items: flex-start; padding: 0 0 18px; }
+.mc-name { font-size: 18px; font-weight: 600; color: var(--text); margin-top: 12px; }
+.mc-photo { width: 72px; height: 72px; border-radius: 50%; background: var(--accent-light); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent); }
 .mc-photo img { width: 100%; height: 100%; object-fit: cover; }
+.mc-standing { padding: 0 0 22px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .mc-vrow { cursor: default; }
 .mc-gap { margin-top: 24px; }
 .mc-big { font-size: 18px; }
-.mc-blue, .exs-rowval.mc-blue { color: var(--accent); }
-.mc-amber, .exs-rowval.mc-amber, .exs-cap.mc-amber { color: #B5742A; }
-.mc-standing { display: flex; flex-direction: column; align-items: center; padding: 0 0 20px; }
-.mc-standing .mc-display { justify-content: center; }
+.mc-blue, .exs-rowval.mc-blue, .mc-display.mc-blue { color: var(--accent); }
+.mc-amber, .exs-rowval.mc-amber, .exs-cap.mc-amber, .mc-display.mc-amber { color: #B5742A; }
+.mc-blue-fill { background: var(--accent); }
+.mc-amber-fill { background: #B5742A; }
 .mc-link { margin: 10px 0 0; }
+.mc-link[hidden] { display: none; }
 .mc-link a { font-size: 13px; color: var(--accent); text-decoration: underline; }
 .mc-display { display: flex; align-items: center; gap: 8px; font-size: 32px; font-weight: 600; line-height: 1.2; color: var(--text); }
-.mc-tbar { margin-top: 18px; }
+.mc-tbar { margin-top: 16px; }
+.mc-tbar:first-child { margin-top: 0; }
 .mc-tbar-top { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px; }
 .mc-track { position: relative; height: 14px; border-radius: var(--radius-sm); background: var(--bg-input); }
 .mc-fill { height: 14px; border-radius: var(--radius-sm); }
-.mc-fill-blue { background: var(--accent); }
-.mc-fill-amber { background: #B5742A; }
 .mc-gapbox { position: absolute; top: 0; height: 14px; border: 1.5px dashed #B5742A; border-radius: var(--radius-sm); background: rgba(181,116,42,0.10); }
+.mc-gapbox.mc-up { border-color: var(--accent); background: var(--accent-light); }
 .mc-gapbox[hidden] { display: none; }
 .mc-how { margin-top: 28px; }
 .mc-how .exs-cap { margin: 8px 0 0; }
 .mc-how b { font-weight: 600; color: var(--text-dim); }
+.mc-sheet .exs-body + .exs-body { margin-top: 10px; }
+.mc-ol { padding-left: 20px; margin: 8px 0; line-height: 1.5; }
+.mc-chart { display: block; width: 100%; height: auto; margin-top: 6px; }
+.mc-seg { display: flex; gap: 2px; padding: 3px; background: var(--bg-input); border-radius: var(--radius-sm); }
+.mc-seg button { flex: 1; min-height: 36px; border: none; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; background: transparent; color: var(--text-dim); cursor: pointer; }
+.mc-seg button[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+.mc-seg button:disabled { opacity: .4; cursor: default; }
 
 /* === TABS === */
 .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -1469,40 +1478,91 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 </div>
 
-<!-- ========== WALLET MODAL (My chain, v2.75.0: list of sheets; DESIGN.md rules 2, 2a, 8) ========== -->
+<!-- ========== WALLET MODAL (My chain, v2.77.0; DESIGN.md rules 2, 2a, 3, 4a, 5, 7, 8, 9, 16) ========== -->
 <div class="modal-overlay" id="wallet-overlay">
   <div class="modal mc">
     <div class="modal-body mc-home">
       <div class="exs-sheet-head" style="justify-content:flex-end"><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
-      <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="exs-h" id="mc-name"></div><div class="exs-cap" id="mc-since"></div></div>
-      <div class="mc-standing"><div class="mc-display" id="mc-home-st"></div><div class="exs-cap">Your standing</div></div>
+      <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="mc-name" id="mc-name"></div><div class="exs-cap" id="mc-since"></div></div>
+      <div class="mc-standing">
+        <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Currency</div><div class="exs-cap">What you have produced</div></div><span class="exs-rowval mc-blue" id="mc-s-cur"></span></div><div class="mc-track"><div class="mc-fill mc-blue-fill" id="mc-s-curbar"></div><div class="mc-gapbox" id="mc-s-curgap" hidden></div></div></div>
+        <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Cosmic share</div><div class="exs-cap">What you have received</div></div><span class="exs-rowval mc-amber" id="mc-s-cos"></span></div><div class="mc-track"><div class="mc-fill mc-amber-fill" id="mc-s-cosbar"></div><div class="mc-gapbox" id="mc-s-cosgap" hidden></div></div></div>
+        <div class="exs-cap" style="margin-top:16px">Your standing</div>
+        <div class="mc-display" id="mc-s-big"></div>
+        <p class="exs-cap" id="mc-s-ratio" style="margin:4px 0 0"></p>
+        <p class="mc-link"><a href="#" onclick="App.mcOpen('standing');return false">How standing is drawn</a></p>
+      </div>
       <button class="exs-row" onclick="App.mcOpen('numbers')"><div class="exs-rowmain"><div class="exs-body">Numbers</div><div class="exs-cap">Your totals and counts</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.mcOpen('standing')"><div class="exs-rowmain"><div class="exs-body">Standing</div><div class="exs-cap">Where you stand, and what makes it up</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('wave')"><div class="exs-rowmain"><div class="exs-body">Wave</div><div class="exs-cap">Your standing over time</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('people')"><div class="exs-rowmain"><div class="exs-body">People</div><div class="exs-cap">Who you have exchanged with, over time</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('reach')"><div class="exs-rowmain"><div class="exs-body">Reach</div><div class="exs-cap">How far your exchanges reach</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openChainViewerFromWallet()"><div class="exs-rowmain"><div class="exs-body">Full chain</div><div class="exs-cap">Every recorded act</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyTextureFromWallet()"><div class="exs-rowmain"><div class="exs-body">Chain health</div><div class="exs-cap">How others see your chain</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-standing" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">How standing is drawn</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Your standing is your currency minus your cosmic share: everything you have produced for others, less everything you have received from them. The two totals sit on one scale, and the dashed piece between the ends of the bars is your standing. When currency is longer you stand above; when cosmic share is longer you stand below.</p><p class="exs-cap">Neither total ever goes down. Your standing moves only because a new exchange adds to one side or the other, and any exchange can change it. There is no floor and no interest.</p><p class="exs-cap">Every unit was written in one exchange on two chains at once, produced on one and received on the other, signed by both people. That is why, across everyone, all standings add up to zero. The Wave shows how your standing has moved over time.</p><p class="exs-cap"><b>Two-column ledger</b> (double-entry bookkeeping, Pacioli, 1494). HEP keeps the rule that both sides must match, and moves it out of your own book and across everyone. What it removes is the debt: nothing is owed, nothing falls due, no interest.</p><p class="exs-cap"><b>Ratio in lowest terms.</b> The sentence under the number is a description, not a rate.</p></div>
+    </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-numbers" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Numbers</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div class="exs-cap">Standing</div>
       <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Currency</div></div><div class="exs-rowval mc-big mc-blue" id="mc-n-cur"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Cosmic share</div></div><div class="exs-rowval mc-big mc-amber" id="mc-n-cos"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Standing</div></div><div class="exs-rowval mc-big" id="mc-n-st"></div></div>
-      <p class="mc-link"><a href="#" onclick="App.mcOpen('standing');return false">See your standing drawn</a></p>
+      <p class="mc-link"><a href="#" onclick="App.mcOpen('wave');return false">See how your standing moved</a></p>
       <div class="exs-cap mc-gap">Exchanges</div>
       <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Exchanges</div></div><div class="exs-rowval " id="mc-n-ex"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Provided</div></div><div class="exs-rowval mc-blue" id="mc-n-p"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Received</div></div><div class="exs-rowval mc-amber" id="mc-n-r"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Witnessed</div></div><div class="exs-rowval " id="mc-n-w"></div></div>
       <div class="exs-cap mc-gap">People</div>
       <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">People</div></div><div class="exs-rowval " id="mc-n-pe"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">More than once</div></div><div class="exs-rowval " id="mc-n-mo"></div></div>
+      <p class="mc-link"><a href="#" onclick="App.mcOpen('people');return false">See the people</a></p>
       <p class="exs-cap" style="margin-top:20px">These numbers stay on your phone. They never appear in shared chain data.</p>
     </div>
-    <div class="exs-sheet mc-sheet" id="mc-sheet-standing" hidden>
-      <div class="exs-sheet-head"><div class="exs-h">Standing</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
-      <div class="mc-display" id="mc-s-big"></div>
-      <div class="exs-cap">Where you stand today</div>
-      <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Currency</div><div class="exs-cap">What you have produced</div></div><span class="exs-rowval mc-blue" id="mc-s-cur"></span></div><div class="mc-track"><div class="mc-fill mc-fill-blue" id="mc-s-curbar"></div><div class="mc-gapbox" id="mc-s-curgap" hidden></div></div></div>
-      <div class="exs-cap mc-amber" id="mc-s-gapcap" style="text-align:right; margin-top:4px"></div>
-      <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Cosmic share</div><div class="exs-cap">What you have received</div></div><span class="exs-rowval mc-amber" id="mc-s-cos"></span></div><div class="mc-track"><div class="mc-fill mc-fill-amber" id="mc-s-cosbar"></div><div class="mc-gapbox" id="mc-s-cosgap" hidden></div></div></div>
-      <p class="exs-body" id="mc-s-ratio" style="margin:20px 0 0"></p>
-      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Your standing is your currency minus your cosmic share: everything you have produced for others, less everything you have received from them. The two totals sit on one scale, and the gap between the ends of the bars is your standing. When currency is longer you stand above; when cosmic share is longer you stand below.</p><p class="exs-cap">Neither total ever goes down. Your standing moves only because a new exchange adds to one side or the other, and any exchange can change it. There is no floor and no interest.</p><p class="exs-cap">Every unit was written in one exchange on two chains at once, produced on one and received on the other, signed by both people. That is why, across everyone, all standings add up to zero.</p><p class="exs-cap"><b>Two-column ledger</b> (double-entry bookkeeping, Pacioli, 1494). HEP keeps the rule that both sides must match, and moves it out of your own book and across everyone. What it removes is the debt: nothing is owed, nothing falls due, no interest.</p><p class="exs-cap"><b>Ratio in lowest terms.</b> The sentence is a description, not a rate.</p></div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-wave" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Wave</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-body" id="mc-w-sentence" style="margin:0 0 14px"></p>
+      <div class="mc-seg" id="mc-w-mode" role="group"><button data-v="a" onclick="App.mcWaveMode('a')">Actual</button><button data-v="t" onclick="App.mcWaveMode('t')">Typical</button></div>
+      <svg id="mc-w-svg" class="mc-chart" viewBox="0 0 340 184"></svg>
+      <div class="exs-cap" style="margin-top:10px">How often: provided above the line, received below</div>
+      <svg id="mc-w-strip" class="mc-chart" viewBox="0 0 340 46"></svg>
+      <p class="exs-body" id="mc-w-counts" style="margin:6px 0 14px"></p>
+      <div class="mc-seg" id="mc-w-iv" role="group"><button data-v="each" onclick="App.mcWaveIv('each')">Each</button><button data-v="7" onclick="App.mcWaveIv('7')">Week</button><button data-v="30.44" onclick="App.mcWaveIv('30.44')">Month</button><button data-v="365.25" onclick="App.mcWaveIv('365.25')">Year</button></div>
+      <p class="exs-cap" id="mc-w-note" style="margin:8px 0 0"></p>
+      <p class="mc-link" id="mc-w-typlink" hidden><a href="#" onclick="App.mcOpen('typical');return false">How Typical is worked out</a></p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Your standing is what you have produced minus what you have received. Above the line, you have produced more than you have received. Below it, the reverse. There is no floor and no interest, and any exchange can change the direction.</p><p class="exs-cap">The line can sit below even when you provide more often, because what you receive can be worth more than what you provide. The bars under the line show how often, so both are visible.</p><p class="exs-cap">Week, Month and Year draw where you stood at the end of each block, like a closing price. The bars count the exchanges in each block.</p><p class="exs-cap"><b>Typical</b> evens out the few exchanges far bigger than your usual, using one fixed rule that is the same for everyone. Your chain itself is never altered.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-typical" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">How Typical is worked out</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-body">Most exchanges in a life are ordinary. Now and then a few are extraordinary: a windfall, a big job, a medical bill, a loss. Those few can take over the whole picture.</p>
+      <p class="exs-body">Typical evens out those few, the very good and the very hard alike, so you can see your everyday pattern. Nothing on your chain changes.</p>
+      <p class="exs-body" id="mc-t-count" style="font-weight:600"></p>
+      <ol class="exs-body mc-ol"><li>Exchanges are sorted into two kinds: what you provided and what you received.</li><li>For each kind, the app finds the middle-sized exchange (the median) and how far exchanges of that kind usually sit from it.</li><li>Any exchange more than 3.5 times that usual distance away is counted as a middle-sized exchange of its kind instead.</li><li>Every other exchange stays exactly as it was. The line and the blocks are redrawn from these.</li></ol>
+      <p class="exs-cap">Typical needs at least 20 exchanges of a kind before it evens any of them out.</p>
+      <p class="exs-cap">Method: modified z-score with median absolute deviation, threshold 3.5 (Iglewicz and Hoaglin, 1993), applied separately to provided and received exchanges. Flagged exchanges are replaced with the median of their kind. The chain itself is never altered; Typical is a view of it.</p>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-people" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">People</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-body" style="font-weight:600">Whose work you did</div><p class="exs-cap" id="mc-pp-n" style="margin:2px 0 10px"></p>
+      <div class="exs-cap">Each person who gave you credit, over time; bigger marks, more credit</div>
+      <svg id="mc-pp-rows" class="mc-chart" viewBox="0 0 340 100"></svg>
+      <div class="exs-cap" style="margin-top:6px">Credit of each exchange</div>
+      <svg id="mc-pp-bars" class="mc-chart" viewBox="0 0 340 50"></svg>
+      <div class="exs-body" style="font-weight:600; margin-top:26px">Whose work you received</div><p class="exs-cap" id="mc-pc-n" style="margin:2px 0 10px"></p>
+      <div class="exs-cap">Each person whose work you received, over time; bigger marks, more credit given</div>
+      <svg id="mc-pc-rows" class="mc-chart" viewBox="0 0 340 100"></svg>
+      <div class="exs-cap" style="margin-top:6px">Credit you gave in each exchange</div>
+      <svg id="mc-pc-bars" class="mc-chart" viewBox="0 0 340 50"></svg>
+      <div class="exs-cap" style="display:flex; justify-content:space-between; margin:4px 0 14px"><span>first exchange</span><span>today</span></div>
+      <div class="mc-seg" id="mc-p-iv" role="group"><button data-v="each" onclick="App.mcPeopleIv('each')">Each</button><button data-v="7" onclick="App.mcPeopleIv('7')">Week</button><button data-v="30.44" onclick="App.mcPeopleIv('30.44')">Month</button><button data-v="365.25" onclick="App.mcPeopleIv('365.25')">Year</button></div>
+      <p class="exs-cap" id="mc-p-note" style="margin:8px 0 0"></p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Each row is one person, in the order you first exchanged with them, with no names. Each mark is one exchange at the time it happened, sized by its credit. The bars beneath show each exchange's credit on the same stretch of time. Week, Month and Year add up the credit in each block.</p><p class="exs-cap">Everyone's pattern looks different, depending on the work you do and the exchanges you make. If something looks odd, it is there to be looked at and understood. Receiving is not a debt: the credit you gave someone is your recognition of what they did for you, not a bill.</p><p class="exs-cap">Someone reading your chain sees the rows only: uniform marks, no sizes, no bars, no numbers.</p><p class="exs-cap"><b>Customer concentration</b> (Pareto, Lorenz, Herfindahl) for how your exchange spreads across people. Supplier concentration on the receiving side.</p><p class="exs-cap"><b>Cohort and retention analysis</b> (direct marketing) for who comes back over time.</p><p class="exs-cap"><b>Sums per time block</b> (time-series resampling) for Week, Month and Year.</p><p class="exs-cap"><b>What HEP removed:</b> the index, the ranking and the targeting. Rows stay in the order people first appeared, never by size.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-reach" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Reach</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-cap">How far your exchanges reach</div>
+      <svg id="mc-r-svg" class="mc-chart" viewBox="0 0 340 300"></svg>
+      <p class="exs-body" id="mc-r-sentence" style="margin:6px 0 4px"></p>
+      <p class="exs-cap" id="mc-r-unplaced" style="margin:0"></p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Each exchange can carry where it happened, if the two people chose to write it. This picture puts your exchanges by how far they are from where you usually are: your own town in the middle, the rest of your state around it, and farther places outside that.</p><p class="exs-cap">It shows whether your exchange stays close or reaches beyond your town. Marks are spread around each ring, so the picture shows distance only, never direction. No place names are drawn and there is no map.</p><p class="exs-cap">It is on your phone only and never shown to anyone you exchange with. Nothing on your chain changes.</p><p class="exs-cap"><b>Distance decay</b> (geography, the gravity model of interaction, Zipf 1946; Tobler's first law). Interaction falls off with distance. Here the fall-off is drawn and nothing is done with it: no catchment, no market area, no prediction.</p><p class="exs-cap"><b>Activity space</b> (urban geography and mobility studies). Used to describe and to track. Here names and direction are removed and the picture never leaves the phone.</p></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>

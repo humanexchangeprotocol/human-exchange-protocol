@@ -875,15 +875,22 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Home ---
-  // v2.75.0: My chain rebuilt as a list of reading sheets (registry,
-  // Component 2, "MY CHAIN REBUILT"; DESIGN.md rules 2, 2a, 8). The list
-  // opens one sheet; a sheet can open another over it; X closes the top
-  // one. Numbers organises the old wallet data; Standing draws the net;
-  // Device carries the identity panel and standing content unchanged.
+  // v2.77.0: My chain (registry, Component 2, "MY CHAIN REBUILT"; DESIGN.md
+  // rules 2, 2a, 4a, 5, 7, 8, 9, 16). The list carries standing itself: the
+  // two totals on one scale, the gap drawn, the standing beneath, coloured
+  // by side. Sheets: Numbers, Wave (+ How Typical), People, Reach, Device,
+  // How standing is drawn. A sheet can open another over it; X closes the
+  // top one. Every drawing reads only the person's own chain, on this phone.
   var _mcStack = [];
+  var MC_AMB = '#B5742A';
   function mcOpen(k) {
     var el = document.getElementById('mc-sheet-' + k);
     if (!el) return;
+    try {
+      if (k === 'wave') mcDrawWave();
+      else if (k === 'people') mcDrawPeople();
+      else if (k === 'reach') mcDrawReach();
+    } catch (e) { console.log('[my-chain] draw failed:', e.message); }
     el.style.zIndex = 6 + _mcStack.length;
     el.hidden = false; el.scrollTop = 0;
     _mcStack.push(el);
@@ -900,6 +907,156 @@ const PAIR_CODE_LENGTH = 4;
     for (var d = 1; d <= 12; d++) { var n = Math.round(q * d); if (n > 0 && Math.abs(n / d - q) / q < 0.02) return 'For every ' + d + ' you have received, you have produced ' + n + '.'; }
     return 'For every 100 you have received, you have produced ' + Math.round(q * 100) + '.';
   }
+  function mcEl(t, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', t); for (var k in a) e.setAttribute(k, a[k]); return e; }
+  function mcText(svg, x, y, txt, anchor) { var t = mcEl('text', { x: x, y: y, 'font-size': '12', fill: 'var(--text-faint)', 'text-anchor': anchor || 'start' }); t.textContent = txt; svg.appendChild(t); }
+  // The chain as the drawings need it: time in days from the first exchange.
+  function mcActs() {
+    var ex = state.chain.filter(HCP.isAct).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
+    if (!ex.length) return { list: [], span: 1 };
+    var t0 = new Date(ex[0].timestamp).getTime();
+    var list = ex.map(function(r) {
+      return { t: (new Date(r.timestamp).getTime() - t0) / 86400000, dir: r.energyState === 'provided' ? 'p' : 'r', v: Number(r.value) || 0, person: r.counterparty || '?', city: (r.city || '').trim().toLowerCase(), st: (r.state || '').trim().toLowerCase() };
+    });
+    var span = Math.max(1, (Date.now() - t0) / 86400000);
+    return { list: list, span: span };
+  }
+  function mcSegPress(id, v) { document.querySelectorAll('#' + id + ' button').forEach(function(b) { b.setAttribute('aria-pressed', b.dataset.v === v ? 'true' : 'false'); }); }
+
+  // ---- Wave ----
+  var _mcWMode = 'a', _mcWIv = '30.44';
+  function mcWaveMode(m) { _mcWMode = m; mcDrawWave(); }
+  function mcWaveIv(v) { _mcWIv = v; mcDrawWave(); }
+  function mcTypical(list) {
+    var out = list.map(function(e) { return { t: e.t, dir: e.dir, v: e.v }; }), n = 0;
+    function med(a) { var s = a.slice().sort(function(x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
+    ['p', 'r'].forEach(function(d) {
+      var idx = out.map(function(e, i) { return e.dir === d ? i : -1; }).filter(function(i) { return i >= 0; });
+      if (idx.length < 20) return;
+      var v = idx.map(function(i) { return out[i].v; }), m = med(v), mad = med(v.map(function(x) { return Math.abs(x - m); })) || 1;
+      idx.forEach(function(i) { if (0.6745 * Math.abs(out[i].v - m) / mad > 3.5) { out[i].v = m; n++; } });
+    });
+    return { list: out, flagged: n };
+  }
+  function mcDrawWave() {
+    var A = mcActs(), SPAN = A.span, typ = mcTypical(A.list);
+    var nP = A.list.filter(function(e) { return e.dir === 'p'; }).length, nR = A.list.length - nP;
+    var canTyp = nP >= 20 || nR >= 20;
+    if (!canTyp) _mcWMode = 'a';
+    var D = _mcWMode === 't' ? typ.list : A.list, p = _mcWIv, X0 = 14, X1 = 326, Z = 86;
+    var stNow = A.list.reduce(function(s, e) { return s + (e.dir === 'p' ? e.v : -e.v); }, 0);
+    var sent = document.getElementById('mc-w-sentence');
+    sent.innerHTML = !A.list.length ? 'Nothing recorded yet.' : (stNow === 0 ? 'Today you stand even, on the line.' : 'Today you stand <span class="' + (stNow > 0 ? 'mc-blue' : 'mc-amber') + '" style="font-weight:600">' + mcFmt(Math.abs(stNow)) + ' ' + exMarkSVG(14) + ' ' + (stNow > 0 ? 'above' : 'below') + '</span> the line.');
+    var pts = [[0, 0]], s = 0;
+    if (p === 'each') D.forEach(function(e) { s += e.dir === 'p' ? e.v : -e.v; pts.push([e.t, s]); });
+    else { var P = +p, nb = Math.max(1, Math.ceil(SPAN / P)), j = 0; for (var b = 1; b <= nb; b++) { var end = Math.min(b * P, SPAN); while (j < D.length && D[j].t < end) { s += D[j].dir === 'p' ? D[j].v : -D[j].v; j++; } pts.push([end, s]); } while (j < D.length) { s += D[j].dir === 'p' ? D[j].v : -D[j].v; j++; } pts[pts.length - 1][1] = s; }
+    var mx = Math.max.apply(null, [1].concat(pts.map(function(q) { return Math.abs(q[1]); }))), sc = 64 / mx;
+    function X(t) { return X0 + (X1 - X0) * Math.min(t, SPAN) / SPAN; } function Y(v) { return Z - v * sc; }
+    var line = [];
+    if (p === 'each') pts.forEach(function(q, i) { if (i) line.push(X(q[0]).toFixed(1) + ',' + Y(pts[i - 1][1]).toFixed(1)); line.push(X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1)); });
+    else { line.push(X(0) + ',' + Y(0)); for (var i = 1; i < pts.length; i++) { line.push(X(pts[i - 1][0]).toFixed(1) + ',' + Y(pts[i][1]).toFixed(1)); line.push(X(pts[i][0]).toFixed(1) + ',' + Y(pts[i][1]).toFixed(1)); } }
+    var last = pts[pts.length - 1], L = line.join(' '), PG = X0 + ',' + Z + ' ' + L + ' ' + X(last[0]).toFixed(1) + ',' + Z;
+    var w = document.getElementById('mc-w-svg'); w.innerHTML = '';
+    var defs = mcEl('defs', {}), cu = mcEl('clipPath', { id: 'mc-cu' }), cd = mcEl('clipPath', { id: 'mc-cd' });
+    cu.appendChild(mcEl('rect', { width: 340, height: Z })); cd.appendChild(mcEl('rect', { y: Z, width: 340, height: 184 - Z })); defs.appendChild(cu); defs.appendChild(cd); w.appendChild(defs);
+    w.appendChild(mcEl('polygon', { points: PG, fill: 'var(--accent)', 'fill-opacity': '.14', 'clip-path': 'url(#mc-cu)' }));
+    w.appendChild(mcEl('polygon', { points: PG, fill: MC_AMB, 'fill-opacity': '.22', 'clip-path': 'url(#mc-cd)' }));
+    w.appendChild(mcEl('line', { x1: X0, y1: Z, x2: X1, y2: Z, stroke: 'var(--text-faint)', 'stroke-width': '.8' }));
+    if (A.list.length) {
+      w.appendChild(mcEl('polyline', { points: L, fill: 'none', stroke: 'var(--text)', 'stroke-width': '1.6', 'stroke-linejoin': 'round' }));
+      w.appendChild(mcEl('circle', { cx: X(last[0]), cy: Y(last[1]), r: 2.6, fill: 'var(--text)' }));
+    }
+    mcText(w, X0, 180, 'first exchange'); mcText(w, X1, 180, 'today', 'end');
+    var P2 = p === 'each' ? 7 : +p, nb2 = Math.max(1, Math.ceil(SPAN / P2)), up = [], dn = [];
+    for (var k = 0; k < nb2; k++) { up.push(0); dn.push(0); }
+    D.forEach(function(e) { var k2 = Math.min(nb2 - 1, Math.floor(e.t / P2)); if (e.dir === 'p') up[k2]++; else dn[k2]++; });
+    var mc = Math.max.apply(null, [1].concat(up, dn)), bw = (X1 - X0) / nb2, gp = Math.min(2, bw * 0.25), st = document.getElementById('mc-w-strip'); st.innerHTML = '';
+    st.appendChild(mcEl('line', { x1: X0, y1: 22.5, x2: X1, y2: 22.5, stroke: 'var(--border)' }));
+    for (k = 0; k < nb2; k++) {
+      var x = X0 + k * bw + gp / 2, ww = Math.max(0.6, bw - gp);
+      if (up[k]) st.appendChild(mcEl('rect', { x: x, y: 22 - up[k] / mc * 19, width: ww, height: up[k] / mc * 19, fill: 'var(--text-dim)' }));
+      if (dn[k]) st.appendChild(mcEl('rect', { x: x, y: 23, width: ww, height: dn[k] / mc * 19, fill: 'var(--text-dim)', 'fill-opacity': '.5' }));
+    }
+    document.getElementById('mc-w-counts').textContent = 'Provided ' + nP + ' times, received ' + nR + ' times.';
+    var notes = { each: 'Every exchange, one by one, ', '7': 'Each step is where you stood at the end of a week, ', '30.44': 'Each step is where you stood at the end of a month, ', '365.25': 'Each step is where you stood at the end of a year, ' };
+    document.getElementById('mc-w-note').textContent = notes[p] + (_mcWMode === 't' ? 'with the few exchanges far bigger than your usual evened out.' : 'counting every exchange as it happened.') + (canTyp ? '' : ' Typical opens once you have 20 exchanges of a kind.');
+    document.getElementById('mc-w-typlink').hidden = _mcWMode !== 't';
+    document.getElementById('mc-t-count').textContent = typ.flagged + ' of your ' + A.list.length + ' exchanges evened out.';
+    var tb = document.querySelector('#mc-w-mode button[data-v="t"]'); if (tb) tb.disabled = !canTyp;
+    mcSegPress('mc-w-mode', _mcWMode); mcSegPress('mc-w-iv', p);
+  }
+
+  // ---- People (productive and consumption) ----
+  var _mcPIv = 'each';
+  function mcPeopleIv(v) { _mcPIv = v; mcDrawPeople(); }
+  function mcDrawRows(A, dir, rowsId, barsId, color) {
+    var SPAN = A.span, D = A.list.filter(function(e) { return e.dir === dir; }), order = [];
+    D.forEach(function(e) { if (order.indexOf(e.person) < 0) order.push(e.person); });
+    var X0 = 8, X1 = 332, RH = order.length ? Math.max(4, Math.min(10, 120 / order.length)) : 10, H = Math.max(1, order.length) * RH + 6;
+    var svg = document.getElementById(rowsId); svg.setAttribute('viewBox', '0 0 340 ' + H); svg.innerHTML = '';
+    var bars = document.getElementById(barsId); bars.innerHTML = '';
+    if (!D.length) { mcText(svg, 8, 12, 'Nothing yet.'); return 0; }
+    order.forEach(function(p, i) { var y = 3 + i * RH + RH / 2; svg.appendChild(mcEl('line', { x1: X0, y1: y, x2: X1, y2: y, stroke: 'var(--border)', 'stroke-width': '.6' })); });
+    function X(t) { return X0 + (X1 - X0) * Math.min(t, SPAN) / SPAN; }
+    var items;
+    if (_mcPIv === 'each') items = D.map(function(e) { return { row: order.indexOf(e.person), t: e.t, v: e.v }; });
+    else { var P = +_mcPIv, acc = {}; D.forEach(function(e) { var b = Math.floor(e.t / P), key = e.person + '|' + b; acc[key] = acc[key] || { row: order.indexOf(e.person), t: Math.min(SPAN, (b + 0.5) * P), v: 0 }; acc[key].v += e.v; }); items = Object.keys(acc).map(function(k) { return acc[k]; }); }
+    var mx = Math.max.apply(null, [1].concat(items.map(function(q) { return q.v; })));
+    items.forEach(function(q) { svg.appendChild(mcEl('circle', { cx: X(q.t), cy: 3 + q.row * RH + RH / 2, r: (1.2 + Math.sqrt(q.v / mx) * (RH * 0.55)).toFixed(2), fill: color, 'fill-opacity': '.75' })); });
+    var BH = 48, bi;
+    if (_mcPIv === 'each') bi = D.map(function(e) { return { t: e.t, v: e.v, w: 1.6 }; });
+    else { var P2 = +_mcPIv, nb = Math.max(1, Math.ceil(SPAN / P2)), sm = []; for (var k = 0; k < nb; k++) sm.push(0); D.forEach(function(e) { sm[Math.min(nb - 1, Math.floor(e.t / P2))] += e.v; }); bi = sm.map(function(v, k) { return { t: Math.min(SPAN, (k + 0.5) * P2), v: v, w: Math.max(1.6, (X1 - X0) / nb * 0.7) }; }); }
+    var bm = Math.max.apply(null, [1].concat(bi.map(function(q) { return q.v; })));
+    bi.forEach(function(q) { if (!q.v) return; var h = q.v / bm * (BH - 2); bars.appendChild(mcEl('rect', { x: (X(q.t) - q.w / 2).toFixed(1), y: (BH - h).toFixed(1), width: q.w.toFixed(1), height: h.toFixed(1), fill: color, 'fill-opacity': '.65' })); });
+    bars.appendChild(mcEl('line', { x1: X0, y1: BH, x2: X1, y2: BH, stroke: 'var(--text-faint)', 'stroke-width': '.8' }));
+    return order.length;
+  }
+  function mcDrawPeople() {
+    var A = mcActs();
+    var a = mcDrawRows(A, 'p', 'mc-pp-rows', 'mc-pp-bars', 'var(--accent)'), b = mcDrawRows(A, 'r', 'mc-pc-rows', 'mc-pc-bars', MC_AMB);
+    document.getElementById('mc-pp-n').textContent = 'You have done work for ' + a + (a === 1 ? ' person.' : ' people.');
+    document.getElementById('mc-pc-n').textContent = 'You have received work from ' + b + (b === 1 ? ' person.' : ' people.');
+    var notes = { each: 'Every exchange, at the time it happened.', '7': 'Each mark adds up a person\u2019s credit for the week.', '30.44': 'Each mark adds up a person\u2019s credit for the month.', '365.25': 'Each mark adds up a person\u2019s credit for the year.' };
+    document.getElementById('mc-p-note').textContent = notes[_mcPIv];
+    mcSegPress('mc-p-iv', _mcPIv);
+  }
+
+  // ---- Reach: rings from the city and state fields; distance only, no direction ----
+  function mcDrawReach() {
+    var A = mcActs(), svg = document.getElementById('mc-r-svg'); svg.innerHTML = '';
+    var cx = 170, cy = 150, R = [44, 96, 140], LAB = ['your town', 'your state', 'farther'];
+    R.slice().reverse().forEach(function(r) { svg.appendChild(mcEl('circle', { cx: cx, cy: cy, r: r, fill: 'none', stroke: 'var(--border)' })); });
+    R.forEach(function(r, i) { mcText(svg, cx + 4, cy - r + 14, LAB[i]); });
+    // the usual place: the city and state that appear most often
+    var cc = {}, sc = {};
+    A.list.forEach(function(e) { if (e.city) cc[e.city + '|' + e.st] = (cc[e.city + '|' + e.st] || 0) + 1; if (e.st) sc[e.st] = (sc[e.st] || 0) + 1; });
+    function top(o) { var best = null, n = 0; Object.keys(o).forEach(function(k) { if (o[k] > n) { n = o[k]; best = k; } }); return best; }
+    var homeCity = top(cc), homeSt = top(sc);
+    var seed = 19; function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    var counts = [0, 0, 0], unplaced = 0;
+    A.list.forEach(function(e) {
+      var ring;
+      if (!e.city && !e.st) { unplaced++; return; }
+      if (homeCity && e.city && (e.city + '|' + e.st) === homeCity) ring = 0;
+      else if (homeSt && e.st && e.st === homeSt) ring = 1;
+      else if (!e.st && e.city && homeCity && homeCity.split('|')[0] === e.city) ring = 0;
+      else if (!e.st) { unplaced++; return; }
+      else ring = 2;
+      counts[ring]++;
+      var r0 = ring ? R[ring - 1] : 0, r1 = R[ring], a = rnd() * Math.PI * 2, d = r0 + 5 + rnd() * (r1 - r0 - 10);
+      svg.appendChild(mcEl('circle', { cx: (cx + Math.cos(a) * d).toFixed(1), cy: (cy + Math.sin(a) * d).toFixed(1), r: 2.4, fill: 'var(--accent)', 'fill-opacity': '.7' }));
+    });
+    svg.appendChild(mcEl('circle', { cx: cx, cy: cy, r: 3, fill: 'var(--text)' }));
+    var placed = counts[0] + counts[1] + counts[2], sent;
+    if (!placed) sent = 'None of your exchanges carry a place yet, so there is nothing to draw.';
+    else {
+      var most = counts.indexOf(Math.max.apply(null, counts)), mostW = ['within your own town', 'elsewhere in your state', 'beyond your state'][most];
+      var far = counts[2] ? 'beyond your state' : (counts[1] ? 'elsewhere in your state' : 'no farther than your town');
+      sent = 'Most of your exchanges are ' + mostW + '.' + (far === 'no farther than your town' ? ' None reached beyond it yet.' : ' The farthest reached ' + far + '.');
+    }
+    document.getElementById('mc-r-sentence').textContent = sent;
+    document.getElementById('mc-r-unplaced').textContent = unplaced ? unplaced + (unplaced === 1 ? ' exchange carries' : ' exchanges carry') + ' no place and ' + (unplaced === 1 ? 'is' : 'are') + ' not drawn.' : '';
+  }
+
   function openWallet() {
     _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
     document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
@@ -911,9 +1068,8 @@ const PAIR_CODE_LENGTH = 4;
       if (r.counterparty) cp[r.counterparty] = (cp[r.counterparty] || 0) + 1;
       if (r.witnessAttestation) wit++;
     });
-    var st = cur - cos, M = exMarkSVG(14);
+    var st = cur - cos, M = exMarkSVG(14), side = st > 0 ? 'mc-blue' : (st < 0 ? 'mc-amber' : '');
     var people = Object.keys(cp).length, more = Object.keys(cp).filter(function(k) { return cp[k] >= 2; }).length;
-    // identity at the top of the list: photo, name as title, chain since
     var photo = state.declarations.photo || '';
     if (!photo) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) photo = g.photoData; }
     var name = state.declarations.name || 'Anonymous';
@@ -922,24 +1078,24 @@ const PAIR_CODE_LENGTH = 4;
     var since = '';
     if (state.chain.length) { var d0 = new Date(state.chain[0].timestamp); since = 'Chain since ' + d0.toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
     document.getElementById('mc-since').textContent = since;
-    // Numbers
     function set(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
-    set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M); set('mc-n-st', mcStandWords(st) + M);
-    set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
-    set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
-    // Standing: the net at display size, the two totals on one scale, the gap drawn
-    var big = mcStandWords(st);
-    set('mc-s-big', st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below'));
-    set('mc-home-st', document.getElementById('mc-s-big').innerHTML);
+    // Standing on the list: the two totals on one scale, the gap drawn, the standing beneath coloured by side
     set('mc-s-cur', mcFmt(cur) + M); set('mc-s-cos', mcFmt(cos) + M);
     var mx = Math.max(cur, cos) || 1;
     document.getElementById('mc-s-curbar').style.width = (cur / mx * 100) + '%';
     document.getElementById('mc-s-cosbar').style.width = (cos / mx * 100) + '%';
     var cg = document.getElementById('mc-s-curgap'), sg = document.getElementById('mc-s-cosgap');
     cg.hidden = true; sg.hidden = true;
-    if (st !== 0) { var gap = st < 0 ? cg : sg; gap.style.left = (Math.min(cur, cos) / mx * 100) + '%'; gap.style.width = (Math.abs(st) / mx * 100) + '%'; gap.hidden = false; }
-    document.getElementById('mc-s-gapcap').textContent = st === 0 ? '' : 'The gap is your standing: ' + big;
+    if (st !== 0) { var gap = st < 0 ? cg : sg; gap.className = 'mc-gapbox' + (st > 0 ? ' mc-up' : ''); gap.style.left = (Math.min(cur, cos) / mx * 100) + '%'; gap.style.width = (Math.abs(st) / mx * 100) + '%'; gap.hidden = false; }
+    var big = document.getElementById('mc-s-big');
+    big.className = 'mc-display' + (side ? ' ' + side : '');
+    big.innerHTML = st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below');
     document.getElementById('mc-s-ratio').textContent = mcRatioSentence(cur, cos);
+    // Numbers
+    set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M);
+    var nst = document.getElementById('mc-n-st'); nst.className = 'exs-rowval mc-big' + (side ? ' ' + side : ''); nst.innerHTML = mcStandWords(st) + M;
+    set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
+    set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
     // Device: identity panel and standing content, moved in unchanged
     var idEl = document.getElementById('wallet-identity-panel');
     if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
@@ -13203,7 +13359,7 @@ function init() {
     showTextureDetail, closeTextureDetail, toggleServiceCat,
     openChainViewer, chainTab, chainDirFilter, openMyTexture, openMyPricing,
     openMyTextureFromWallet, openMyPricingFromWallet, openChainViewerFromWallet, showMyPhotos,
-    openWallet, mcOpen, mcClose, openRecentActs, filterRecentActs,
+    openWallet, mcOpen, mcClose, mcWaveMode, mcWaveIv, mcPeopleIv, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
