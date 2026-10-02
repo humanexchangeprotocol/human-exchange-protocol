@@ -635,13 +635,29 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-icons { display: flex; justify-content: center; gap: 34px; align-items: flex-end; }
 .exs-icon { text-align: center; cursor: pointer; background: none; border: none; padding: 4px; font-family: inherit; }
 .exs-icon .exs-f { margin-top: 2px; }
-.exs-pop { position: absolute; left: 20px; right: 20px; bottom: 90px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.12); font-size: 14px; line-height: 1.5; color: var(--text-dim); z-index: 5; }
-.exs-pop b { color: var(--text); }
-.exs-sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 18%; background: var(--bg); border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; padding: 10px 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; box-shadow: 0 -6px 24px rgba(0,0,0,0.12); }
-.exs-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 14px; }
+.exs-sheet { position: absolute; inset: 0; background: var(--bg); padding: 0 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; overflow-y: auto; }
+.exs-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 10px; }
+.exs-sheet-head .exs-h { font-size: 18px; }
+.exs-x { background: none; border: none; width: 40px; height: 40px; margin-right: -8px; border-radius: 50%; color: var(--text-dim); font-size: 22px; line-height: 1; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; }
 .exs-lines { font-size: 15px; color: var(--text-dim); line-height: 1.9; }
 .exs-lines b { color: var(--text); font-weight: 600; }
 .exs-boxes { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.exs-box.mute { opacity: 0.4; }
+.exs-say { text-align: center; line-height: 1.5; }
+.exs-say .who { font-size: 16px; font-weight: 600; color: var(--text); }
+.exs-say .does { font-size: 13px; color: var(--text-dim); }
+.exs-say .what { font-size: 19px; font-weight: 600; color: var(--text); margin: 2px 0 10px; }
+.exs-say .amt { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--accent); }
+.exs-say .amt small { font-family: inherit; font-size: 13px; font-weight: 400; color: var(--text-faint); margin-left: 6px; }
+.exs-own { text-align: center; }
+.exs-own .lab { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; }
+.exs-own .num { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--text); }
+.exs-own .num.amb { color: #B5742A; }
+.exs-valc { display: flex; justify-content: center; align-items: baseline; gap: 6px; }
+.exs-valc input { border: none; border-bottom: 1px solid var(--border); background: none; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); padding: 4px 0; outline: none; text-align: center; min-width: 3ch; max-width: 60%; }
+.exs-valc input:focus { border-bottom-color: var(--accent); }
+.exs-valc small { font-size: 13px; color: var(--text-faint); }
+.exs-field.c { text-align: center; }
 .exs-box { width: 104px; padding: 12px 8px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-raised); text-align: center; cursor: pointer; font-family: inherit; }
 .exs-box.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
 .exs-box .exs-av { width: 34px; height: 34px; border-radius: 50%; background: var(--bg-input); border: 1px solid var(--border); margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: var(--text-dim); }

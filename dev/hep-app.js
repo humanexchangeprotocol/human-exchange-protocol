@@ -1572,6 +1572,12 @@ const PAIR_CODE_LENGTH = 4;
       try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
       toast('Exchange complete');
     }
+    // Hooks the completion screen owed (see writeSessionRecord).
+    if (typeof _exRV !== 'undefined' && _exRV.finish) {
+      _exRV.finish = false;
+      try { roomExchangeCompleted(); } catch(_) {}
+      try { inviteRedeemedCompleted(); } catch(_) {}
+    }
   }
 
   // === Exchange form v2 ===
@@ -3451,19 +3457,20 @@ const PAIR_CODE_LENGTH = 4;
     // point). The legacy 'Exchange recorded' Done screen with its
     // 'Return to home' button is no longer shown -- the user lands
     // directly on Home with the new exchange visible.
-    var finishWrite = function() {
+    // Screens 8 and 9: the holder's number moves, then the check and
+    // the sentence stay until Done. Plays only if the layout is on
+    // screen; closeExchange then runs the invite pipeline hooks
+    // (_exRV.finish). Otherwise finish here as before.
+    var played = false;
+    try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    if (!played) {
       closeExchange();
       // Invite pipeline room sweep: return the inviter to the queue.
       try { roomExchangeCompleted(); } catch(_) {}
       // Invite pipeline redeemer side: clear the redeemed record and
       // surface the install step for a fresh invitee.
       try { inviteRedeemedCompleted(); } catch(_) {}
-    };
-    // Screens 8 and 9: the arrow flows and the number moves, then the
-    // check, then Home. Plays only if the layout is on screen.
-    var played = false;
-    try { played = exPlayCompletion(finishWrite); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
-    if (!played) finishWrite();
+    }
 
     // Schedule a follow-up refresh so the row exits the In flight
     // hold and drops to Recent at the right moment. Without this,
@@ -8977,7 +8984,7 @@ function init() {
     html += '<div class="exs-grow"></div>';
     html += '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Continue</button>';
     html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
-    if (st.shieldOpen) html += '<div class="exs-pop" onclick="App.exToggleShieldPop()"><b>' + esc(sh.title) + '</b><div style="margin-top:6px">' + esc(sh.body) + '</div></div>';
+    if (st.shieldOpen) html += exShieldSheetHTML(ts, 'App.exToggleShieldPop()');
     if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
     container.innerHTML = html;
 
@@ -8996,7 +9003,21 @@ function init() {
   }
   // The six-line summary behind the thread icon. The productive pattern
   // texture replaces most of this when it is built; this is the slot.
-  function exThreadPanelHTML(ts, name, shared) {
+  // The one surface for anything that opens over an exchange screen
+  // (Michael, Oct 2): a full sheet, title at the top, X top right,
+  // content below. Nothing else closes it.
+  function exSheetHTML(title, body, closeFn) {
+    return '<div class="exs-sheet"><div class="exs-sheet-head"><div class="exs-h">' + title + '</div><button class="exs-x" aria-label="Close" onclick="' + closeFn + '">&#215;</button></div>' + body + '</div>';
+  }
+  function exShieldSheetHTML(ts, closeFn) {
+    var sh = exShieldRead(ts);
+    var body = '<div style="display:flex; justify-content:center; margin:10px 0 18px">' + exShieldSVG(sh.color, 56) + '</div>';
+    body += '<div class="exs-h" style="text-align:center; font-size:17px">' + esc(sh.title) + '</div>';
+    body += '<div class="exs-m" style="text-align:center; margin-top:10px">' + esc(sh.body) + '</div>';
+    body += '<div class="exs-f" style="text-align:center; margin-top:18px">The shield reads the phone. It never reads the person.</div>';
+    return exSheetHTML('Device', body, closeFn);
+  }
+  function exThreadPanelHTML(ts, name, shared, extra) {
     var lines = [];
     if (ts) {
       if (ts.t0) lines.push('Chain started <b>' + esc(exMonthYear(ts.t0)) + '</b>');
@@ -9009,13 +9030,11 @@ function init() {
     } else {
       lines.push('Still reading their chain');
     }
-    var h = '<div class="exs-sheet" id="ex-thread-sheet"><div class="exs-grab" onclick="App.exToggleThreadPanel()"></div>';
-    h += '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>';
-    h += '<div class="exs-grow"></div>';
-    // "See the whole chain" (walkthrough) has nothing behind it yet: the snapshot carries a summary, not records. Added when the productive pattern texture lands here.
-    h += '<button class="exs-quiet" onclick="App.exToggleThreadPanel()">Close</button>';
-    h += '</div>';
-    return h;
+    // "See the whole chain" (walkthrough) has nothing behind it yet: the
+    // snapshot carries a summary, not records. Added when the productive
+    // pattern texture lands here.
+    var h = '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>' + (extra || '');
+    return exSheetHTML('Chain', h, extra ? "App.exRVToggle('thread')" : 'App.exToggleThreadPanel()');
   }
   function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; exRenderChainRead(); }
   function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; exRenderChainRead(); }
@@ -9217,18 +9236,22 @@ function init() {
     exRenderChainRead();
   }
 
-  // ===== Screens 7 to 9: review, wait, the flowing arrow, completion =====
-  // One layout, four states (ruled Oct 1). Each person sees their own
-  // number only; the other person's box carries a name and the two
-  // icons, never a balance. The arrow points toward the provider.
-  var _exRV = { state: null, before: 0, shieldOpen: false, threadOpen: false, similarOpen: false };
+  // ===== Screens 7 to 9: review, wait, the flowing number, completion =====
+  // One layout, centered (Michael, Oct 2). The statement block says in
+  // words who provides and who gives what; the holder's own number sits
+  // under it and is the thing that moves on confirm. The other person's
+  // device and chain readings are two small icons that open the one
+  // sheet. Everything the completion needs is captured at render time
+  // (_exRV.p, _exRV.other, _exRV.before), because the record write
+  // clears the session before the completion plays.
+  var _exRV = { state: null, before: 0, p: null, other: '', ts: null, shieldOpen: false, threadOpen: false, similarOpen: false, finish: false };
   function exStandingParts(st) {
     st = Math.round(st || 0);
     if (st >= 0) return { lab: 'Currency', num: st.toLocaleString(), amb: false };
     return { lab: 'Cosmic share', num: Math.abs(st).toLocaleString(), amb: true };
   }
   // What is being proposed, from whichever side holds it.
-  function exRVProposal() {
+  function exRVProposalLive() {
     if (sessionRole === 'confirmer' && sessionProposal) {
       return { value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
     }
@@ -9236,13 +9259,14 @@ function init() {
     if (pp) return { value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
     return null;
   }
+  function exRVProposal() { return _exRV.p || exRVProposalLive(); }
   function exRVTs() {
     var ts = _textureTs;
     if (!ts && sessionPartner && sessionPartner.thread_snapshot) {
       ts = sessionPartner.thread_snapshot;
       if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
     }
-    return ts || null;
+    return ts || _exRV.ts || null;
   }
   function exRenderRV(st, opts) {
     opts = opts || {};
@@ -9250,30 +9274,37 @@ function init() {
     if (!host) return;
     if (st) _exRV.state = st;
     st = _exRV.state;
+    if (st === 'review' || st === 'wait') {
+      // Capture for the completion.
+      _exRV.p = exRVProposalLive() || _exRV.p;
+      _exRV.other = sessionPartner ? exPartnerName() : (_exRV.other || 'The other person');
+      _exRV.ts = exRVTs();
+      _exRV.before = HCP.walletBalance(state.chain);
+      _exRV.finish = false;
+    }
     var p = exRVProposal();
     if (!p) return;
-    var other = exPartnerName();
+    var other = _exRV.other || exPartnerName();
     var ts = exRVTs();
     var sh = exShieldRead(ts);
     var meta = exMetaLine(p.category, p.duration);
     var standing = (typeof opts.standing === 'number') ? opts.standing : HCP.walletBalance(state.chain);
-    if (st === 'review' || st === 'wait') _exRV.before = standing;
     var sp = exStandingParts(standing);
     var html = '';
-    var head = st === 'review' ? esc(other) + ' proposes' : st === 'wait' ? 'Your proposal' : st === 'declined' ? esc(other) + ' did not confirm' : '&nbsp;';
-    html += '<div class="exs-m" style="margin:0">' + head + '</div>';
+    var head = st === 'review' ? esc(other) + ' proposes' : st === 'wait' ? 'Your proposal' : st === 'declined' ? esc(other) + ' did not confirm' : st === 'done' ? 'Exchange complete' : '&nbsp;';
+    html += '<div class="exs-m" style="margin:0; text-align:center">' + head + '</div>';
     html += '<div style="height:6px"></div>';
-    html += '<div class="exs-h" style="font-size:22px">' + esc(p.task) + '</div>';
-    if (meta) html += '<div class="exs-f" style="margin-top:4px">' + esc(meta) + '</div>';
-    html += '<div style="height:12px"></div>';
-    html += '<div class="exs-bigval">' + p.value.toLocaleString() + '<small>currency</small></div>';
-    html += '<div style="height:16px"></div>';
-    // the two boxes
-    html += '<div class="exs-boxes">';
-    html += '<div class="exs-box" style="cursor:default"><div class="exs-av">' + esc(exInitial(state.declarations.name || 'You')) + '</div><div class="exs-n">You</div><div class="exs-lab" id="ex-rv-lab">' + sp.lab + '</div><div class="exs-num' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div></div>';
-    html += '<div id="ex-rv-arrow">' + exArrowHTML(p.myDirection).replace('class="exs-arr"', 'class="exs-arr' + (st === 'flow' ? ' flow' : '') + '"') + '</div>';
-    html += '<div class="exs-box" style="cursor:default"><div class="exs-ic"><button class="exs-icon" style="padding:0" onclick="App.exRVToggle(\'shield\')">' + exShieldSVG(sh.color, 14) + '</button><button class="exs-icon" style="padding:0" onclick="App.exRVToggle(\'thread\')">' + exThreadSVG(14) + '</button></div><div class="exs-av">' + esc(exInitial(other)) + '</div><div class="exs-n">' + esc(other) + '</div></div>';
-    html += '</div>';
+    html += '<div class="exs-h" style="font-size:22px; text-align:center">' + esc(p.task) + '</div>';
+    if (meta) html += '<div class="exs-f" style="margin-top:4px; text-align:center">' + esc(meta) + '</div>';
+    html += '<div style="height:18px"></div>';
+    html += exSayHTML(p.myDirection, other, p.value, 'ex-rv-say');
+    html += '<div style="height:18px"></div>';
+    // the holder's own number, the thing that moves
+    html += '<div class="exs-own"><div class="lab" id="ex-rv-lab">Your ' + sp.lab.toLowerCase() + '</div><div class="num' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div></div>';
+    if (st !== 'done' && st !== 'flow') {
+      html += '<div style="height:16px"></div>';
+      html += '<div class="exs-icons" style="gap:28px"><button class="exs-icon" onclick="App.exRVToggle(\'shield\')">' + exShieldSVG(sh.color, 26) + '<div class="exs-f">' + esc(other) + '\'s device</div></button><button class="exs-icon" onclick="App.exRVToggle(\'thread\')">' + exThreadSVG(26) + '<div class="exs-f">' + esc(other) + '\'s chain</div></button></div>';
+    }
     html += '<div class="exs-grow"></div>';
     if (st === 'review') {
       html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%;" onclick="App.sessionConfirm()">Confirm exchange</button>';
@@ -9283,38 +9314,35 @@ function init() {
       html += '<div style="height:10px"></div>';
       html += '<button class="exs-quiet" onclick="App.exRVLeaveWait()">Not now</button>';
     } else if (st === 'flow') {
-      html += '<div class="exs-wait" style="visibility:hidden"><i></i><span>.</span></div><div style="height:10px"></div><div class="exs-quiet">&nbsp;</div>';
+      html += '<div class="exs-wait"><i></i><span>Recording</span></div><div style="height:10px"></div><div class="exs-quiet">&nbsp;</div>';
     } else if (st === 'done') {
       html += '<div class="exs-check"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
-      html += '<div class="exs-h" style="text-align:center; margin-top:10px">Exchange complete</div>';
-      html += '<div class="exs-m" style="text-align:center; margin-top:8px; font-size:13px">' + esc(opts.sentence || '') + '</div>';
-      html += '<div style="height:16px"></div>';
+      html += '<div class="exs-m" style="text-align:center; margin-top:12px; font-size:14px">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
+      html += '<div style="height:18px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button>';
     } else if (st === 'declined') {
       html += '<div class="exs-m" style="text-align:center">Nothing was recorded. You can talk it over and try again.</div>';
       html += '<div style="height:10px"></div>';
       html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exRVRetry()">Change the proposal</button>';
       html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
     }
-    if (_exRV.shieldOpen) html += '<div class="exs-pop" onclick="App.exRVToggle(\'shield\')"><b>' + esc(sh.title) + '</b><div style="margin-top:6px">' + esc(sh.body) + '</div></div>';
+    if (_exRV.shieldOpen) html += exShieldSheetHTML(ts, "App.exRVToggle('shield')");
     if (_exRV.threadOpen) html += exRVThreadPanel(ts, other, p);
     if (_exRV.similarOpen) html += exRVSimilarPanel(p);
     host.innerHTML = html;
   }
-  // The thread panel here carries the six lines plus "See similar
+  // The chain sheet here carries the six lines plus "See similar
   // exchanges", which reads the holder's OWN history for this kind of
   // work. Own history only, never a going rate (Sept 18 rail).
   function exRVThreadPanel(ts, other, p) {
     var shared = _exChainReadState.shared || 0;
-    var h = exThreadPanelHTML(ts, other, shared);
-    var btn = '<button class="btn btn-secondary" style="width:100%; margin-bottom:6px" onclick="App.exRVToggle(\'similar\')">See similar exchanges</button>';
-    return h.replace('<div class="exs-grow"></div>', '<div class="exs-grow"></div>' + btn);
+    var btn = '<div class="exs-grow"></div><button class="btn btn-secondary" style="width:100%" onclick="App.exRVToggle(\'similar\')">See similar exchanges</button>';
+    return exThreadPanelHTML(ts, other, shared, btn);
   }
   function exRVSimilarPanel(p) {
     var cat = (p.category || '').trim().toLowerCase();
     var mine = state.chain.filter(function(r) { return HCP.isAct(r) && (r.category || '').trim().toLowerCase() === cat && cat; });
-    var h = '<div class="exs-sheet"><div class="exs-grab" onclick="App.exRVToggle(\'similar\')"></div>';
-    h += '<div class="exs-h" style="font-size:16px">Your ' + esc(p.category || 'similar') + ' exchanges</div>';
-    h += '<div class="exs-f" style="margin:4px 0 12px">Your own history only. This is reading, not a going rate.</div>';
+    var h = '<div class="exs-f" style="margin:0 0 12px">Your own history only. This is reading, not a going rate.</div>';
     if (!cat) h += '<div class="exs-m">No kind of work is named on this proposal, so there is nothing to match.</div>';
     else if (!mine.length) h += '<div class="exs-m">Nothing on your chain yet for this kind of work.</div>';
     else {
@@ -9324,8 +9352,7 @@ function init() {
       var vals = mine.map(function(r) { return r.value; });
       h += '<div class="exs-m" style="margin-top:12px">You have agreed to ' + Math.min.apply(null, vals).toLocaleString() + ' to ' + Math.max.apply(null, vals).toLocaleString() + ' for ' + esc(p.category) + ' across ' + mine.length + ' ' + (mine.length === 1 ? 'exchange' : 'exchanges') + '.</div>';
     }
-    h += '<div class="exs-grow"></div><button class="exs-quiet" onclick="App.exRVToggle(\'similar\')">Close</button></div>';
-    return h;
+    return exSheetHTML('Your ' + esc(p.category || 'similar') + ' exchanges', h, "App.exRVToggle('similar')");
   }
   function exRVToggle(which) {
     if (which === 'shield') { _exRV.shieldOpen = !_exRV.shieldOpen; _exRV.threadOpen = false; _exRV.similarOpen = false; }
@@ -9364,22 +9391,25 @@ function init() {
     showExStep('form');
     exBeatsOpen();
   }
+  // Done on the completion screen. closeExchange runs the invite
+  // pipeline hooks the write owed (see _exRV.finish in closeExchange).
+  function exRVDone() { closeExchange(); }
   function exRVIsShowing() {
     var step = document.getElementById('ex-step-rv');
     var ov = document.getElementById('exchange-overlay');
     return !!(step && step.classList.contains('active') && ov && ov.classList.contains('active'));
   }
-  // After the record is written: the arrow flows, the holder's own
-  // number moves by the agreed amount, then the check and one sentence,
-  // then Home. Returns false if the layout is not on screen, so the
-  // caller finishes without the animation.
-  function exPlayCompletion(finish) {
+  // After the record is written: the holder's own number moves by the
+  // agreed amount over about two seconds, then the check and one
+  // sentence stay until Done is tapped. Returns false if the layout is
+  // not on screen, so the caller finishes without the animation.
+  function exPlayCompletion() {
     if (!exRVIsShowing()) return false;
-    var p = exRVProposal();
+    var p = _exRV.p || exRVProposalLive();
     if (!p) return false;
     var before = _exRV.before;
     var after = HCP.walletBalance(state.chain);
-    var other = exPartnerName();
+    var other = _exRV.other || 'the other person';
     var task = p.task ? ' for ' + p.task.charAt(0).toLowerCase() + p.task.slice(1) : '';
     var v = p.value.toLocaleString();
     var sentence;
@@ -9394,22 +9424,21 @@ function init() {
       else if (before > 0) sentence += ', ' + Math.round(before).toLocaleString() + ' from your currency and ' + Math.round(-after).toLocaleString() + ' from your cosmic share.';
       else sentence += ', from your cosmic share.';
     }
+    _exRV.sentence = sentence;
+    _exRV.finish = true;
     _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
     exRenderRV('flow', { standing: before });
     var num = document.getElementById('ex-rv-num'), lab = document.getElementById('ex-rv-lab');
     var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
-    var dur = reduce ? 0 : 1800, t0 = performance.now();
+    var dur = reduce ? 0 : 2200, t0 = performance.now();
     function step(t) {
       var k = dur ? Math.min(1, (t - t0) / dur) : 1;
       var e = 1 - Math.pow(1 - k, 3);
       var sp = exStandingParts(before + (after - before) * e);
       if (num) { num.textContent = sp.num; num.classList.toggle('amb', sp.amb); }
-      if (lab) lab.textContent = sp.lab;
+      if (lab) lab.textContent = 'Your ' + sp.lab.toLowerCase();
       if (k < 1) requestAnimationFrame(step);
-      else {
-        exRenderRV('done', { standing: after, sentence: sentence });
-        setTimeout(finish, reduce ? 600 : 2400);
-      }
+      else setTimeout(function() { exRenderRV('done', { standing: after, sentence: sentence }); }, 500);
     }
     requestAnimationFrame(step);
     return true;
@@ -9475,6 +9504,18 @@ function init() {
     if (!Array.isArray(state.declarations.services)) state.declarations.services = [];
     return state.declarations.services;
   }
+  // "X provides. Y gives N currency." The direction in words.
+  function exSayHTML(dir, other, value, id) {
+    var provider = dir === 'provided' ? 'You' : esc(other);
+    var receiver = dir === 'provided' ? esc(other) : 'You';
+    var v = Number(value) || 0;
+    return '<div class="exs-say" id="' + (id || '') + '">'
+      + '<div class="who">' + provider + '</div><div class="does">' + (provider === 'You' ? 'provide' : 'provides') + '</div>'
+      + '<div style="height:12px"></div>'
+      + '<div class="who">' + receiver + '</div><div class="does">' + (receiver === 'You' ? 'give' : 'gives') + '</div>'
+      + '<div class="amt"><span data-say-amt>' + v.toLocaleString() + '</span><small>currency</small></div>'
+      + '</div>';
+  }
   function exRenderBeat(n, listKind) {
     var host = document.getElementById('ex-beats');
     if (!host) return;
@@ -9483,9 +9524,18 @@ function init() {
     if (n === 1) {
       html += '<div class="exs-h">Who is providing?</div><div class="exs-m">The other person is receiving.</div>';
       html += '<div style="height:40px"></div>';
-      html += '<div class="exs-boxes">' + exBoxHTML('You', _exBeat.dir === 'provided', "App.exBeatPick('provided')") + exArrowHTML(_exBeat.dir) + exBoxHTML(other, _exBeat.dir === 'received', "App.exBeatPick('received')") + '</div>';
-      html += '<div class="exs-f" style="text-align:center; margin-top:12px;">Tap the one who is providing.</div>';
-      html += exBeatBottom('Back', 'App.exBackToTexture()');
+      // No arrow (Michael, Oct 2). The one tapped lifts, the other mutes;
+      // tap around to switch; Continue takes you on. Laid out as a row so
+      // a third person can join when group mode comes.
+      var d = _exBeat.dir;
+      html += '<div class="exs-boxes">'
+        + exBoxHTML('You', d === 'provided', "App.exBeatPick('provided')").replace('class="exs-box', 'class="exs-box' + (d && d !== 'provided' ? ' mute' : ''))
+        + exBoxHTML(other, d === 'received', "App.exBeatPick('received')").replace('class="exs-box', 'class="exs-box' + (d && d !== 'received' ? ' mute' : ''))
+        + '</div>';
+      html += '<div class="exs-f" style="text-align:center; margin-top:12px;">' + (d ? (d === 'provided' ? 'You are providing.' : esc(other) + ' is providing.') : 'Tap the one who is providing.') + '</div>';
+      html += '<div class="exs-grow"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;"' + (d ? '' : ' disabled style="width:100%; opacity:.45"') + ' onclick="App.exRenderBeat(2)">Continue</button>';
+      html += '<div class="exs-bottom"><button onclick="App.exBackToTexture()">Back</button><button onclick="App.closeExchange()">Not now</button></div>';
     } else if (n === 2 && !listKind) {
       var svcN = _exBeat.dir === 'provided' ? exServices().length : 0;
       var pastN = exOwnActs(_exBeat.dir).length;
@@ -9508,18 +9558,21 @@ function init() {
       });
       html += exBeatBottom('Back', 'App.exRenderBeat(2)');
     } else {
-      html += '<div class="exs-m" style="margin:0">' + (_exBeat.dir === 'provided' ? 'You propose to ' + esc(other) : 'You propose that ' + esc(other) + ' provided') + '</div>';
+      // Everything centered (Michael, Oct 2). The value and its word sit
+      // together; the statement block says in words who provides and who
+      // gives what, in place of the boxes and the arrow.
+      html += '<div class="exs-m" style="margin:0; text-align:center">' + (_exBeat.dir === 'provided' ? 'You propose to ' + esc(other) : 'You propose that ' + esc(other) + ' provided') + '</div>';
       html += '<div style="height:10px"></div>';
-      html += '<input class="exs-field" id="ex-desc" style="font-size:18px; font-weight:600;" placeholder="What was provided?" value="' + esc(_exBeat.task) + '" oninput="App.exBeatField(\'task\', this.value)">';
-      html += '<input class="exs-field" id="ex-meta" style="font-size:13px; margin-top:4px;" placeholder="kind of work, how long" value="' + esc(_exBeat.meta) + '" oninput="App.exBeatField(\'meta\', this.value)">';
-      html += '<div style="height:14px"></div>';
-      html += '<div class="exs-val"><input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" oninput="App.exBeatField(\'value\', this.value)"><small>currency</small></div>';
-      html += '<div style="height:14px"></div>';
-      html += '<div class="exs-boxes">' + exBoxHTML('You', false, '') + exArrowHTML(_exBeat.dir) + exBoxHTML(other, false, '') + '</div>';
-      html += '<div style="height:14px"></div>';
+      html += '<input class="exs-field c" id="ex-desc" style="font-size:19px; font-weight:600;" placeholder="What was provided?" value="' + esc(_exBeat.task) + '" oninput="App.exBeatField(\'task\', this.value)">';
+      html += '<input class="exs-field c" id="ex-meta" style="font-size:13px; margin-top:4px;" placeholder="kind of work, how long" value="' + esc(_exBeat.meta) + '" oninput="App.exBeatField(\'meta\', this.value)">';
+      html += '<div style="height:16px"></div>';
+      html += '<div class="exs-valc"><input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" size="' + Math.max(3, String(_exBeat.value).length + 1) + '" oninput="App.exBeatField(\'value\', this.value); this.size = Math.max(3, this.value.length + 1);"><small>currency</small></div>';
+      if (_exBeat.dir === 'provided') html += '<div style="text-align:center"><button class="exs-link" id="ex-beat-save" onclick="App.exBeatSaveService()">Save as a service you offer</button></div>';
+      html += '<div style="height:18px"></div>';
+      html += exSayHTML(_exBeat.dir, other, _exBeat.value, 'ex-beat-say');
+      html += '<div class="exs-grow"></div>';
       html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
-      if (_exBeat.dir === 'provided') html += '<button class="exs-link" id="ex-beat-save" onclick="App.exBeatSaveService()">Save as a service you offer</button>';
-      html += exBeatBottom('Back', 'App.exRenderBeat(2)');
+      html += '<div class="exs-bottom"><button onclick="App.exRenderBeat(2)">Back</button><button onclick="App.closeExchange()">Not now</button></div>';
     }
     host.innerHTML = html;
     if (n === 3 && !_exBeat.task) { var d = document.getElementById('ex-desc'); if (d) setTimeout(function() { d.focus(); }, 50); }
@@ -9528,8 +9581,6 @@ function init() {
     _exBeat.dir = dir;
     setDirection(dir);
     exRenderBeat(1);
-    // The arrow is fixed from here; a short pause lets it be seen.
-    setTimeout(function() { if (_exBeat.dir === dir) exRenderBeat(2); }, 450);
   }
   function exBeatDoor(kind) { exRenderBeat(2, kind); }
   function exBeatNew() { _exBeat.task = ''; _exBeat.meta = ''; _exBeat.value = ''; exRenderBeat(3); }
@@ -9540,7 +9591,10 @@ function init() {
     _exBeat.value = it.value || '';
     exRenderBeat(3);
   }
-  function exBeatField(k, v) { _exBeat[k] = v; }
+  function exBeatField(k, v) {
+    _exBeat[k] = v;
+    if (k === 'value') { var a = document.querySelector('#ex-beat-say [data-say-amt]'); if (a) a.textContent = (Number(v) || 0).toLocaleString(); }
+  }
   // One free-text line holds kind of work and duration, split at the
   // first comma (accepted tradeoff in the ruling: looser matching).
   function exSplitMeta(meta) {
@@ -12497,7 +12551,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, togglePairPanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, togglePairPanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
