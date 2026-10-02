@@ -446,6 +446,10 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .modal-overlay.active { background: rgba(0,0,0,0.5); }
 .modal { position: relative; background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: 100dvh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
 .modal-overlay.active .modal { transform: translateY(0); }
+/* v2.76.0: nothing slides (Michael, Oct 2). Every sheet appears and disappears in place, like the exchange flow's own sheets. */
+.modal { transform: none !important; transition: none !important; }
+.modal-overlay { transition: none !important; }
+.modal-overlay:not(.active) { visibility: hidden; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; padding-top: calc(16px + var(--safe-top)); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .modal-header h2 { font-size: 20px; font-weight: 600; }
 .modal-close { width: 44px; height: 44px; background: var(--bg-input); border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -471,8 +475,10 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .mc-vrow { cursor: default; }
 .mc-gap { margin-top: 24px; }
 .mc-big { font-size: 18px; }
-.mc-blue { color: var(--accent); }
-.mc-amber { color: #B5742A; }
+.mc-blue, .exs-rowval.mc-blue { color: var(--accent); }
+.mc-amber, .exs-rowval.mc-amber, .exs-cap.mc-amber { color: #B5742A; }
+.mc-standing { display: flex; flex-direction: column; align-items: center; padding: 0 0 20px; }
+.mc-standing .mc-display { justify-content: center; }
 .mc-link { margin: 10px 0 0; }
 .mc-link a { font-size: 13px; color: var(--accent); text-decoration: underline; }
 .mc-display { display: flex; align-items: center; gap: 8px; font-size: 32px; font-weight: 600; line-height: 1.2; color: var(--text); }
@@ -1469,6 +1475,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="modal-body mc-home">
       <div class="exs-sheet-head" style="justify-content:flex-end"><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
       <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="exs-h" id="mc-name"></div><div class="exs-cap" id="mc-since"></div></div>
+      <div class="mc-standing"><div class="mc-display" id="mc-home-st"></div><div class="exs-cap">Your standing</div></div>
       <button class="exs-row" onclick="App.mcOpen('numbers')"><div class="exs-rowmain"><div class="exs-body">Numbers</div><div class="exs-cap">Your totals and counts</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.mcOpen('standing')"><div class="exs-rowmain"><div class="exs-body">Standing</div><div class="exs-cap">Where you stand, and what makes it up</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>

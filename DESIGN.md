@@ -11,6 +11,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 2c. **Once a proposal is sent, the sender waits.** The Wait screen has no X and no Cancel exchange: the proposal is out and only the other person's answer (confirm, not right, or cancel) moves it. The sender is told the answer whichever it is.
 3. Every sheet has the same anatomy: title at the top, X at the top right, content, and at most one primary action at the bottom. The title follows the screen: centered on a moment screen, left on a reading screen. The X stays in the top right corner on every screen; it is a control, not text, and it means back one step (rule 2a). On a screen about one person, their name under their photo is the title. No drag bars, no Close buttons, no pop-ups.
 4. A sheet is phone-shaped on every device: maximum width 420px, centered. A wide screen gets the same sheet in the middle of the window, never a stretched layout.
+4a. Nothing slides. Every sheet appears and disappears in place, with no slide up or down, on every surface (ruled Oct 2: sliding is disorienting).
 
 5a. Waiting on a person (to join, to confirm) is shown one way everywhere: the pulsing accent dot with a line of text beside it. No spinners in the flow. Swappable later, but only everywhere at once.
 

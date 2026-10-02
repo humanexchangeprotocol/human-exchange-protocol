@@ -930,6 +930,7 @@ const PAIR_CODE_LENGTH = 4;
     // Standing: the net at display size, the two totals on one scale, the gap drawn
     var big = mcStandWords(st);
     set('mc-s-big', st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below'));
+    set('mc-home-st', document.getElementById('mc-s-big').innerHTML);
     set('mc-s-cur', mcFmt(cur) + M); set('mc-s-cos', mcFmt(cos) + M);
     var mx = Math.max(cur, cos) || 1;
     document.getElementById('mc-s-curbar').style.width = (cur / mx * 100) + '%';
