@@ -604,6 +604,34 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === HANDSHAKE FLOW === */
 .hs-step { display: none; }
 .hs-step.active { display: block; }
+/* v2.66.0: the ruled relay flow carries its own question and its own
+   Not now on every screen, so the Connect / Read / Compose indicator is
+   hidden. Code (renderIndicator, the markup) stays intact; delete this
+   rule to bring it back if phone testing says the flow needs it. */
+.ex4-indicator { display: none !important; }
+/* New exchange screens (relay flow, Sept 30 / Oct 1 rulings). Each is a
+   full-height column: heading at top, content, a growing spacer, then a
+   fixed bottom row. */
+.hs-step.exs.active { display: flex; flex-direction: column; min-height: 100%; }
+.exs-h { font-size: 20px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.exs-m { font-size: 14px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+.exs-f { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+.exs-grow { flex: 1; min-height: 16px; }
+.exs-bottom { display: flex; justify-content: space-between; gap: 12px; padding-top: 12px; }
+.exs-bottom button, .exs-quiet { background: none; border: none; color: var(--text-faint); font-size: 15px; padding: 10px 4px; cursor: pointer; font-family: inherit; }
+.exs-quiet { width: 100%; text-align: center; }
+.exs-door { width: 100%; text-align: left; background: var(--bg-raised); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 17px; font-weight: 600; color: var(--text); cursor: pointer; font-family: inherit; }
+.exs-door.p { border-color: var(--accent); background: var(--accent); color: #fff; }
+.exs-door-sub { font-size: 13px; color: var(--text-faint); margin: 4px 0 12px 2px; line-height: 1.4; }
+.exs-code { font-family: var(--font-mono); font-size: 44px; font-weight: 600; letter-spacing: 12px; color: var(--accent); text-align: center; padding-left: 12px; }
+.exs-cells { position: relative; display: flex; justify-content: center; gap: 10px; }
+.exs-cell { width: 54px; height: 64px; border: 2px solid var(--border); border-radius: 10px; background: var(--bg-raised); font-family: var(--font-mono); font-size: 30px; font-weight: 600; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.exs-cell.on { border-color: var(--accent); }
+.exs-cell.empty { color: var(--text-faint); }
+.exs-cells input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; font-size: 30px; border: none; background: none; }
+.exs-wait { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--text-faint); }
+.exs-wait i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+.exs-center { align-items: center; text-align: center; }
 
 /* 8-step flow progress bar */
 .ex-progress { display: flex; gap: 3px; margin-bottom: 20px; }
@@ -1391,28 +1419,31 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- ===== NEW 8-STEP FLOW ===== -->
 
-      <!-- STEP 1: Connect -->
-      <div class="hs-step" id="ex-step-connect">
-        <div id="ex-connect-content">
-          <!-- Populated dynamically: choice, start mode, or join mode -->
+      <!-- STEP 1: Connect. Screens 1 and 2 of the relay flow render
+           into ex-connect-content: "Who are you exchanging with?" (fabNew),
+           "Your code" (exBeginStart), "Enter their code" (exJoinExchange). -->
+      <div class="hs-step exs" id="ex-step-connect">
+        <div id="ex-connect-content" style="display:flex; flex-direction:column; flex:1;">
+          <!-- Populated dynamically -->
         </div>
       </div>
 
-      <!-- STEP 2: Verify (SAS) -->
-      <div class="hs-step" id="ex-step-verify">
-        <div class="connect-partner" id="ex-verify-partner" style="justify-content:center; flex-direction:column; align-items:center; padding:20px;">
+      <!-- STEP 2: Verify (SAS). Screen 3, the safety check. The same
+           hs-step is reused by exConfirmSAS for the chain read until
+           cycle 2 gives that its own screen. -->
+      <div class="hs-step exs" id="ex-step-verify">
+        <div class="connect-partner" id="ex-verify-partner" style="display:flex; justify-content:center; flex-direction:column; align-items:center; padding:24px 0 0; text-align:center;">
           <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:10px;">?</div>
-          <div class="cp-name" id="ex-verify-name" style="font-size:20px; margin-bottom:6px;">Connected</div>
-          <div class="sas-badge" style="margin:8px 0 0 0;">
+          <div class="cp-name exs-h" id="ex-verify-name" style="margin-bottom:22px;">Connected</div>
+          <div class="sas-badge" style="margin:0;">
             <span class="sas-lock"><svg class="icon icon-md"><use href="#icon-lock"/></svg></span>
             <span class="sas-code" id="ex-sas-code" style="font-size:26px; letter-spacing:6px;">--</span>
           </div>
-          <div style="font-size:12px; color:var(--text-faint); margin-top:6px;">Check this matches their screen</div>
+          <div class="exs-f" style="margin-top:8px;">Check this matches their screen</div>
+          <button class="btn btn-primary" style="margin-top:30px; width:100%;" onclick="App.exConfirmSAS()">It matches</button>
         </div>
-        <button class="btn btn-primary" style="margin-top:20px;" onclick="App.exConfirmSAS()">Confirm</button>
-        <div style="text-align:center; margin-top:12px;">
-          <span style="font-size:13px; color:var(--text-faint); cursor:pointer; text-decoration:underline;" onclick="App.exRejectSAS()">Not the right person?</span>
-        </div>
+        <div class="exs-grow" id="ex-verify-grow"></div>
+        <button class="exs-quiet" id="ex-verify-reject" onclick="App.exRejectSAS()">Not the right person?</button>
       </div>
 
       <!-- STEP 3: Texture review -->

@@ -7765,21 +7765,18 @@ function init() {
     sessionCode = Array.from(bytes).map(b => PAIR_CHARS[b % PAIR_CHARS.length]).join('');
     sessionTheirCode = deriveJoinCode(sessionCode);
 
-    var html = '<div style="text-align:center; margin-bottom:16px;">';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text);">Your code</div>';
-    html += '</div>';
-    html += '<div class="pair-code-display">';
-    html += '<div class="pair-code-chars">' + esc(sessionCode) + '</div>';
-    html += '<div class="pair-code-hint">Read this to the other person</div>';
-    html += '</div>';
-    html += '<div style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:20px;">';
-    html += '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>';
-    html += '<span style="font-size:13px; color:var(--accent);">Waiting for them to join...</span>';
-    html += '</div>';
-    html += '<div style="text-align:center; margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">';
-    html += '<span style="font-size:14px; color:var(--text-faint);">Have their code? </span>';
-    html += '<span style="font-size:14px; color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.exSwitchToJoin()">Enter it here</span>';
-    html += '</div>';
+    // Screen 2, starter side (ruled Oct 1): the code, one line, a quiet
+    // wait. Nothing to do but hold the phone up. The faint "Have their
+    // code?" line stays as the recovery when both people tapped Start.
+    var html = '<div class="exs-h">Your code</div>';
+    html += '<div class="exs-m">Read it to the other person.</div>';
+    html += '<div style="height:40px"></div>';
+    html += '<div class="exs-code">' + esc(sessionCode) + '</div>';
+    html += '<div style="height:30px"></div>';
+    html += '<div class="exs-wait"><i></i><span>Waiting for them to enter it</span></div>';
+    html += '<div class="exs-grow"></div>';
+    html += '<div class="exs-f" style="text-align:center; margin-bottom:4px;">Have their code? <span style="color:var(--accent); cursor:pointer;" onclick="App.exSwitchToJoin()">Enter it instead</span></div>';
+    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
 
     // Post to server immediately
@@ -7818,15 +7815,22 @@ function init() {
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
-    var html = '<div style="text-align:center; margin-bottom:16px;">';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text);">Enter their code</div>';
+    // Screen 2, joiner side (ruled Oct 1): four cells. The real input
+    // sits invisibly over the cells so the keyboard opens on tap; the
+    // fourth character connects by itself, no Connect button. "Scan
+    // their code instead" is ruled but needs a camera scanner the app
+    // does not have yet; it lands in its own build cycle.
+    var html = '<div class="exs-h">Enter their code</div>';
+    html += '<div class="exs-m">The four characters on their screen.</div>';
+    html += '<div style="height:30px"></div>';
+    html += '<div class="exs-cells" id="ex-join-cells">';
+    for (var ci = 0; ci < 4; ci++) html += '<div class="exs-cell empty" id="ex-join-cell-' + ci + '">&middot;</div>';
+    html += '<input type="text" id="ex-join-code" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" oninput="App.exCodeInput(this)" aria-label="Their code">';
     html += '</div>';
-    html += '<div class="pair-input-section" style="margin-top:20px;">';
-    html += '<label>Code from the other person</label>';
-    html += '<input type="text" id="ex-join-code" maxlength="4" placeholder="4 letters" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="App.exCodeInput(this)" style="font-size:24px; text-align:center; letter-spacing:8px; font-family:var(--font-mono);">';
-    html += '</div>';
-    html += '<button class="btn btn-primary" style="margin-top:20px;" id="ex-join-btn" onclick="App.exConnect()">Connect</button>';
-    html += '<div id="ex-join-status" style="display:none; margin-top:16px;"></div>';
+    html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
+    html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
+    html += '<div class="exs-grow"></div>';
+    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
     setTimeout(function() {
       var inp = document.getElementById('ex-join-code');
@@ -7836,6 +7840,19 @@ function init() {
 
   function exCodeInput(el) {
     el.value = el.value.toUpperCase().replace(/[^ACDEFGHJKMNPQRTUVWXYZ]/g, '').substring(0, 4);
+    // Paint the four cells; the fourth character connects by itself.
+    for (var i = 0; i < 4; i++) {
+      var cell = document.getElementById('ex-join-cell-' + i);
+      if (!cell) continue;
+      var ch = el.value.charAt(i);
+      cell.textContent = ch || '\u00b7';
+      cell.classList.toggle('empty', !ch);
+      cell.classList.toggle('on', i === el.value.length || (i === 3 && el.value.length === 4));
+    }
+    if (el.value.length === 4 && !el._exConnecting) {
+      el._exConnecting = true;
+      exConnect().finally(function() { el._exConnecting = false; });
+    }
   }
 
   async function exConnect() {
@@ -7906,7 +7923,7 @@ function init() {
           var statusEl = document.getElementById('ex-join-status');
           if (statusEl) {
             statusEl.style.display = 'block';
-            statusEl.innerHTML = '<div class="pair-status resolving"><div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div><div class="ps-text">Waiting for connection...</div></div>';
+            statusEl.innerHTML = '<div class="exs-wait"><i></i><span>Connecting</span></div>';
           }
           var btn = document.getElementById('ex-join-btn');
           if (btn) btn.style.display = 'none';
@@ -11815,35 +11832,21 @@ function init() {
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
-    var html = '<div style="text-align:center; margin-bottom:24px; padding-top:8px;">';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:6px;">How are you connecting?</div>';
-    html += '<div style="font-size:14px; color:var(--text-dim);">Both people need to start an exchange</div>';
-    html += '</div>';
-
-    // Two equal buttons
-    html += '<div style="display:flex; flex-direction:column; gap:12px;">';
-
-    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--accent); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.exStartProviding()">';
-    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>';
-    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Start</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim);">Generate a code for the other person to enter</div></div>';
-    html += '</button>';
-
-    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.exJoinExchange()">';
-    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>';
-    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Join</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim);">Enter the code the other person gave you</div></div>';
-    html += '</button>';
-
-    // Invite pipeline slice 1: inviting someone who does not have the
-    // app is the third answer to "how are you connecting?"
-    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.closeModal(\'exchange\'); App.openInvite()">';
-    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div>';
-    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Invite</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim);">They don\'t have the app yet? One code brings them in and opens the exchange</div></div>';
-    html += '</button>';
-
-    html += '</div>';
+    // Screen 1 of the relay flow (ruled Sept 30 / Oct 1): three doors,
+    // one line under each, Not now at the bottom. Start and Join are
+    // about who shows the code; who provides is chosen later, on the
+    // proposer's phone (beat 1). Invite is the pipeline for someone
+    // not in the room.
+    var html = '<div class="exs-h">Who are you exchanging with?</div>';
+    html += '<div style="height:18px"></div>';
+    html += '<button class="exs-door p" onclick="App.exStartProviding()">Start</button>';
+    html += '<div class="exs-door-sub">You show a code, they enter it.</div>';
+    html += '<button class="exs-door" onclick="App.exJoinExchange()">Join</button>';
+    html += '<div class="exs-door-sub">They show a code, you enter it.</div>';
+    html += '<button class="exs-door" onclick="App.closeModal(\'exchange\'); App.openInvite()">Invite</button>';
+    html += '<div class="exs-door-sub">Send a link to someone who is not here.</div>';
+    html += '<div class="exs-grow"></div>';
+    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
   }
 
