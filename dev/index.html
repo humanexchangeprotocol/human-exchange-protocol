@@ -468,6 +468,8 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
 .mc-sheet { padding-top: var(--safe-top); }
 .mc-sheet[hidden] { display: none; }
+/* v2.77.1: .exs-sheet is a flex column of fixed height, so its children shrank to fit and the charts collapsed under the text. Nothing in a My chain sheet shrinks; the sheet scrolls instead. */
+.mc-sheet > * { flex-shrink: 0; }
 .mc-id { display: flex; flex-direction: column; align-items: flex-start; padding: 0 0 18px; }
 .mc-name { font-size: 18px; font-weight: 600; color: var(--text); margin-top: 12px; }
 .mc-photo { width: 72px; height: 72px; border-radius: 50%; background: var(--accent-light); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent); }
