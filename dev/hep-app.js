@@ -10206,6 +10206,56 @@ function init() {
   // it inline, same pattern as History. Anything deeper — identity
   // panel, POH verdict, categories — lives behind the wallet icon at
   // the top of the device.
+  // ===== Texture: the pair (own phone only) =====
+  var _pairPanelOpen = false;
+  function exPairSentence(p, r) {
+    var fmt = function(n) { return Math.round(n).toLocaleString(); };
+    if (!p && !r) return 'You have not exchanged yet.';
+    if (!r) return 'You have produced ' + fmt(p) + ' and not received yet.';
+    if (!p) return 'You have received ' + fmt(r) + ' and not produced yet.';
+    if (p === r) return 'You have produced as much as you have received.';
+    var best = null;
+    for (var b = 1; b <= 9; b++) {
+      var a = Math.round(p / r * b);
+      if (a < 1 || a > 9) continue;
+      var err = Math.abs(p / r - a / b);
+      if (!best || err < best.err - 1e-9) best = { a: a, b: b, err: err };
+    }
+    if (best) return 'For every ' + best.b + ' you have received, you have produced ' + best.a + '.';
+    return p > r ? 'You have produced many times what you have received.' : 'You have received many times what you have produced.';
+  }
+  function exRenderPairTexture(totalP, totalR) {
+    var mx = Math.max(totalP, totalR, 1);
+    var fmt = function(n) { return Math.round(n).toLocaleString(); };
+    var bar = function(label, v, color) {
+      var pct = Math.max(v > 0 ? 1 : 0, Math.round(v / mx * 100));
+      return '<div style="margin-bottom:12px;">'
+        + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;"><span style="font-size:var(--fs-sm); color:var(--text-dim);">' + label + '</span><span style="font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--text);">' + fmt(v) + '</span></div>'
+        + '<div style="height:14px; border-radius:4px; background:var(--bg-input); overflow:hidden;"><div style="height:100%; width:' + pct + '%; background:' + color + '; border-radius:4px;"></div></div>'
+        + '</div>';
+    };
+    var h = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:14px;">What you have produced and received</div>';
+    h += bar('Produced', totalP, 'var(--accent)');
+    h += bar('Received', totalR, '#B5742A');
+    h += '<div style="font-size:var(--fs-md); color:var(--text); margin-top:14px; line-height:1.5;">' + esc(exPairSentence(totalP, totalR)) + '</div>';
+    if (!totalP && !totalR) h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:6px;">Tap the + button below to start one.</div>';
+    h += '<button style="background:none; border:none; padding:10px 0 0; color:var(--accent); font-size:var(--fs-sm); cursor:pointer; font-family:inherit;" onclick="App.togglePairPanel()">How this is drawn' + (_pairPanelOpen ? ' \u2212' : ' +') + '</button>';
+    if (_pairPanelOpen) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:8px; border-top:1px solid var(--border); padding-top:10px;">';
+      h += '<p style="margin:0 0 8px;">Everything you have ever done for someone else, and everything anyone has ever done for you, is on your chain. This picture adds each side up.</p>';
+      h += '<p style="margin:0 0 8px;">Every unit here was written in one exchange, on two chains at once: produced on one, received on the other, both signed by both people. A unit cannot exist on your chain without its match on someone else\'s. That is the only way it can happen, and it is why, across everyone, produced and received are always equal.</p>';
+      h += '<p style="margin:0 0 8px;">Both totals only ever grow. Nothing on your chain is ever taken back, paid off or written down. Your wave shows the difference between the two over time; this shows the two things it is the difference of.</p>';
+      h += '<p style="margin:0 0 8px;"><b style="color:var(--text);">Produced</b> adds up the credit on every exchange where you did the work. <b style="color:var(--text);">Received</b> adds up the credit on every exchange where someone did the work for you. The two bars share one scale: the larger total fills the width, the other is drawn against it. The sentence says the same thing in the smallest whole numbers that fit.</p>';
+      h += '<p style="margin:0 0 8px;"><b style="color:var(--text);">Where this comes from.</b> The two-column ledger (economic model, double-entry bookkeeping, Pacioli 1494): every entry is written twice, once on each side, and the books are right only when the two sides add up to the same total. Here that rule is kept and moved out of the book: the two sides of each entry sit on two different chains, so the balance is across everyone, never inside one chain. What is removed is the netting of your own two totals into a debt: nothing is owed, nothing falls due, nothing carries interest. The sentence uses a ratio in lowest terms (mathematical model): a description, not a rate.</p>';
+      h += '<p style="margin:0;">Nobody else sees this. The totals and the bars stay on your phone.</p>';
+      h += '</div>';
+    }
+    h += '</div>';
+    return h;
+  }
+  function togglePairPanel() { _pairPanelOpen = !_pairPanelOpen; renderHomeTab(); }
+
   function renderHomeTab() {
     var el = document.getElementById('tab-home-content');
     if (!el) return;
@@ -10226,32 +10276,12 @@ function init() {
 
     var html = '';
 
-    // Totals card -- Bite 3 verdict-pin alignment (April 30, 2026): the
-    // previous side-by-side amount totals (+totalP / -totalR) were a
-    // balance presentation by implication -- the user's eye computed the
-    // net even without an explicit balance number. Replaced with act
-    // counts (Provided 12 / Received 10) which preserve the activity
-    // sense without the implicit subtraction. Value-totals still live
-    // in the chain modal breakdown card.
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:14px;">';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">' + actsP + '</div></div>';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">' + actsR + '</div></div>';
-    html += '</div>';
-
-    // Participation ratio bar -- same visual as the wallet's ratio bar so
-    // the two read consistently. v2.61.18: provided half now uses --green
-    // (was --accent, which equals --blue, so the bar rendered all-blue).
-    if (totalActs > 0) {
-      html += '<div style="display:flex; justify-content:space-between; font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:4px;"><span>participation ratio</span><span style="color:var(--text-dim); font-weight:500;">' + ratioStr + '</span></div>';
-      html += '<div style="height:10px; border-radius:5px; overflow:hidden; display:flex; background:var(--bg-input);">';
-      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--green); border-radius:5px 0 0 5px;"></div>';
-      if (rPct > 0) html += '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 5px 5px 0;"></div>';
-      html += '</div>';
-    } else {
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-align:center; padding:4px 0;">No exchanges yet. Tap the + button below to start one.</div>';
-    }
-    html += '</div>';
+    // The pair (texture cycle 1, ruled Oct 1; built v2.67.0): the two
+    // raw totals as two bars on one scale, each total beside its bar,
+    // one sentence in lowest terms, and a "How this is drawn" panel.
+    // Own phone only; never in the snapshot. Replaces the act-count
+    // card and the participation ratio bar (v2.61.18 and earlier).
+    html += exRenderPairTexture(totalP, totalR);
 
     // === IN FLIGHT ===
     // Holds anything still in motion -- before it settles into the
@@ -12467,7 +12497,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, togglePairPanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
