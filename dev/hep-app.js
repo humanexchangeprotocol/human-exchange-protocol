@@ -875,89 +875,74 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Home ---
+  // v2.75.0: My chain rebuilt as a list of reading sheets (registry,
+  // Component 2, "MY CHAIN REBUILT"; DESIGN.md rules 2, 2a, 8). The list
+  // opens one sheet; a sheet can open another over it; X closes the top
+  // one. Numbers organises the old wallet data; Standing draws the net;
+  // Device carries the identity panel and standing content unchanged.
+  var _mcStack = [];
+  function mcOpen(k) {
+    var el = document.getElementById('mc-sheet-' + k);
+    if (!el) return;
+    el.style.zIndex = 6 + _mcStack.length;
+    el.hidden = false; el.scrollTop = 0;
+    _mcStack.push(el);
+  }
+  function mcClose() { var el = _mcStack.pop(); if (el) el.hidden = true; }
+  function mcFmt(n) { return Math.round(n).toLocaleString('en-US'); }
+  function mcStandWords(st) { return st === 0 ? 'even' : mcFmt(Math.abs(st)) + ' ' + (st > 0 ? 'above' : 'below'); }
+  function mcRatioSentence(p, r) {
+    if (!p && !r) return 'Nothing recorded yet.';
+    if (!r) return 'You have produced, and received nothing yet.';
+    if (!p) return 'You have received, and produced nothing yet.';
+    if (p === r) return 'You have produced as much as you have received.';
+    var q = p / r;
+    for (var d = 1; d <= 12; d++) { var n = Math.round(q * d); if (n > 0 && Math.abs(n / d - q) / q < 0.02) return 'For every ' + d + ' you have received, you have produced ' + n + '.'; }
+    return 'For every 100 you have received, you have produced ' + Math.round(q * 100) + '.';
+  }
   function openWallet() {
-    // v2.61.19: balance demoted from 56px headline to a row in the
-    // breakdown card. v2.61.21: Participation card consolidated INTO
-    // this same breakdown card -- People, Repeat counterparties,
-    // Categories, Chain age, and Witnessed share now sit alongside
-    // the value totals as a single source of truth for chain stats.
-    // Per-direction totals (Total provided / Total received) read as
-    // plain magnitudes; the signed Net balance row carries direction.
-    const bal = HCP.walletBalance(state.chain);
-    const ex = state.chain.filter(HCP.isAct);
-    let totalP = 0, totalR = 0, actsP = 0, actsR = 0;
-    var cpCounts = {};
-    var cats = {};
-    var witnessedCount = 0;
+    _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
+    document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
+    var ex = state.chain.filter(HCP.isAct);
+    var cur = 0, cos = 0, nP = 0, nR = 0, wit = 0, cp = {};
     ex.forEach(function(r) {
-      if (r.energyState === 'provided') { totalP += r.value; actsP++; }
-      else if (r.energyState === 'received') { totalR += r.value; actsR++; }
-      if (r.counterparty) cpCounts[r.counterparty] = (cpCounts[r.counterparty] || 0) + 1;
-      var k = r.category || 'uncategorized';
-      cats[k] = (cats[k] || 0) + 1;
-      if (r.witnessAttestation) witnessedCount++;
+      if (r.energyState === 'provided') { cur += r.value; nP++; }
+      else if (r.energyState === 'received') { cos += r.value; nR++; }
+      if (r.counterparty) cp[r.counterparty] = (cp[r.counterparty] || 0) + 1;
+      if (r.witnessAttestation) wit++;
     });
-    var peopleCount = Object.keys(cpCounts).length;
-    var repeatCount = 0;
-    Object.keys(cpCounts).forEach(function(k) { if (cpCounts[k] >= 2) repeatCount++; });
-    var catCount = Object.keys(cats).length;
-    document.getElementById('wallet-provided').textContent = totalP.toFixed(0);
-    document.getElementById('wallet-received').textContent = totalR.toFixed(0);
-    document.getElementById('wallet-acts').textContent = ex.length;
-    document.getElementById('wallet-people').textContent = peopleCount;
-    document.getElementById('wallet-repeat').textContent = repeatCount;
-    document.getElementById('wallet-categories').textContent = catCount;
-    // Chain age -- compact format matching the previous Participation card.
-    var ageEl = document.getElementById('wallet-age');
-    if (ageEl) {
-      if (state.chain.length > 0) {
-        var genesis = new Date(state.chain[0].timestamp);
-        var days = Math.floor((Date.now() - genesis.getTime()) / 86400000);
-        var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
-        ageEl.textContent = ageStr;
-      } else {
-        ageEl.textContent = '\u2014';
-      }
-    }
-    // Witnessed: "N / total" preserves context without inviting percentage gaming.
-    var witEl = document.getElementById('wallet-witnessed');
-    if (witEl) witEl.textContent = ex.length > 0 ? (witnessedCount + ' / ' + ex.length) : '\u2014';
-    var netEl = document.getElementById('wallet-net-balance');
-    if (netEl) netEl.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
-
-    // v2.61.22: identity panel rendered at the TOP of the modal body
-    // (above the stats card) so the user reads "this is you" before
-    // the chain stats. Was previously buried halfway down the modal
-    // inside renderStandingTab.
+    var st = cur - cos, M = exMarkSVG(14);
+    var people = Object.keys(cp).length, more = Object.keys(cp).filter(function(k) { return cp[k] >= 2; }).length;
+    // identity at the top of the list: photo, name as title, chain since
+    var photo = state.declarations.photo || '';
+    if (!photo) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) photo = g.photoData; }
+    var name = state.declarations.name || 'Anonymous';
+    document.getElementById('mc-photo').innerHTML = photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase());
+    document.getElementById('mc-name').textContent = name;
+    var since = '';
+    if (state.chain.length) { var d0 = new Date(state.chain[0].timestamp); since = 'Chain since ' + d0.toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
+    document.getElementById('mc-since').textContent = since;
+    // Numbers
+    function set(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
+    set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M); set('mc-n-st', mcStandWords(st) + M);
+    set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
+    set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
+    // Standing: the net at display size, the two totals on one scale, the gap drawn
+    var big = mcStandWords(st);
+    set('mc-s-big', st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below'));
+    set('mc-s-cur', mcFmt(cur) + M); set('mc-s-cos', mcFmt(cos) + M);
+    var mx = Math.max(cur, cos) || 1;
+    document.getElementById('mc-s-curbar').style.width = (cur / mx * 100) + '%';
+    document.getElementById('mc-s-cosbar').style.width = (cos / mx * 100) + '%';
+    var cg = document.getElementById('mc-s-curgap'), sg = document.getElementById('mc-s-cosgap');
+    cg.hidden = true; sg.hidden = true;
+    if (st !== 0) { var gap = st < 0 ? cg : sg; gap.style.left = (Math.min(cur, cos) / mx * 100) + '%'; gap.style.width = (Math.abs(st) / mx * 100) + '%'; gap.hidden = false; }
+    document.getElementById('mc-s-gapcap').textContent = st === 0 ? '' : 'The gap is your standing: ' + big;
+    document.getElementById('mc-s-ratio').textContent = mcRatioSentence(cur, cos);
+    // Device: identity panel and standing content, moved in unchanged
     var idEl = document.getElementById('wallet-identity-panel');
     if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
-    // Render participation ratio
-    var ratioBar = document.getElementById('wallet-ratio-bar');
-    var ratioText = document.getElementById('wallet-ratio-text');
-    var total = actsP + actsR;
-    if (total > 0) {
-      var pPct = Math.round((actsP / total) * 100);
-      var rPct = 100 - pPct;
-      var ratioStr = actsR > 0 ? Math.round(actsP / actsR * 10) / 10 + ' : 1' : actsP + ' : 0';
-      if (ratioText) ratioText.textContent = ratioStr;
-      if (ratioBar) {
-        ratioBar.innerHTML = '<div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-faint); margin-bottom:4px;"><span>provided ' + actsP + '</span><span>received ' + actsR + '</span></div>' +
-          '<div style="height:14px; border-radius:7px; overflow:hidden; display:flex; background:var(--bg-input);">' +
-          (pPct > 0 ? '<div style="width:' + pPct + '%; background:var(--green); border-radius:7px 0 0 7px;"></div>' : '') +
-          (rPct > 0 ? '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 7px 7px 0;"></div>' : '') +
-          '</div>';
-      }
-    } else {
-      if (ratioText) ratioText.textContent = '\u2014';
-      if (ratioBar) ratioBar.innerHTML = '';
-    }
-
-    // Standing content (identity panel, POH verdict, categories, etc.)
-    // was moved from the removed Standing tab into this wallet modal
-    // in v2.58.0. Render it into the wallet-standing-content div
-    // appended to the wallet body.
     try { renderStandingTab(); } catch(e) { console.log('[wallet] Standing render failed:', e.message); }
-
     showModal('wallet');
   }
 
@@ -13217,7 +13202,7 @@ function init() {
     showTextureDetail, closeTextureDetail, toggleServiceCat,
     openChainViewer, chainTab, chainDirFilter, openMyTexture, openMyPricing,
     openMyTextureFromWallet, openMyPricingFromWallet, openChainViewerFromWallet, showMyPhotos,
-    openWallet, openRecentActs, filterRecentActs,
+    openWallet, mcOpen, mcClose, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,

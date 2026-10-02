@@ -459,6 +459,34 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* Wallet modal: fills the viewport like tab screens (Settings, Learn, History),
    rather than capping at the default 480px modal width. Other modals keep the cap. */
 #wallet-overlay .modal { max-width: none; }
+/* My chain (v2.75.0): the list and its sheets share the exchange flow's sheet, row, caption and X */
+#wallet-overlay .modal.mc { max-width: 420px; }
+.mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
+.mc-sheet { padding-top: var(--safe-top); }
+.mc-sheet[hidden] { display: none; }
+.mc-id { display: flex; flex-direction: column; align-items: center; padding: 4px 0 20px; }
+.mc-id .exs-h { margin-top: 12px; }
+.mc-photo { width: 88px; height: 88px; border-radius: 50%; background: var(--accent-light); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent); }
+.mc-photo img { width: 100%; height: 100%; object-fit: cover; }
+.mc-vrow { cursor: default; }
+.mc-gap { margin-top: 24px; }
+.mc-big { font-size: 18px; }
+.mc-blue { color: var(--accent); }
+.mc-amber { color: #B5742A; }
+.mc-link { margin: 10px 0 0; }
+.mc-link a { font-size: 13px; color: var(--accent); text-decoration: underline; }
+.mc-display { display: flex; align-items: center; gap: 8px; font-size: 32px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.mc-tbar { margin-top: 18px; }
+.mc-tbar-top { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px; }
+.mc-track { position: relative; height: 14px; border-radius: var(--radius-sm); background: var(--bg-input); }
+.mc-fill { height: 14px; border-radius: var(--radius-sm); }
+.mc-fill-blue { background: var(--accent); }
+.mc-fill-amber { background: #B5742A; }
+.mc-gapbox { position: absolute; top: 0; height: 14px; border: 1.5px dashed #B5742A; border-radius: var(--radius-sm); background: rgba(181,116,42,0.10); }
+.mc-gapbox[hidden] { display: none; }
+.mc-how { margin-top: 28px; }
+.mc-how .exs-cap { margin: 8px 0 0; }
+.mc-how b { font-weight: 600; color: var(--text-dim); }
 
 /* === TABS === */
 .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -1435,54 +1463,44 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 </div>
 
-<!-- ========== WALLET MODAL ========== -->
+<!-- ========== WALLET MODAL (My chain, v2.75.0: list of sheets; DESIGN.md rules 2, 2a, 8) ========== -->
 <div class="modal-overlay" id="wallet-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>My Chain</h2>
-      <button class="modal-close" onclick="App.closeModal('wallet')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
+  <div class="modal mc">
+    <div class="modal-body mc-home">
+      <div class="exs-sheet-head" style="justify-content:flex-end"><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
+      <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="exs-h" id="mc-name"></div><div class="exs-cap" id="mc-since"></div></div>
+      <button class="exs-row" onclick="App.mcOpen('numbers')"><div class="exs-rowmain"><div class="exs-body">Numbers</div><div class="exs-cap">Your totals and counts</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('standing')"><div class="exs-rowmain"><div class="exs-body">Standing</div><div class="exs-cap">Where you stand, and what makes it up</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.openChainViewerFromWallet()"><div class="exs-rowmain"><div class="exs-body">Full chain</div><div class="exs-cap">Every recorded act</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.openMyTextureFromWallet()"><div class="exs-rowmain"><div class="exs-body">Chain health</div><div class="exs-cap">How others see your chain</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
-    <div class="modal-body wallet-body">
+    <div class="exs-sheet mc-sheet" id="mc-sheet-numbers" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Numbers</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-cap">Standing</div>
+      <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Currency</div></div><div class="exs-rowval mc-big mc-blue" id="mc-n-cur"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Cosmic share</div></div><div class="exs-rowval mc-big mc-amber" id="mc-n-cos"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Standing</div></div><div class="exs-rowval mc-big" id="mc-n-st"></div></div>
+      <p class="mc-link"><a href="#" onclick="App.mcOpen('standing');return false">See your standing drawn</a></p>
+      <div class="exs-cap mc-gap">Exchanges</div>
+      <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Exchanges</div></div><div class="exs-rowval " id="mc-n-ex"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Provided</div></div><div class="exs-rowval mc-blue" id="mc-n-p"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Received</div></div><div class="exs-rowval mc-amber" id="mc-n-r"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Witnessed</div></div><div class="exs-rowval " id="mc-n-w"></div></div>
+      <div class="exs-cap mc-gap">People</div>
+      <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">People</div></div><div class="exs-rowval " id="mc-n-pe"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">More than once</div></div><div class="exs-rowval " id="mc-n-mo"></div></div>
+      <p class="exs-cap" style="margin-top:20px">These numbers stay on your phone. They never appear in shared chain data.</p>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-standing" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Standing</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="mc-display" id="mc-s-big"></div>
+      <div class="exs-cap">Where you stand today</div>
+      <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Currency</div><div class="exs-cap">What you have produced</div></div><span class="exs-rowval mc-blue" id="mc-s-cur"></span></div><div class="mc-track"><div class="mc-fill mc-fill-blue" id="mc-s-curbar"></div><div class="mc-gapbox" id="mc-s-curgap" hidden></div></div></div>
+      <div class="exs-cap mc-amber" id="mc-s-gapcap" style="text-align:right; margin-top:4px"></div>
+      <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Cosmic share</div><div class="exs-cap">What you have received</div></div><span class="exs-rowval mc-amber" id="mc-s-cos"></span></div><div class="mc-track"><div class="mc-fill mc-fill-amber" id="mc-s-cosbar"></div><div class="mc-gapbox" id="mc-s-cosgap" hidden></div></div></div>
+      <p class="exs-body" id="mc-s-ratio" style="margin:20px 0 0"></p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Your standing is your currency minus your cosmic share: everything you have produced for others, less everything you have received from them. The two totals sit on one scale, and the gap between the ends of the bars is your standing. When currency is longer you stand above; when cosmic share is longer you stand below.</p><p class="exs-cap">Neither total ever goes down. Your standing moves only because a new exchange adds to one side or the other, and any exchange can change it. There is no floor and no interest.</p><p class="exs-cap">Every unit was written in one exchange on two chains at once, produced on one and received on the other, signed by both people. That is why, across everyone, all standings add up to zero.</p><p class="exs-cap"><b>Two-column ledger</b> (double-entry bookkeeping, Pacioli, 1494). HEP keeps the rule that both sides must match, and moves it out of your own book and across everyone. What it removes is the debt: nothing is owed, nothing falls due, no interest.</p><p class="exs-cap"><b>Ratio in lowest terms.</b> The sentence is a description, not a rate.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="wallet-identity-panel"></div>
-      <div class="wallet-detail">
-        <div class="review-row"><span class="rlbl">Total provided</span><span class="rval" id="wallet-provided">0</span></div>
-        <div class="review-row"><span class="rlbl">Total received</span><span class="rval" id="wallet-received">0</span></div>
-        <div class="review-row"><span class="rlbl">Acts</span><span class="rval" id="wallet-acts">0</span></div>
-        <div class="review-row"><span class="rlbl">People</span><span class="rval" id="wallet-people">0</span></div>
-        <div class="review-row"><span class="rlbl">Repeat counterparties</span><span class="rval" id="wallet-repeat">0</span></div>
-        <div class="review-row"><span class="rlbl">Categories</span><span class="rval" id="wallet-categories">0</span></div>
-        <div class="review-row"><span class="rlbl">Chain age</span><span class="rval" id="wallet-age">&mdash;</span></div>
-        <div class="review-row"><span class="rlbl">Witnessed</span><span class="rval" id="wallet-witnessed">0</span></div>
-        <div class="review-row"><span class="rlbl">Participation ratio</span><span class="rval" id="wallet-ratio-text"></span></div>
-        <div id="wallet-ratio-bar" style="margin-top:8px; margin-bottom:8px;"></div>
-        <div class="review-row" style="border-top:1px solid var(--border); padding-top:10px;"><span class="rlbl">Net balance <button style="background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; text-decoration:underline; padding:0 0 0 6px;" onclick="App.showTextureDetail('wallet-position-explain')">what is this</button></span><span class="rval" id="wallet-net-balance">0</span></div>
-      </div>
-
-      <!-- Chain Health + Pricing History + Full Chain -->
-      <div style="margin-top:20px;">
-        <div style="display:flex; align-items:center; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyTextureFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Chain health</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">How others see your chain</span>
-          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
-        </div>
-        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyPricingFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Pricing history</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and prices</span>
-          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
-        </div>
-        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openChainViewerFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Full chain</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Every recorded act</span>
-          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
-        </div>
-      </div>
-
-      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your totals are private. They never appear in shared chain data.</p>
-
-      <!-- Standing content moved here from the (now-removed) Standing tab.
-           Renders identity panel, POH verdict, categories, stats, and
-           related surfaces. renderStandingTab() writes into this div. -->
-      <div id="wallet-standing-content" style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border);"></div>
+      <div id="wallet-standing-content"></div>
     </div>
   </div>
 </div>
