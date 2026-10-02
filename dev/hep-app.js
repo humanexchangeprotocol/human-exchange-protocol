@@ -9155,16 +9155,12 @@ function init() {
     html += '<button class="exs-icon" onclick="App.exToggleThreadPanel()">' + exThreadSVG(34) + '<div class="exs-f">chain</div></button>';
     html += '</div>';
     html += '<div class="exs-grow"></div>';
-    html += '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Continue</button>';
+    html += '<div id="ex-cr-action">' + exCRActionHTML() + '</div>';
     html += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
     if (st.shieldOpen) html += exShieldSheetHTML(ts, 'App.exToggleShieldPop()');
     if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
     container.innerHTML = html;
 
-    // Keep the "Review proposal" relabel if a proposal already arrived
-    if (typeof sessionProposal !== 'undefined' && sessionProposal) {
-      var crBtn = document.getElementById('ex-cr-continue'); if (crBtn) crBtn.textContent = 'Review proposal';
-    }
     exChainReadXRefresh();
 
     // The shared count needs hashing, so it lands a moment after the
@@ -9398,9 +9394,8 @@ function init() {
       showExStep('rv');
       exRenderRV('review');
     } else {
-      showExStep('receiver-wait');
-      exRenderReceiverWait();
-      sessionSetState('awaiting_proposal');
+      // Receiver, nothing yet: stay on the chain read (no wait screen).
+      exBackToTexture();
       startSessionPoll();
     }
   }
@@ -9412,6 +9407,29 @@ function init() {
   // Once a proposal is waiting, the receiver's chain read is the floor
   // (ruled Oct 2, twelfth session): Review proposal or Cancel exchange,
   // no X, no way back to Verify.
+  // The bottom of the chain read (ruled Oct 2, tenth session). The
+  // receiver stays here while waiting: a pulsing line where the button
+  // will be, then "<name> sent a proposal." and Review proposal. Only
+  // this slot changes, so the screen never moves under the person and
+  // an open reading sheet is left alone. The separate receiver-wait
+  // screen is gone. The proposer keeps Continue until the merged
+  // proposer chain read lands.
+  function exCRActionHTML() {
+    if (sessionRole === 'proposer') {
+      return '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Continue</button>';
+    }
+    var named = exPartnerName() !== 'The other person';
+    var n = esc(exPartnerName());
+    if (typeof sessionProposal !== 'undefined' && sessionProposal) {
+      return '<div class="exs-m" style="text-align:center; margin-bottom:12px;">' + (named ? n : 'They') + ' sent a proposal.</div>' +
+        '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Review proposal</button>';
+    }
+    return '<div class="exs-wait" id="ex-cr-wait" style="padding:15px 0;"><i></i>Waiting for ' + (named ? n + '\u2019s' : 'their') + ' proposal</div>';
+  }
+  function exCRActionRefresh() {
+    var slot = document.getElementById('ex-cr-action');
+    if (slot) slot.innerHTML = exCRActionHTML();
+  }
   function exChainReadIsFloor() {
     return typeof sessionProposal !== 'undefined' && !!sessionProposal;
   }
@@ -9610,8 +9628,7 @@ function init() {
     var back = function() {
       sessionProposal = null;
       _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
-      showExStep('receiver-wait');
-      exRenderReceiverWait();
+      exBackToTexture();
       try { sessionSetState('awaiting_proposal'); } catch(_) {}
       startSessionPoll();
     };
@@ -10212,8 +10229,7 @@ function init() {
       exRenderCategoryPills('');
     } else {
       sessionRole = 'confirmer';
-      showExStep('receiver-wait');
-      exRenderReceiverWait();
+      exBackToTexture();
       startSessionPoll();
     }
   }
@@ -10338,8 +10354,7 @@ function init() {
       var reviewBtn = reviewContainer.querySelector('button[onclick*="exReviewConfirm"]');
       if (reviewBtn) reviewBtn.textContent = 'Review proposal';
     }
-    var crBtn = document.getElementById('ex-cr-continue');
-    if (crBtn) crBtn.textContent = 'Review proposal';
+    exCRActionRefresh();
     exChainReadXRefresh();
 
     // Screen 7 (ruled Oct 1): if the confirmer is already past the
