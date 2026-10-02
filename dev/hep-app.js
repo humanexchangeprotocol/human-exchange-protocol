@@ -9284,6 +9284,10 @@ function init() {
     }
     var p = exRVProposal();
     if (!p) return;
+    // Processing and Settled (ruled Oct 2, eleventh session) have their
+    // own layout: no description header, nothing but the moment.
+    if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
+    if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
     var other = _exRV.other || exPartnerName();
     var ts = exRVTs();
     var sh = exShieldRead(ts);
@@ -9419,54 +9423,142 @@ function init() {
   // agreed amount over about two seconds, then the check and one
   // sentence stay until Done is tapped. Returns false if the layout is
   // not on screen, so the caller finishes without the animation.
+  // Processing, then Settled (ruled Oct 2, eleventh session; see
+  // registry Component 2, surface rulings items 8 and 9). Horizontal on
+  // both phones: the receiver on the left, the provider on the right. A
+  // wave runs from receiver to provider carrying the amount, which
+  // counts down to 0 as it crosses (the transaction clearing; value
+  // transfers from consumer to producer, a wave carries energy without
+  // carrying the water). Both circles show only what this exchange
+  // added: Currency +N under the provider (blue), Cosmic share +N under
+  // the receiver (amber), on both phones (vocabulary ruled Oct 2:
+  // currency is the running total of production, cosmic share of
+  // consumption). Then the Settled screen until Done. The record is
+  // already written when this plays (writeSessionRecord calls it).
+  function exSettleCircle(cx, name, photo, isYou, idp) {
+    var fill = isYou ? 'var(--accent-light)' : 'var(--bg-input)';
+    var col = isYou ? 'var(--accent)' : 'var(--text-dim)';
+    var g = '<g id="' + idp + '" opacity="0">';
+    if (photo) {
+      g += '<clipPath id="' + idp + '-c"><circle cx="' + cx + '" cy="70" r="34"/></clipPath>'
+        + '<circle cx="' + cx + '" cy="70" r="34" fill="' + fill + '"/>'
+        + '<image href="' + esc(photo) + '" x="' + (cx - 34) + '" y="36" width="68" height="68" preserveAspectRatio="xMidYMid slice" clip-path="url(#' + idp + '-c)"/>';
+    } else {
+      g += '<circle cx="' + cx + '" cy="70" r="34" fill="' + fill + '"/>'
+        + '<text x="' + cx + '" y="79" text-anchor="middle" font-size="24" font-weight="600" fill="' + col + '">' + esc(exInitial(name)) + '</text>';
+    }
+    g += '<text x="' + cx + '" y="126" text-anchor="middle" font-size="13" fill="var(--text-dim)">' + esc(isYou ? 'You' : name) + '</text></g>';
+    return g;
+  }
+  function exSettleFlowHTML(p) {
+    var other = _exRV.other || exPartnerName();
+    var ts = exRVTs();
+    var otherPhoto = (ts && ts._genesisPhoto) || '';
+    var myPhoto = (state.declarations && state.declarations.photo) || '';
+    var myName = (state.declarations && state.declarations.name) || 'You';
+    var iProvide = p.myDirection === 'provided';
+    var left = iProvide ? exSettleCircle(52, other, otherPhoto, false, 'exs-gl') : exSettleCircle(52, myName, myPhoto, true, 'exs-gl');
+    var right = iProvide ? exSettleCircle(252, myName, myPhoto, true, 'exs-gr') : exSettleCircle(252, other, otherPhoto, false, 'exs-gr');
+    var h = '<div class="exs-settle">';
+    h += '<div style="height:40px"></div>';
+    h += '<div class="exs-h" id="exs-st" style="text-align:center">Processing transaction</div>';
+    h += '<svg width="304" height="176" viewBox="0 0 304 176" style="margin:36px auto 0; display:block; max-width:100%">';
+    h += '<circle id="exs-ring" cx="252" cy="70" r="34" fill="none" stroke="var(--accent)" stroke-width="3" opacity="0"/>';
+    h += left + right;
+    h += '<path id="exs-wave" d="" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" opacity="0"/>';
+    h += '<path id="exs-head" d="M202 61 L212 70 L202 79" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>';
+    h += '<text id="exs-amt" x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text)" opacity="0">' + p.value.toLocaleString() + '</text>';
+    h += '<g id="exs-tots" opacity="0">'
+      + '<text x="52" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Cosmic share</text>'
+      + '<text id="exs-nl" x="52" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="#B5742A">+0</text>'
+      + '<text x="252" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Currency</text>'
+      + '<text id="exs-nr" x="252" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--accent)">+0</text></g>';
+    h += '</svg>';
+    var l1 = iProvide ? esc(other) + ' confirmed ' + p.value.toLocaleString() + ' for your work' : 'You confirmed ' + p.value.toLocaleString() + ' for ' + esc(other) + '\'s work';
+    h += '<div class="exs-grow"></div>';
+    h += '<div id="exs-l1" class="exs-fade" style="text-align:center; font-size:15px">' + l1 + '</div>';
+    h += '<div id="exs-l2" class="exs-fade exs-f" style="text-align:center; margin-top:4px">Recorded on both chains</div>';
+    h += '<div style="height:24px"></div>';
+    h += '</div>';
+    return h;
+  }
+  function exSettleDoneHTML() {
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="56" height="56"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+    h += '<div class="exs-settle-t1">Transaction</div>';
+    h += '<div class="exs-settle-t2">Settled</div>';
+    h += '<div class="exs-settle-t3">Final on both chains. Nothing is pending.</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div>';
+    h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button>'
+      + '<button class="exs-quiet" onclick="App.exRVWallet()">See your wallet</button></div>';
+    h += '</div>';
+    return h;
+  }
+  function exRVWallet() { closeExchange(); setTimeout(function() { try { openWallet(); } catch(_) {} }, 340); }
   function exPlayCompletion() {
     if (!exRVIsShowing()) return false;
     var p = _exRV.p || exRVProposalLive();
     if (!p) return false;
-    var before = _exRV.before;
-    var after = HCP.walletBalance(state.chain);
-    var other = _exRV.other || 'the other person';
-    var task = p.task ? ' for ' + p.task.charAt(0).toLowerCase() + p.task.slice(1) : '';
-    var v = p.value.toLocaleString();
-    var sentence;
-    if (p.myDirection === 'provided') {
-      sentence = 'Here is ' + v + ' from ' + other + task + '.';
-      if (before < 0 && after > 0) sentence += ' It closed your cosmic share and opened your currency.';
-      else if (before < 0) sentence += ' It went to your cosmic share.';
-      else sentence += ' It went to your currency.';
-    } else {
-      sentence = 'You gave ' + v + task;
-      if (before > 0 && after >= 0) sentence += ', from your currency.';
-      else if (before > 0) sentence += ', ' + Math.round(before).toLocaleString() + ' from your currency and ' + Math.round(-after).toLocaleString() + ' from your cosmic share.';
-      else sentence += ', from your cosmic share.';
-    }
-    _exRV.sentence = sentence;
-    var bp = exStandingParts(before);
-    _exRV.fromLine = (after >= before ? 'up from ' : 'down from ') + (bp.amb ? 'a cosmic share of ' : 'a currency of ') + bp.num;
     _exRV.finish = true;
     _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
-    exRenderRV('flow', { standing: before });
-    var num = document.getElementById('ex-rv-num'), lab = document.getElementById('ex-rv-lab');
+    exRenderRV('flow');
     var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
-    var lead = reduce ? 0 : 1100, dur = reduce ? 0 : 1800;
-    // The arrow draws and the amount rides along it (CSS), then the
-    // number winds and swells as it lands, then the check appears.
-    setTimeout(function() {
-      var t0 = performance.now();
-      function step(t) {
-        var k = dur ? Math.min(1, (t - t0) / dur) : 1;
-        var e = 1 - Math.pow(1 - k, 3);
-        var sp = exStandingParts(before + (after - before) * e);
-        if (num) { num.textContent = sp.num; num.classList.toggle('amb', sp.amb); }
-        if (lab) lab.textContent = 'Your ' + sp.lab.toLowerCase();
-        if (k < 1) requestAnimationFrame(step);
-        else {
-          if (num) num.classList.add('land');
-          setTimeout(function() { exRenderRV('done', { standing: after, sentence: sentence }); }, reduce ? 100 : 700);
-        }
+    var $ = function(id) { return document.getElementById(id); };
+    var V = Number(p.value) || 0;
+    var pop = function(id, t, start, cx) {
+      var el = $(id); if (!el) return;
+      var k = Math.max(0, Math.min(1, (t - start) / 0.35));
+      var sc = k < 1 ? 0.6 + 0.55 * k - 0.15 * Math.max(0, (k - 0.7) / 0.3) : 1;
+      el.setAttribute('opacity', k);
+      el.setAttribute('transform', 'translate(' + cx + ' 70) scale(' + sc + ') translate(' + (-cx) + ' -70)');
+    };
+    var wavePath = function(t, a) {
+      var d = '';
+      for (var x = 96; x <= 206; x += 2) {
+        var env = Math.sin(Math.PI * (x - 96) / 110);
+        var y = 70 + a * env * 9 * Math.sin((x - 96) / 9 - t * 7);
+        d += (x === 96 ? 'M' : 'L') + x + ' ' + y.toFixed(1) + ' ';
       }
-      requestAnimationFrame(step);
-    }, lead);
+      return d;
+    };
+    var finish = function() {
+      var st = $('exs-st'); if (st) st.textContent = 'Transaction recorded and confirmed';
+      ['exs-l1', 'exs-l2'].forEach(function(id) { var el = $(id); if (el) el.classList.add('in'); });
+      setTimeout(function() { if (exRVIsShowing()) exRenderRV('done'); }, reduce ? 1500 : 1600);
+    };
+    if (reduce) {
+      ['exs-gl', 'exs-gr', 'exs-tots'].forEach(function(id) { var el = $(id); if (el) el.setAttribute('opacity', 1); });
+      if ($('exs-nl')) $('exs-nl').textContent = '+' + V.toLocaleString();
+      if ($('exs-nr')) $('exs-nr').textContent = '+' + V.toLocaleString();
+      finish();
+      return true;
+    }
+    var t0 = performance.now(), ended = false;
+    function frame(now) {
+      if (!$('exs-wave')) return; // layout replaced (Done tapped or sheet closed)
+      var t = (now - t0) / 1000;
+      pop('exs-gl', t, 0.6, 52); pop('exs-gr', t, 1.2, 252);
+      var a = t < 1.8 ? 0 : t < 2.2 ? (t - 1.8) / 0.4 : t < 5.2 ? 1 : t < 5.6 ? 1 - (t - 5.2) / 0.4 : 0;
+      $('exs-wave').setAttribute('opacity', a > 0 ? 1 : 0);
+      $('exs-head').setAttribute('opacity', a);
+      $('exs-wave').setAttribute('d', wavePath(t, a));
+      var k = Math.max(0, Math.min(1, (t - 2.2) / 3));
+      var e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      var amt = $('exs-amt');
+      if (t > 1.8) amt.setAttribute('opacity', t < 5.4 ? 1 : Math.max(0, 1 - (t - 5.4) / 0.4));
+      amt.textContent = Math.round(V * (1 - e)).toLocaleString();
+      amt.setAttribute('x', (100 + 104 * e).toFixed(1));
+      if (t > 2.0) {
+        $('exs-tots').setAttribute('opacity', 1);
+        var added = '+' + Math.round(V * e).toLocaleString();
+        $('exs-nl').textContent = added; $('exs-nr').textContent = added;
+      }
+      if (t > 5.2 && t < 6.2) { var r = t - 5.2; $('exs-ring').setAttribute('opacity', Math.max(0, 1 - r)); $('exs-ring').setAttribute('r', 34 + r * 14); }
+      if (t > 5.8 && !ended) { ended = true; finish(); }
+      if (t < 6.4) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
     return true;
   }
 
@@ -12713,7 +12805,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatSheet, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatSheet, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

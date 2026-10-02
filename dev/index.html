@@ -672,6 +672,20 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-own .num.land { animation: exsLand 0.5s ease-out; }
 .exs-in { animation: exsAppear 0.4s ease-out; }
 @keyframes exsDraw { to { stroke-dashoffset: 0; } }
+/* Processing and Settled (ruled Oct 2, eleventh session) */
+.exs-settle { display: flex; flex-direction: column; flex: 1; min-height: 100%; }
+.exs-fade { opacity: 0; transition: opacity .5s; }
+.exs-fade.in { opacity: 1; }
+.exs-settle-check { position: relative; width: 112px; height: 112px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; animation: exsPop .45s cubic-bezier(.2,1.4,.4,1) .2s both; }
+.exs-settle-check .ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--green); animation: exsRipple .8s ease-out .55s both; }
+.exs-settle-check path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: exsDraw .35s ease-out .6s forwards; }
+.exs-settle-t1 { font-size: 15px; color: var(--text-dim); margin-top: 22px; animation: exsAppear .4s ease-out 1s both; }
+.exs-settle-t2 { font-size: 32px; font-weight: 600; line-height: 1.1; animation: exsAppear .4s ease-out 1s both; }
+.exs-settle-t3 { font-size: 15px; color: var(--text-dim); margin-top: 8px; animation: exsAppear .4s ease-out 1.4s both; }
+.exs-settle-btns { width: 100%; animation: exsAppear .4s ease-out 1.9s both; }
+@keyframes exsPop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes exsRipple { from { transform: scale(1); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .exs-settle-check, .exs-settle-check .ring, .exs-settle-check path, .exs-settle-t1, .exs-settle-t2, .exs-settle-t3, .exs-settle-btns { animation: none; stroke-dashoffset: 0; } .exs-settle-check .ring { display: none; } }
 @keyframes exsAppear { from { opacity: 0; } to { opacity: 1; } }
 @keyframes exsRide { 0% { opacity: 0; transform: translateY(-26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(26px); } }
 @keyframes exsRideUp { 0% { opacity: 0; transform: translateY(26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(-26px); } }
