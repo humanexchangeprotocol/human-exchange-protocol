@@ -10356,6 +10356,120 @@ function init() {
   }
   function togglePairPanel() { _pairPanelOpen = !_pairPanelOpen; renderHomeTab(); }
 
+  // ===== Texture: the wave (own phone only; cycle 7, ruled Oct 1) =====
+  // Standing over time as one line against the zero line, blue above
+  // (currency), amber below (cosmic share). Actual / Typical (per-kind MAD
+  // modified z-score, 3.5, flagged exchanges replaced by the median of
+  // their kind; the chain is never altered), Each / Week / Month / Year
+  // blocks drawn at each block's closing value, the how-often strip
+  // beneath, one line saying what is shown, and the method panel.
+  var _wave = { mode: 'a', iv: null, panel: false };
+  function waveMedian(a) { var s = a.slice().sort(function(x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
+  function waveData() {
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && r.timestamp && (r.energyState === 'provided' || r.energyState === 'received'); })
+      .map(function(r) { return { t: new Date(r.timestamp).getTime(), v: r.energyState === 'provided' ? +r.value : -r.value }; })
+      .filter(function(q) { return !isNaN(q.t); })
+      .sort(function(a, b) { return a.t - b.t; });
+    if (!ex.length) return null;
+    var t0 = ex[0].t, now = Date.now();
+    var span = Math.max(1, (now - t0) / 86400000);
+    var raw = ex.map(function(q) { return [(q.t - t0) / 86400000, q.v]; });
+    // Typical: per kind, modified z-score with MAD, threshold 3.5, min 20 per kind
+    var typ = raw.map(function(q) { return [q[0], q[1]]; }), nfl = 0, eligible = false;
+    [raw.map(function(q, i) { return q[1] > 0 ? i : -1; }).filter(function(i) { return i >= 0; }),
+     raw.map(function(q, i) { return q[1] <= 0 ? i : -1; }).filter(function(i) { return i >= 0; })].forEach(function(g) {
+      if (g.length < 20) return;
+      eligible = true;
+      var v = g.map(function(i) { return raw[i][1]; }), m = waveMedian(v), mad = waveMedian(v.map(function(x) { return Math.abs(x - m); })) || 1;
+      g.forEach(function(i) { if (0.6745 * Math.abs(raw[i][1] - m) / mad > 3.5) { typ[i][1] = m; nfl++; } });
+    });
+    return { raw: raw, typ: typ, nfl: nfl, eligible: eligible, span: span, n: raw.length };
+  }
+  function exRenderWaveTexture() {
+    var d = waveData();
+    var h = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:4px;">How you exchange over time</div>';
+    if (!d) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); padding:14px 0 4px;">Your wave starts with your first exchange.</div></div>';
+      return h;
+    }
+    var mode = (_wave.mode === 't' && d.eligible) ? 't' : 'a';
+    var ivs = [['each', 'Each'], ['7', 'Week'], ['30.44', 'Month'], ['365.25', 'Year']];
+    var iv = _wave.iv || (d.n < 60 || d.span < 60 ? 'each' : '30.44');
+    var D = mode === 't' ? d.typ : d.raw, SPAN = d.span;
+    var pts = [[0, 0]], s = 0;
+    if (iv === 'each') { D.forEach(function(q) { s += q[1]; pts.push([q[0], s]); }); }
+    else { var P = +iv, nb = Math.ceil(SPAN / P), j = 0; for (var b = 1; b <= nb; b++) { var end = Math.min(b * P, SPAN); while (j < D.length && D[j][0] < end) { s += D[j][1]; j++; } pts.push([end, s]); } }
+    var X0 = 14, X1 = 306, Z = 85, W = 320, HT = 170;
+    var mx = Math.max.apply(null, [1].concat(pts.map(function(q) { return Math.abs(q[1]); }))), sc = 60 / mx;
+    var X = function(t) { return (X0 + (X1 - X0) * t / SPAN).toFixed(1); }, Y = function(v) { return (Z - v * sc).toFixed(1); };
+    var line = [];
+    if (iv === 'each') { pts.forEach(function(q, i) { if (i) line.push(X(q[0]) + ',' + Y(pts[i - 1][1])); line.push(X(q[0]) + ',' + Y(q[1])); }); }
+    else { line.push(X(0) + ',' + Y(0)); for (var i = 1; i < pts.length; i++) { line.push(X(pts[i - 1][0]) + ',' + Y(pts[i][1])); line.push(X(pts[i][0]) + ',' + Y(pts[i][1])); } }
+    var L = line.join(' '), Pg = X0 + ',' + Z + ' ' + L + ' ' + X(pts[pts.length - 1][0]) + ',' + Z;
+    var last = pts[pts.length - 1], lx = +X(last[0]), ly = +Y(last[1]);
+    var endWord = last[1] > 0 ? 'currency' : (last[1] < 0 ? 'cosmic share' : 'even');
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + HT + '" style="width:100%; display:block;">';
+    svg += '<defs><clipPath id="wave-cu"><rect width="' + W + '" height="' + Z + '"/></clipPath><clipPath id="wave-cd"><rect y="' + Z + '" width="' + W + '" height="' + (HT - Z) + '"/></clipPath></defs>';
+    svg += '<polygon points="' + Pg + '" fill="var(--accent)" fill-opacity=".14" clip-path="url(#wave-cu)"/>';
+    svg += '<polygon points="' + Pg + '" fill="#B5742A" fill-opacity=".22" clip-path="url(#wave-cd)"/>';
+    svg += '<line x1="' + X0 + '" y1="' + Z + '" x2="' + X1 + '" y2="' + Z + '" stroke="var(--text-faint)" stroke-width=".8"/>';
+    svg += '<polyline points="' + L + '" fill="none" stroke="var(--text)" stroke-width="1.6" stroke-linejoin="round"/>';
+    svg += '<circle cx="' + lx + '" cy="' + ly + '" r="2.6" fill="var(--text)"/>';
+    var tx = lx + 7 > 262 ? lx - 7 : lx + 7, anchor = lx + 7 > 262 ? 'end' : 'start';
+    svg += '<text x="' + tx + '" y="' + (ly + 1) + '" text-anchor="' + anchor + '" font-size="12.5" font-weight="600" fill="var(--text)">' + Math.abs(Math.round(last[1])).toLocaleString() + '</text>';
+    svg += '<text x="' + tx + '" y="' + (ly + 13) + '" text-anchor="' + anchor + '" font-size="10" fill="var(--text-faint)">' + endWord + '</text>';
+    svg += '<text x="' + X0 + '" y="168" font-size="11" fill="var(--text-faint)">first exchange</text><text x="' + X1 + '" y="168" text-anchor="end" font-size="11" fill="var(--text-faint)">today</text>';
+    svg += '</svg>';
+    // the how-often strip: counts provided above the hairline, received below
+    var P2 = iv === 'each' ? SPAN / 104 : +iv, nb2 = Math.ceil(SPAN / P2), up = [], dn = [];
+    for (var k = 0; k < nb2; k++) { up.push(0); dn.push(0); }
+    D.forEach(function(q) { var kk = Math.min(nb2 - 1, Math.floor(q[0] / P2)); if (q[1] > 0) up[kk]++; else dn[kk]++; });
+    var mc = Math.max.apply(null, [1].concat(up, dn)), bw = (X1 - X0) / nb2, gp = Math.min(1.2, bw * 0.25);
+    var strip = '<svg viewBox="0 0 ' + W + ' 42" style="width:100%; display:block;"><line x1="' + X0 + '" y1="20.5" x2="' + X1 + '" y2="20.5" stroke="var(--border)"/>';
+    for (var k2 = 0; k2 < nb2; k2++) {
+      var x = X0 + k2 * bw + gp / 2, ww = Math.max(0.4, bw - gp);
+      if (up[k2]) strip += '<rect x="' + x.toFixed(1) + '" y="' + (20 - up[k2] / mc * 17).toFixed(1) + '" width="' + ww.toFixed(1) + '" height="' + (up[k2] / mc * 17).toFixed(1) + '" fill="var(--text-dim)"/>';
+      if (dn[k2]) strip += '<rect x="' + x.toFixed(1) + '" y="21" width="' + ww.toFixed(1) + '" height="' + (dn[k2] / mc * 17).toFixed(1) + '" fill="var(--text-dim)" fill-opacity=".55"/>';
+    }
+    strip += '</svg>';
+    var pu = D.filter(function(q) { return q[1] > 0; }).length;
+    var notes = { each: 'Every exchange, one by one, ', '7': 'Each step is where you stood at the end of a week, ', '30.44': 'Each step is where you stood at the end of a month, ', '365.25': 'Each step is where you stood at the end of a year, ' };
+    var note = notes[iv] + (mode === 't' ? 'with the few exchanges far bigger than your usual evened out.' : 'counting every exchange as it happened.');
+    var seg = function(items, cur, fn) {
+      return '<div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">' + items.map(function(it) {
+        var on = it[0] === cur, dis = it[2];
+        return '<button ' + (dis ? 'disabled ' : '') + 'style="border:none; padding:6px 10px; font-size:12px; font-family:inherit; cursor:pointer; background:' + (on ? 'var(--accent)' : 'var(--bg-raised)') + '; color:' + (on ? '#fff' : (dis ? 'var(--text-faint)' : 'var(--text-dim)')) + ';" onclick="' + fn + '(\'' + it[0] + '\')">' + it[1] + '</button>';
+      }).join('') + '</div>';
+    };
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:10px;">Provided above, received below</div>';
+    h += '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px;">' + seg([['a', 'Actual'], ['t', 'Typical', !d.eligible]], mode, 'App.waveMode') + seg(ivs, iv, 'App.waveInterval') + '</div>';
+    h += svg;
+    h += '<div style="height:4px"></div>' + strip;
+    h += '<div style="font-size:var(--fs-sm); color:var(--text); margin-top:8px;">Provided ' + pu + ' times, received ' + (D.length - pu) + ' times.</div>';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:4px; line-height:1.5;">' + esc(note) + (!d.eligible ? ' Typical opens once you have twenty exchanges of each kind.' : '') + '</div>';
+    if (mode === 't') {
+      h += '<button style="background:none; border:none; padding:10px 0 0; color:var(--accent); font-size:var(--fs-sm); cursor:pointer; font-family:inherit;" onclick="App.toggleWavePanel()">How Typical is worked out' + (_wave.panel ? ' \u2212' : ' +') + '</button>';
+      if (_wave.panel) {
+        h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:8px; border-top:1px solid var(--border); padding-top:10px;">';
+        h += '<p style="margin:0 0 8px; color:var(--text);">Most exchanges in a life are ordinary. Now and then a few are extraordinary: a windfall, a big job, a medical bill, a loss. Those few can take over the whole picture.</p>';
+        h += '<p style="margin:0 0 10px; color:var(--text);">Typical evens out those few, the very good and the very hard alike, so you can see your everyday pattern. Nothing on your chain changes.</p>';
+        h += '<p style="margin:0 0 8px;"><b style="color:var(--text);">' + d.nfl + ' of your ' + d.n + ' exchanges evened out.</b></p>';
+        h += '<p style="margin:0 0 6px;">1. Exchanges are sorted into two kinds: what you provided and what you received.</p>';
+        h += '<p style="margin:0 0 6px;">2. For each kind, the app finds the middle-sized exchange (the median) and how far exchanges of that kind usually sit from it.</p>';
+        h += '<p style="margin:0 0 6px;">3. Any exchange more than 3.5 times that usual distance away is counted as a middle-sized exchange of its kind instead.</p>';
+        h += '<p style="margin:0 0 10px;">4. Every other exchange stays exactly as it was. The line and the blocks are redrawn from these.</p>';
+        h += '<p style="margin:0;">Method: modified z-score with median absolute deviation, threshold 3.5 (Iglewicz and Hoaglin, 1993), applied separately to provided and received exchanges. Flagged exchanges are replaced with the median of their kind. The chain itself is never altered; Typical is a view of it. Nobody else sees this.</p>';
+        h += '</div>';
+      }
+    }
+    h += '</div>';
+    return h;
+  }
+  function waveMode(m) { _wave.mode = m; renderHomeTab(); }
+  function waveInterval(iv) { _wave.iv = iv; renderHomeTab(); }
+  function toggleWavePanel() { _wave.panel = !_wave.panel; renderHomeTab(); }
+
   function renderHomeTab() {
     var el = document.getElementById('tab-home-content');
     if (!el) return;
@@ -10382,6 +10496,8 @@ function init() {
     // Own phone only; never in the snapshot. Replaces the act-count
     // card and the participation ratio bar (v2.61.18 and earlier).
     html += exRenderPairTexture(totalP, totalR);
+    // The wave (texture cycle 7, ruled Oct 1; built v2.67.4). Own phone only.
+    try { html += exRenderWaveTexture(); } catch(we) { console.log('[home] wave render failed:', we.message); }
 
     // === IN FLIGHT ===
     // Holds anything still in motion -- before it settles into the
@@ -12597,7 +12713,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatSheet, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, togglePairPanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatSheet, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
