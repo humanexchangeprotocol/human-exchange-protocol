@@ -50,4 +50,5 @@ A design question these rules do not answer is written here when it comes up, ru
 - Charts (line weights, fills, axis labels, bar strips): no rule yet beyond rule 16's colours.
 - Icons on list rows: the exchange rows carry none; the Home doors row carries one per door. Which pattern My chain follows is open.
 - Colour on totals: currency in blue and cosmic share in amber (rule 16), provided and received counts the same. Standing itself stays neutral in the mockup; whether it takes blue above and amber below, as on the wave, is open.
+- Where Reach is turned on. Ruled off by default, own phone only; the mockup shows it as already on. The switch has no home yet.
 - The word for standing in the wallet: "Standing" is in use; whether it is final is open.
