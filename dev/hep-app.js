@@ -1733,6 +1733,15 @@ const PAIR_CODE_LENGTH = 4;
       // confirmation poll (handled inside submitSessionProposal).
       sendSessionProposal();
 
+      // Screens 7 and 8 (ruled Oct 1): stay in the modal on the wait
+      // layout; the confirmation plays the arrow here. Not now on that
+      // screen closes the modal only (closeModal), as the closeModal
+      // call this replaced did, so the session and the poll stay alive.
+      showExStep('rv');
+      exRenderRV('wait');
+      refreshHome();
+      return;
+
       // Modal closes directly. We deliberately do NOT call
       // closeExchange() here -- that would clear state.pendingProposal
       // and call cleanupSession (which stops the poll), both of which
@@ -2995,8 +3004,9 @@ const PAIR_CODE_LENGTH = 4;
       }
 
       // Check for rejection
-      if (data.proposal && data.proposal.status === 'rejected') {
+      if (sessionRole === 'proposer' && data.proposal && data.proposal.status === 'rejected') {
         stopSessionPoll();
+        if (exRVIsShowing()) { exRenderRV('declined'); }
         document.getElementById('session-status-line').textContent = 'Proposal rejected';
         const content = document.getElementById('session-content');
         const statusDiv = content.querySelector('.pair-status');
@@ -3441,13 +3451,19 @@ const PAIR_CODE_LENGTH = 4;
     // point). The legacy 'Exchange recorded' Done screen with its
     // 'Return to home' button is no longer shown -- the user lands
     // directly on Home with the new exchange visible.
-    closeExchange();
-
-    // Invite pipeline room sweep: return the inviter to the queue.
-    try { roomExchangeCompleted(); } catch(_) {}
-    // Invite pipeline redeemer side: clear the redeemed record and
-    // surface the install step for a fresh invitee.
-    try { inviteRedeemedCompleted(); } catch(_) {}
+    var finishWrite = function() {
+      closeExchange();
+      // Invite pipeline room sweep: return the inviter to the queue.
+      try { roomExchangeCompleted(); } catch(_) {}
+      // Invite pipeline redeemer side: clear the redeemed record and
+      // surface the install step for a fresh invitee.
+      try { inviteRedeemedCompleted(); } catch(_) {}
+    };
+    // Screens 8 and 9: the arrow flows and the number moves, then the
+    // check, then Home. Plays only if the layout is on screen.
+    var played = false;
+    try { played = exPlayCompletion(finishWrite); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    if (!played) finishWrite();
 
     // Schedule a follow-up refresh so the row exits the In flight
     // hold and drops to Recent at the right moment. Without this,
@@ -9185,6 +9201,9 @@ function init() {
       showExStep('form');
       document.getElementById('exchange-header').textContent = 'New exchange';
       exBeatsOpen();
+    } else if (sessionProposal) {
+      showExStep('rv');
+      exRenderRV('review');
     } else {
       showExStep('receiver-wait');
       exRenderReceiverWait();
@@ -9196,6 +9215,204 @@ function init() {
   function exBackToTexture() {
     showExStep('texture');
     exRenderChainRead();
+  }
+
+  // ===== Screens 7 to 9: review, wait, the flowing arrow, completion =====
+  // One layout, four states (ruled Oct 1). Each person sees their own
+  // number only; the other person's box carries a name and the two
+  // icons, never a balance. The arrow points toward the provider.
+  var _exRV = { state: null, before: 0, shieldOpen: false, threadOpen: false, similarOpen: false };
+  function exStandingParts(st) {
+    st = Math.round(st || 0);
+    if (st >= 0) return { lab: 'Currency', num: st.toLocaleString(), amb: false };
+    return { lab: 'Cosmic share', num: Math.abs(st).toLocaleString(), amb: true };
+  }
+  // What is being proposed, from whichever side holds it.
+  function exRVProposal() {
+    if (sessionRole === 'confirmer' && sessionProposal) {
+      return { value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
+    }
+    var pp = state.pendingProposal && state.pendingProposal.details;
+    if (pp) return { value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
+    return null;
+  }
+  function exRVTs() {
+    var ts = _textureTs;
+    if (!ts && sessionPartner && sessionPartner.thread_snapshot) {
+      ts = sessionPartner.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
+    }
+    return ts || null;
+  }
+  function exRenderRV(st, opts) {
+    opts = opts || {};
+    var host = document.getElementById('ex-rv');
+    if (!host) return;
+    if (st) _exRV.state = st;
+    st = _exRV.state;
+    var p = exRVProposal();
+    if (!p) return;
+    var other = exPartnerName();
+    var ts = exRVTs();
+    var sh = exShieldRead(ts);
+    var meta = exMetaLine(p.category, p.duration);
+    var standing = (typeof opts.standing === 'number') ? opts.standing : HCP.walletBalance(state.chain);
+    if (st === 'review' || st === 'wait') _exRV.before = standing;
+    var sp = exStandingParts(standing);
+    var html = '';
+    var head = st === 'review' ? esc(other) + ' proposes' : st === 'wait' ? 'Your proposal' : st === 'declined' ? esc(other) + ' did not confirm' : '&nbsp;';
+    html += '<div class="exs-m" style="margin:0">' + head + '</div>';
+    html += '<div style="height:6px"></div>';
+    html += '<div class="exs-h" style="font-size:22px">' + esc(p.task) + '</div>';
+    if (meta) html += '<div class="exs-f" style="margin-top:4px">' + esc(meta) + '</div>';
+    html += '<div style="height:12px"></div>';
+    html += '<div class="exs-bigval">' + p.value.toLocaleString() + '<small>currency</small></div>';
+    html += '<div style="height:16px"></div>';
+    // the two boxes
+    html += '<div class="exs-boxes">';
+    html += '<div class="exs-box" style="cursor:default"><div class="exs-av">' + esc(exInitial(state.declarations.name || 'You')) + '</div><div class="exs-n">You</div><div class="exs-lab" id="ex-rv-lab">' + sp.lab + '</div><div class="exs-num' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div></div>';
+    html += '<div id="ex-rv-arrow">' + exArrowHTML(p.myDirection).replace('class="exs-arr"', 'class="exs-arr' + (st === 'flow' ? ' flow' : '') + '"') + '</div>';
+    html += '<div class="exs-box" style="cursor:default"><div class="exs-ic"><button class="exs-icon" style="padding:0" onclick="App.exRVToggle(\'shield\')">' + exShieldSVG(sh.color, 14) + '</button><button class="exs-icon" style="padding:0" onclick="App.exRVToggle(\'thread\')">' + exThreadSVG(14) + '</button></div><div class="exs-av">' + esc(exInitial(other)) + '</div><div class="exs-n">' + esc(other) + '</div></div>';
+    html += '</div>';
+    html += '<div class="exs-grow"></div>';
+    if (st === 'review') {
+      html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%;" onclick="App.sessionConfirm()">Confirm exchange</button>';
+      html += '<button class="exs-quiet" onclick="App.exRVDecline()">This doesn\'t look right</button>';
+    } else if (st === 'wait') {
+      html += '<div class="exs-wait"><i></i><span>Waiting for ' + esc(other) + ' to confirm</span></div>';
+      html += '<div style="height:10px"></div>';
+      html += '<button class="exs-quiet" onclick="App.exRVLeaveWait()">Not now</button>';
+    } else if (st === 'flow') {
+      html += '<div class="exs-wait" style="visibility:hidden"><i></i><span>.</span></div><div style="height:10px"></div><div class="exs-quiet">&nbsp;</div>';
+    } else if (st === 'done') {
+      html += '<div class="exs-check"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+      html += '<div class="exs-h" style="text-align:center; margin-top:10px">Exchange complete</div>';
+      html += '<div class="exs-m" style="text-align:center; margin-top:8px; font-size:13px">' + esc(opts.sentence || '') + '</div>';
+      html += '<div style="height:16px"></div>';
+    } else if (st === 'declined') {
+      html += '<div class="exs-m" style="text-align:center">Nothing was recorded. You can talk it over and try again.</div>';
+      html += '<div style="height:10px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exRVRetry()">Change the proposal</button>';
+      html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+    }
+    if (_exRV.shieldOpen) html += '<div class="exs-pop" onclick="App.exRVToggle(\'shield\')"><b>' + esc(sh.title) + '</b><div style="margin-top:6px">' + esc(sh.body) + '</div></div>';
+    if (_exRV.threadOpen) html += exRVThreadPanel(ts, other, p);
+    if (_exRV.similarOpen) html += exRVSimilarPanel(p);
+    host.innerHTML = html;
+  }
+  // The thread panel here carries the six lines plus "See similar
+  // exchanges", which reads the holder's OWN history for this kind of
+  // work. Own history only, never a going rate (Sept 18 rail).
+  function exRVThreadPanel(ts, other, p) {
+    var shared = _exChainReadState.shared || 0;
+    var h = exThreadPanelHTML(ts, other, shared);
+    var btn = '<button class="btn btn-secondary" style="width:100%; margin-bottom:6px" onclick="App.exRVToggle(\'similar\')">See similar exchanges</button>';
+    return h.replace('<div class="exs-grow"></div>', '<div class="exs-grow"></div>' + btn);
+  }
+  function exRVSimilarPanel(p) {
+    var cat = (p.category || '').trim().toLowerCase();
+    var mine = state.chain.filter(function(r) { return HCP.isAct(r) && (r.category || '').trim().toLowerCase() === cat && cat; });
+    var h = '<div class="exs-sheet"><div class="exs-grab" onclick="App.exRVToggle(\'similar\')"></div>';
+    h += '<div class="exs-h" style="font-size:16px">Your ' + esc(p.category || 'similar') + ' exchanges</div>';
+    h += '<div class="exs-f" style="margin:4px 0 12px">Your own history only. This is reading, not a going rate.</div>';
+    if (!cat) h += '<div class="exs-m">No kind of work is named on this proposal, so there is nothing to match.</div>';
+    else if (!mine.length) h += '<div class="exs-m">Nothing on your chain yet for this kind of work.</div>';
+    else {
+      mine.slice(-12).reverse().forEach(function(r) {
+        h += '<div class="exs-item" style="cursor:default"><div><div class="t">' + esc(r.description || '') + (r.counterpartyName ? ', ' + esc(r.counterpartyName) : '') + '</div></div><div class="v">' + Number(r.value).toLocaleString() + '</div></div>';
+      });
+      var vals = mine.map(function(r) { return r.value; });
+      h += '<div class="exs-m" style="margin-top:12px">You have agreed to ' + Math.min.apply(null, vals).toLocaleString() + ' to ' + Math.max.apply(null, vals).toLocaleString() + ' for ' + esc(p.category) + ' across ' + mine.length + ' ' + (mine.length === 1 ? 'exchange' : 'exchanges') + '.</div>';
+    }
+    h += '<div class="exs-grow"></div><button class="exs-quiet" onclick="App.exRVToggle(\'similar\')">Close</button></div>';
+    return h;
+  }
+  function exRVToggle(which) {
+    if (which === 'shield') { _exRV.shieldOpen = !_exRV.shieldOpen; _exRV.threadOpen = false; _exRV.similarOpen = false; }
+    else if (which === 'thread') { _exRV.threadOpen = !_exRV.threadOpen; _exRV.shieldOpen = false; _exRV.similarOpen = false; }
+    else { _exRV.similarOpen = !_exRV.similarOpen; _exRV.threadOpen = false; _exRV.shieldOpen = false; }
+    exRenderRV();
+  }
+  // Backing out to Home during the wait leaves the pending row as today
+  // (the session stays alive in the background). Not closeExchange.
+  function exRVLeaveWait() {
+    closeModal('exchange');
+    refreshHome();
+    try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
+  }
+  // "This doesn't look right" creates no record. The confirmer goes back
+  // to the quiet wait and keeps listening, because the server accepts a
+  // re-proposal on the same session; the proposer sees the decline and
+  // can change the proposal or leave.
+  function exRVDecline() {
+    var back = function() {
+      sessionProposal = null;
+      _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
+      showExStep('receiver-wait');
+      exRenderReceiverWait();
+      try { sessionSetState('awaiting_proposal'); } catch(_) {}
+      startSessionPoll();
+    };
+    sessionReject().then(back).catch(back);
+  }
+  function exRVRetry() {
+    // A decline is a record of nothing. Reopen the beats with the
+    // declined proposal as the starting point so it can be changed.
+    var pp = state.pendingProposal && state.pendingProposal.details;
+    window._fabPrefill = pp ? { description: pp.description || '', value: pp.value || '', category: pp.category || '', duration: pp.duration || 0, energyState: pp.energyState || 'provided' } : null;
+    _sessionWritten = false;
+    showExStep('form');
+    exBeatsOpen();
+  }
+  function exRVIsShowing() {
+    var step = document.getElementById('ex-step-rv');
+    var ov = document.getElementById('exchange-overlay');
+    return !!(step && step.classList.contains('active') && ov && ov.classList.contains('active'));
+  }
+  // After the record is written: the arrow flows, the holder's own
+  // number moves by the agreed amount, then the check and one sentence,
+  // then Home. Returns false if the layout is not on screen, so the
+  // caller finishes without the animation.
+  function exPlayCompletion(finish) {
+    if (!exRVIsShowing()) return false;
+    var p = exRVProposal();
+    if (!p) return false;
+    var before = _exRV.before;
+    var after = HCP.walletBalance(state.chain);
+    var other = exPartnerName();
+    var task = p.task ? ' for ' + p.task.charAt(0).toLowerCase() + p.task.slice(1) : '';
+    var v = p.value.toLocaleString();
+    var sentence;
+    if (p.myDirection === 'provided') {
+      sentence = 'Here is ' + v + ' from ' + other + task + '.';
+      if (before < 0 && after > 0) sentence += ' It closed your cosmic share and opened your currency.';
+      else if (before < 0) sentence += ' It went to your cosmic share.';
+      else sentence += ' It went to your currency.';
+    } else {
+      sentence = 'You gave ' + v + task;
+      if (before > 0 && after >= 0) sentence += ', from your currency.';
+      else if (before > 0) sentence += ', ' + Math.round(before).toLocaleString() + ' from your currency and ' + Math.round(-after).toLocaleString() + ' from your cosmic share.';
+      else sentence += ', from your cosmic share.';
+    }
+    _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
+    exRenderRV('flow', { standing: before });
+    var num = document.getElementById('ex-rv-num'), lab = document.getElementById('ex-rv-lab');
+    var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
+    var dur = reduce ? 0 : 1800, t0 = performance.now();
+    function step(t) {
+      var k = dur ? Math.min(1, (t - t0) / dur) : 1;
+      var e = 1 - Math.pow(1 - k, 3);
+      var sp = exStandingParts(before + (after - before) * e);
+      if (num) { num.textContent = sp.num; num.classList.toggle('amb', sp.amb); }
+      if (lab) lab.textContent = sp.lab;
+      if (k < 1) requestAnimationFrame(step);
+      else {
+        exRenderRV('done', { standing: after, sentence: sentence });
+        setTimeout(finish, reduce ? 600 : 2400);
+      }
+    }
+    requestAnimationFrame(step);
+    return true;
   }
 
   // ===== Screen 6: the proposal, three beats (ruled Oct 1) =====
@@ -9590,6 +9807,17 @@ function init() {
     }
     var crBtn = document.getElementById('ex-cr-continue');
     if (crBtn) crBtn.textContent = 'Review proposal';
+
+    // Screen 7 (ruled Oct 1): if the confirmer is already past the
+    // chain read, show the review now; if they are still on it, the
+    // relabelled Continue brings them here through exContinueFromTexture.
+    var rwStep = document.getElementById('ex-step-receiver-wait');
+    var rvStep = document.getElementById('ex-step-rv');
+    if ((rwStep && rwStep.classList.contains('active')) || (rvStep && rvStep.classList.contains('active'))) {
+      showExStep('rv');
+      exRenderRV('review');
+    }
+    return;
 
     // Build proposal card
     var html = '';
@@ -12239,7 +12467,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

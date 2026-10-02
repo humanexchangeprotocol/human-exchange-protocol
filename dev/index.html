@@ -662,6 +662,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-val input:focus { border-bottom-color: var(--accent); }
 .exs-val small { font-size: 13px; color: var(--text-faint); }
 .exs-link { background: none; border: none; color: var(--accent); font-size: 13px; padding: 6px 0; cursor: pointer; font-family: inherit; text-align: left; }
+.exs-amber { --exs-amber: #B5742A; }
+.exs-box .exs-lab { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; margin-top: 6px; }
+.exs-box .exs-num { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--text); }
+.exs-box .exs-num.amb { color: #B5742A; }
+.exs-box .exs-ic { display: flex; justify-content: center; gap: 6px; margin-bottom: 4px; min-height: 16px; }
+.exs-arr.flow .shaft { stroke-dasharray: 6 6; animation: exsFlow 0.6s linear infinite; }
+@keyframes exsFlow { to { stroke-dashoffset: -12; } }
+.exs-check { width: 56px; height: 56px; border-radius: 50%; background: var(--green); margin: 0 auto; display: flex; align-items: center; justify-content: center; }
+.exs-check svg { width: 30px; height: 30px; }
+.exs-bigval { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); }
+.exs-bigval small { font-size: 13px; color: var(--text-faint); font-family: inherit; font-weight: 400; }
 
 /* 8-step flow progress bar */
 .ex-progress { display: flex; gap: 3px; margin-bottom: 20px; }
@@ -1534,6 +1545,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <input type="hidden" id="ex-minutes" value="">
         <input type="hidden" id="ex-city" value="">
         <input type="hidden" id="ex-state" value="">
+      </div>
+
+      <!-- Screens 7 to 9 (ruled Oct 1): review, wait, the flowing arrow
+           and completion, all on one layout. exRenderRV fills it. -->
+      <div class="hs-step exs" id="ex-step-rv">
+        <div id="ex-rv" style="display:flex; flex-direction:column; flex:1;"></div>
       </div>
 
       <!-- STEP 2: Transport selection -->
