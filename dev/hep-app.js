@@ -9017,7 +9017,7 @@ function init() {
     body += '<div class="exs-f" style="text-align:center; margin-top:18px">The shield reads the phone. It never reads the person.</div>';
     return exSheetHTML('Device', body, closeFn);
   }
-  function exThreadPanelHTML(ts, name, shared, extra) {
+  function exThreadPanelHTML(ts, name, shared, extra, closeFn) {
     var lines = [];
     if (ts) {
       if (ts.t0) lines.push('Chain started <b>' + esc(exMonthYear(ts.t0)) + '</b>');
@@ -9034,7 +9034,7 @@ function init() {
     // snapshot carries a summary, not records. Added when the productive
     // pattern texture lands here.
     var h = '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>' + (extra || '');
-    return exSheetHTML('Chain', h, extra ? "App.exRVToggle('thread')" : 'App.exToggleThreadPanel()');
+    return exSheetHTML('Chain', h, closeFn || 'App.exToggleThreadPanel()');
   }
   function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; exRenderChainRead(); }
   function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; exRenderChainRead(); }
@@ -9353,7 +9353,7 @@ function init() {
   function exRVThreadPanel(ts, other, p) {
     var shared = _exChainReadState.shared || 0;
     var btn = '<div class="exs-grow"></div><button class="btn btn-secondary" style="width:100%" onclick="App.exRVToggle(\'similar\')">See similar exchanges</button>';
-    return exThreadPanelHTML(ts, other, shared, btn);
+    return exThreadPanelHTML(ts, other, shared, btn, "App.exRVToggle('thread')");
   }
   function exRVSimilarPanel(p) {
     var cat = (p.category || '').trim().toLowerCase();
@@ -9599,13 +9599,21 @@ function init() {
       html += '<div style="text-align:center; min-height:40px"><button class="exs-save" id="ex-beat-save" style="display:' + (exBeatChanged() ? 'inline-flex' : 'none') + '" onclick="App.exBeatSaveService()" aria-label="Save change to your service"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Save change to your service</button></div>';
       html += '<div style="height:18px"></div>';
       html += exSayHTML(_exBeat.dir, other, _exBeat.value, 'ex-beat-say');
+      // The proposer can read the other person's device and chain here,
+      // before Send (Michael, Oct 2). Same sheets as the chain read.
+      var bts = exRVTs(); var bsh = exShieldRead(bts);
+      html += '<div style="height:16px"></div>';
+      html += '<div class="exs-icons" style="gap:28px"><button class="exs-icon" onclick="App.exBeatSheet(\'shield\')">' + exShieldSVG(bsh.color, 26) + '<div class="exs-f">' + esc(other) + '\'s device</div></button><button class="exs-icon" onclick="App.exBeatSheet(\'thread\')">' + exThreadSVG(26) + '<div class="exs-f">' + esc(other) + '\'s chain</div></button></div>';
       html += '<div class="exs-grow"></div>';
       html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
       html += '<div class="exs-bottom"><button onclick="App.exRenderBeat(2)">Back</button><button onclick="App.closeExchange()">Not now</button></div>';
     }
+    if (n === 3 && _exBeat.sheet === 'shield') html += exShieldSheetHTML(exRVTs(), "App.exBeatSheet('shield')");
+    if (n === 3 && _exBeat.sheet === 'thread') html += exThreadPanelHTML(exRVTs(), other, _exChainReadState.shared || 0, '', "App.exBeatSheet('thread')");
     host.innerHTML = html;
-    if (n === 3 && !_exBeat.task) { var d = document.getElementById('ex-desc'); if (d) setTimeout(function() { d.focus(); }, 50); }
+    if (n === 3 && !_exBeat.task && !_exBeat.sheet) { var d = document.getElementById('ex-desc'); if (d) setTimeout(function() { d.focus(); }, 50); }
   }
+  function exBeatSheet(which) { _exBeat.sheet = _exBeat.sheet === which ? null : which; exRenderBeat(3); }
   function exBeatPick(dir) {
     _exBeat.dir = dir;
     setDirection(dir);
@@ -12589,7 +12597,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, togglePairPanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatSheet, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, togglePairPanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
