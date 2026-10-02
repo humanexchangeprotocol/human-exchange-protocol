@@ -683,6 +683,8 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-settle-t2 { font-size: 32px; font-weight: 600; line-height: 1.1; animation: exsAppear .4s ease-out 1s both; }
 .exs-settle-t3 { font-size: 15px; color: var(--text-dim); margin-top: 8px; animation: exsAppear .4s ease-out 1.4s both; }
 .exs-settle-btns { width: 100%; animation: exsAppear .4s ease-out 1.9s both; }
+.exs-ended-x { background: var(--text-faint); }
+.exs-ended .exs-settle-btns { animation-delay: .6s; }
 @keyframes exsPop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes exsRipple { from { transform: scale(1); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .exs-settle-check, .exs-settle-check .ring, .exs-settle-check path, .exs-settle-t1, .exs-settle-t2, .exs-settle-t3, .exs-settle-btns { animation: none; stroke-dashoffset: 0; } .exs-settle-check .ring { display: none; } }

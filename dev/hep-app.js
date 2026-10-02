@@ -1555,6 +1555,7 @@ const PAIR_CODE_LENGTH = 4;
     } catch(_) {}
     state.pendingProposal = null;
     localStorage.removeItem('hcp_dev_pending_proposal');
+    exNotifyCancel();
     exStopConnectPoll();
     exFlowActive = false;
     cleanupSession();
@@ -2927,6 +2928,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function startSessionPoll() {
     stopSessionPoll();
+    exPresenceStart();
     _pollBusy = false;
     const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
@@ -2968,6 +2970,9 @@ const PAIR_CODE_LENGTH = 4;
       // Layer 2: Validate response size and state
       var data;
       try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
+      // Presence and cancel (v2.70.0): read before validation, because a
+      // cancelled session carries proposal status 'cancelled'.
+      if (exPresenceRead(data)) return;
       var validation = sessionValidateResponse(data, rawText.length);
       if (!validation.valid) { sessionViolation(validation.reason); return; }
 
@@ -3490,8 +3495,114 @@ const PAIR_CODE_LENGTH = 4;
     }, 4100);
   }
 
+  // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
+  // A light heartbeat runs from connection to the end of the session,
+  // separate from the main poll (which stops at several points, e.g.
+  // while the receiver reads a proposal). It keeps this phone counted
+  // as present on the witness and listens for the other person ending
+  // the exchange. Needs witness v2.7.0; against an older witness the
+  // response carries no presence fields, _exPresenceLive stays false,
+  // and the interim behaviour stays (X on Wait, local-only cancel).
+  // Never awaited on the proposal/confirm path.
+  var _exPresenceTimer = null;
+  var _exPresenceLive = false;   // witness reports presence (v2.7.0+)
+  var _exEndedBy = null;         // set once the other person ended it
+  function exPresenceStart() {
+    if (_exPresenceTimer) return;
+    _exPresenceTimer = setInterval(exPresenceTick, 8000);
+  }
+  function exPresenceStop() {
+    if (_exPresenceTimer) { clearInterval(_exPresenceTimer); _exPresenceTimer = null; }
+  }
+  function exPresenceTick() {
+    if (!sessionCode || _sessionWritten || _exEndedBy) return;
+    var url = getSessionWitnessUrl();
+    if (!url) return;
+    serverFetch(url + '/session/' + sessionCode).then(function(resp) {
+      if (!resp.ok) return null;
+      return resp.json();
+    }).then(function(data) {
+      if (data) exPresenceRead(data);
+    }).catch(function() {});
+  }
+  // Reads the additive v2.7.0 fields. Returns true if the session ended.
+  function exPresenceRead(data) {
+    if (!data || typeof data !== 'object') return false;
+    if (Object.prototype.hasOwnProperty.call(data, 'partner_present') && !_exPresenceLive) {
+      _exPresenceLive = true;
+      exFrameXRefresh();
+    }
+    if (data.cancelled && !data.cancelled.by_me && !_sessionWritten) {
+      exShowEnded(data.cancelled.reason === 'disconnected' ? 'disconnected' : 'cancelled');
+      return true;
+    }
+    return false;
+  }
+  // Tell the witness this phone is ending the exchange, so the other
+  // phone sees the end screen. Fire and forget.
+  function exNotifyCancel() {
+    try {
+      if (!sessionCode || !sessionPartner || _sessionWritten || _exEndedBy) return;
+      var url = getSessionWitnessUrl();
+      if (!url) return;
+      serverFetch(url + '/session/' + sessionCode + '/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'cancelled' })
+      }).catch(function() {});
+    } catch(_) {}
+  }
+  // The other person cancelled or disconnected (Oct 2 ruling 6).
+  function exShowEnded(reason) {
+    if (_exEndedBy) return;
+    _exEndedBy = reason;
+    _exRV.endedName = sessionPartner ? exPartnerName() : (_exRV.other || 'The other person');
+    stopSessionPoll();
+    exPresenceStop();
+    try { stopSnapshotPoll(); } catch(_) {}
+    state.pendingProposal = null;
+    localStorage.removeItem('hcp_dev_pending_proposal');
+    var ov = document.getElementById('exchange-overlay');
+    if (!ov || !ov.classList.contains('active')) {
+      // Not looking at the exchange: say so once and clear up.
+      toast(_exRV.endedName + (reason === 'disconnected' ? ' disconnected from the exchange' : ' cancelled the exchange'));
+      closeExchange();
+      return;
+    }
+    showExStep('rv');
+    exRenderRV('ended');
+  }
+  function exEndedHTML() {
+    var n = esc(_exRV.endedName || 'The other person');
+    var line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
+    var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check exs-ended-x"><svg viewBox="0 0 24 24" width="48" height="48"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>';
+    h += '<div class="exs-t" style="margin-top:22px">' + line + '</div>';
+    h += '<div class="exs-body" style="margin-top:8px; color:var(--text-faint)">Nothing was recorded.</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div>';
+    h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button></div>';
+    h += '</div>';
+    return h;
+  }
+  // Corner X visibility for the current sheet. Hidden on Processing,
+  // Settled and the end screen; hidden on Wait once presence is live
+  // (DESIGN.md 2c: the sender waits).
+  function exFrameXRefresh() {
+    var xb = document.getElementById('exchange-close');
+    if (!xb) return;
+    var rv = document.getElementById('ex-step-rv');
+    var onRV = rv && rv.classList.contains('active');
+    var st = _exRV.state;
+    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || (st === 'wait' && _exPresenceLive));
+    xb.style.visibility = hide ? 'hidden' : '';
+  }
+
   function cleanupSession() {
     stopSessionPoll();
+    exPresenceStop();
+    _exPresenceLive = false;
+    _exEndedBy = null;
     sessionWitnessUrl = null;
     try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false }; } catch(_) {}
     stopSnapshotPoll();
@@ -8302,6 +8413,7 @@ function init() {
 
   function exRejectSAS() {
     toast('Connection failed verification — closing');
+    exNotifyCancel();
     cleanupSession();
     exFlowActive = false;
     closeModal('exchange');
@@ -8989,7 +9101,7 @@ function init() {
     html += '</div>';
     html += '<div class="exs-grow"></div>';
     html += '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Continue</button>';
-    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+    html += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
     if (st.shieldOpen) html += exShieldSheetHTML(ts, 'App.exToggleShieldPop()');
     if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
     container.innerHTML = html;
@@ -9288,12 +9400,12 @@ function init() {
       _exRV.before = HCP.walletBalance(state.chain);
       _exRV.finish = false;
     }
+    if (st === 'ended') { exFrameXRefresh(); host.innerHTML = exEndedHTML(); return; }
     var p = exRVProposal();
     if (!p) return;
     // Processing and Settled (ruled Oct 2, eleventh session) have their
     // own layout: no description header, nothing but the moment.
-    var xb = document.getElementById('exchange-close');
-    if (xb) xb.style.visibility = (st === 'flow' || st === 'done') ? 'hidden' : '';
+    exFrameXRefresh();
     if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
     if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
     // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
@@ -9814,16 +9926,26 @@ function init() {
     else if (v === 'doors') exRenderBeat(1);
     else exBackToTexture();
   }
-  // The header X routes here. Inside the proposal sheet it goes back one
-  // step. Elsewhere it keeps its old behaviour until Batch 2 rewires the
-  // rest of the flow (Start, Join, Verify, chain read, Review).
+  // The header X routes here: back one step, never ending the exchange
+  // except on the first screens (Start, Join, Verify), where there is
+  // no step behind. Ending is Cancel exchange (exCancelExchange).
   function exX() {
     var form = document.getElementById('ex-step-form');
     if (form && form.classList.contains('active')) { exBeatBack(); return; }
     var rv = document.getElementById('ex-step-rv');
-    // Interim: X on Wait leaves to Home with the session alive, as Not
-    // now did. Rule 2c (no X on Wait) lands with server presence.
-    if (rv && rv.classList.contains('active') && _exRV.state === 'wait') { exRVLeaveWait(); return; }
+    if (rv && rv.classList.contains('active')) {
+      // Wait: no exit once the witness reports presence (DESIGN.md 2c);
+      // against an older witness, the interim leave-to-Home stays.
+      if (_exRV.state === 'wait') { if (!_exPresenceLive) exRVLeaveWait(); return; }
+      // Review: back to the chain read with the proposal still waiting.
+      if (_exRV.state === 'review') { exBackToTexture(); return; }
+      if (_exRV.state === 'flow' || _exRV.state === 'done' || _exRV.state === 'ended') return;
+    }
+    // Chain read: back to Verify (ruled). Receiver wait: back to the chain read.
+    var tx = document.getElementById('ex-step-texture');
+    if (tx && tx.classList.contains('active')) { showExStep('verify'); return; }
+    var rw = document.getElementById('ex-step-receiver-wait');
+    if (rw && rw.classList.contains('active')) { exBackToTexture(); return; }
     closeExchange();
   }
   function exBeatPick(dir) {
