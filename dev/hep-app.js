@@ -3507,6 +3507,7 @@ const PAIR_CODE_LENGTH = 4;
   var _exPresenceTimer = null;
   var _exPresenceLive = false;   // witness reports presence (v2.7.0+)
   var _exEndedBy = null;         // set once the other person ended it
+  var _exEndedByMe = false;      // this phone is the one that ended it
   function exPresenceStart() {
     if (_exPresenceTimer) return;
     _exPresenceTimer = setInterval(exPresenceTick, 8000);
@@ -3574,7 +3575,9 @@ const PAIR_CODE_LENGTH = 4;
   }
   function exEndedHTML() {
     var n = esc(_exRV.endedName || 'The other person');
-    var line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
+    var line;
+    if (_exEndedByMe) line = 'You cancelled the exchange';
+    else line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
     var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
     h += '<div class="exs-grow"></div>';
     h += '<div class="exs-settle-check exs-ended-x"><svg viewBox="0 0 24 24" width="48" height="48"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>';
@@ -3603,6 +3606,7 @@ const PAIR_CODE_LENGTH = 4;
     exPresenceStop();
     _exPresenceLive = false;
     _exEndedBy = null;
+    _exEndedByMe = false;
     sessionWitnessUrl = null;
     try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false }; } catch(_) {}
     stopSnapshotPoll();
@@ -9110,6 +9114,7 @@ function init() {
     if (typeof sessionProposal !== 'undefined' && sessionProposal) {
       var crBtn = document.getElementById('ex-cr-continue'); if (crBtn) crBtn.textContent = 'Review proposal';
     }
+    exChainReadXRefresh();
 
     // The shared count needs hashing, so it lands a moment after the
     // first paint. Not on the proposal/confirm path.
@@ -9352,6 +9357,17 @@ function init() {
   function exBackToTexture() {
     showExStep('texture');
     exRenderChainRead();
+  }
+  // Once a proposal is waiting, the receiver's chain read is the floor
+  // (ruled Oct 2, twelfth session): Review proposal or Cancel exchange,
+  // no X, no way back to Verify.
+  function exChainReadIsFloor() {
+    return typeof sessionProposal !== 'undefined' && !!sessionProposal;
+  }
+  function exChainReadXRefresh() {
+    var tx = document.getElementById('ex-step-texture');
+    var xb = document.getElementById('exchange-close');
+    if (tx && xb && tx.classList.contains('active') && exChainReadIsFloor()) xb.style.visibility = 'hidden';
   }
 
   // ===== Screens 7 to 9: review, wait, the flowing number, completion =====
@@ -9793,7 +9809,33 @@ function init() {
   function exCancelHTML() {
     return '<div class="exs-grow"></div><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
   }
-  function exCancelExchange() { closeExchange(); }
+  function exCancelExchange() {
+    // If there is a live partner and nothing is recorded, the canceller
+    // sees the same end screen as the other person (ruled Oct 2,
+    // twelfth session: both sides match), worded "You cancelled". The
+    // notify to the witness still fires from closeExchange on Done.
+    if (sessionPartner && sessionCode && !_sessionWritten && !_exEndedBy) {
+      var ov = document.getElementById('exchange-overlay');
+      if (ov && ov.classList.contains('active')) { exShowEndedLocal('cancelled'); return; }
+    }
+    closeExchange();
+  }
+  // The end screen for the person who ends it (their own cancel or a
+  // disconnect of their own). Mirrors exShowEnded but keeps the session
+  // alive until Done; the witness is told at once.
+  function exShowEndedLocal(reason) {
+    if (_exEndedBy) return;
+    exNotifyCancel();   // tell the other phone now, before the flag blocks it
+    _exEndedByMe = true;
+    _exEndedBy = reason;
+    stopSessionPoll();
+    exPresenceStop();
+    try { stopSnapshotPoll(); } catch(_) {}
+    state.pendingProposal = null;
+    localStorage.removeItem('hcp_dev_pending_proposal');
+    showExStep('rv');
+    exRenderRV('ended');
+  }
   function exFrameHeader() {
     var h = document.getElementById('exchange-header'); if (h) h.textContent = '';
   }
@@ -9943,7 +9985,7 @@ function init() {
     }
     // Chain read: back to Verify (ruled). Receiver wait: back to the chain read.
     var tx = document.getElementById('ex-step-texture');
-    if (tx && tx.classList.contains('active')) { showExStep('verify'); return; }
+    if (tx && tx.classList.contains('active')) { if (exChainReadIsFloor()) return; showExStep('verify'); return; }
     var rw = document.getElementById('ex-step-receiver-wait');
     if (rw && rw.classList.contains('active')) { exBackToTexture(); return; }
     closeExchange();
@@ -10246,6 +10288,7 @@ function init() {
     }
     var crBtn = document.getElementById('ex-cr-continue');
     if (crBtn) crBtn.textContent = 'Review proposal';
+    exChainReadXRefresh();
 
     // Screen 7 (ruled Oct 1): if the confirmer is already past the
     // chain read, show the review now; if they are still on it, the
