@@ -3602,6 +3602,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function cleanupSession() {
+    clearTimeout(_exJoinCheck); _exJoinCheck = null;
     stopSessionPoll();
     exPresenceStop();
     _exPresenceLive = false;
@@ -7861,6 +7862,45 @@ function init() {
     if (s && c) { s.classList.toggle('open'); c.classList.toggle('open'); }
   }
 
+  var _exJoinCheck = null;
+  var EX_JOIN_GRACE_MS = 4000;
+  function exJoinWrongCode() {
+    _exJoinCheck = null;
+    if (exConnectMode !== 'join' || sessionPartner) return;
+    exStopConnectPoll();
+    sessionCode = null; sessionTheirCode = null;
+    var st = document.getElementById('ex-join-status'); if (st) { st.style.display = 'none'; st.innerHTML = ''; }
+    var inp = document.getElementById('ex-join-code');
+    var cells = document.getElementById('ex-join-cells');
+    if (cells) { cells.classList.remove('shake'); void cells.offsetWidth; cells.classList.add('shake'); }
+    setTimeout(function() {
+      if (cells) cells.classList.remove('shake');
+      if (inp) { inp.value = ''; inp._exConnecting = false; exCodeInput(inp); inp.focus(); }
+    }, 450);
+  }
+  function exVerifyWords(name) {
+    var t = document.getElementById('ex-verify-title'), l = document.getElementById('ex-verify-line');
+    if (t) t.textContent = name ? 'Confirm ' + name + ' has this mark' : 'Confirm they have this mark';
+    if (l) l.textContent = name ? 'Ask ' + name + ' if this mark is on their screen.' : 'Ask them if this mark is on their screen.';
+  }
+  // Start screen invite buttons. Interim: they open the existing invite
+  // pipe, which carries its own code; unifying it with the Start code is
+  // an open question for Michael.
+  function exInviteQR() {
+    closeExchange();
+    setTimeout(function() { openInvite(); }, 150);
+  }
+  async function exSendInvite() {
+    closeExchange();
+    openInvite();
+    try { await createInvitePipe('single'); } catch(_) {}
+    var open = loadOpenPipe();
+    if (!open || !open.inviteUrl) return;
+    var msg = 'Join me on the Human Exchange Protocol: ' + open.inviteUrl;
+    if (navigator.share) { navigator.share({ title: 'Human Exchange Protocol', text: msg }).catch(function() {}); }
+    else if (navigator.clipboard) { navigator.clipboard.writeText(open.inviteUrl).then(function() { toast('Invite link copied'); }).catch(function() {}); }
+  }
+
   function exStartProviding() {
     exInitiatorRole = 'provider';
     exBeginStart();
@@ -7893,18 +7933,17 @@ function init() {
     sessionCode = Array.from(bytes).map(b => PAIR_CHARS[b % PAIR_CHARS.length]).join('');
     sessionTheirCode = deriveJoinCode(sessionCode);
 
-    // Screen 2, starter side (ruled Oct 1): the code, one line, a quiet
-    // wait. Nothing to do but hold the phone up. The faint "Have their
-    // code?" line stays as the recovery when both people tapped Start.
-    var html = '<div class="exs-h">Your code</div>';
-    html += '<div class="exs-m">Read it to the other person.</div>';
+    // Start (ruled Oct 2, tenth session): centered, "Your code", the
+    // code at display size, the pulsing wait, and two invite buttons for
+    // someone not in the room. X top right leaves (first screen).
+    var html = '<div class="exs-h" style="text-align:center;">Your code</div>';
     html += '<div style="height:40px"></div>';
     html += '<div class="exs-code">' + esc(sessionCode) + '</div>';
     html += '<div style="height:30px"></div>';
-    html += '<div class="exs-wait"><i></i><span>Waiting for them to enter it</span></div>';
+    html += '<div class="exs-wait"><i></i><span>Waiting for them to join</span></div>';
     html += '<div class="exs-grow"></div>';
-    html += '<div class="exs-f" style="text-align:center; margin-bottom:4px;">Have their code? <span style="color:var(--accent); cursor:pointer;" onclick="App.exSwitchToJoin()">Enter it instead</span></div>';
-    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.exInviteQR()">Invite QR</button>';
+    html += '<button class="btn btn-secondary" style="width:100%; margin-top:8px;" onclick="App.exSendInvite()">Send invite</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
 
     // Post to server immediately
@@ -7948,8 +7987,8 @@ function init() {
     // fourth character connects by itself, no Connect button. "Scan
     // their code instead" is ruled but needs a camera scanner the app
     // does not have yet; it lands in its own build cycle.
-    var html = '<div class="exs-h">Enter their code</div>';
-    html += '<div class="exs-m">The four characters on their screen.</div>';
+    var html = '<div class="exs-h" style="text-align:center;">Join</div>';
+    html += '<div class="exs-m" style="text-align:center;">The four characters on their screen.</div>';
     html += '<div style="height:30px"></div>';
     html += '<div class="exs-cells" id="ex-join-cells">';
     for (var ci = 0; ci < 4; ci++) html += '<div class="exs-cell empty" id="ex-join-cell-' + ci + '">&middot;</div>';
@@ -7958,7 +7997,6 @@ function init() {
     html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
     html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
     html += '<div class="exs-grow"></div>';
-    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
     setTimeout(function() {
       var inp = document.getElementById('ex-join-code');
@@ -8058,6 +8096,13 @@ function init() {
         }
         exStartConnectPoll();
         sessionSetState('awaiting_connection');
+        // A wrong Join code (ruled Oct 2): the starter registers before
+        // anyone can read the code, so a code that finds no one within a
+        // short grace is wrong. Shake, clear, stay on Join.
+        if (exConnectMode === 'join') {
+          clearTimeout(_exJoinCheck);
+          _exJoinCheck = setTimeout(exJoinWrongCode, EX_JOIN_GRACE_MS);
+        }
       }
     } catch(e) {
       console.error('[ex-flow] Connect error:', e);
@@ -8120,6 +8165,7 @@ function init() {
   }
 
   async function exOnConnected() {
+    clearTimeout(_exJoinCheck); _exJoinCheck = null;
     if (!sessionPartner) return;
     sessionSetState('connected');
 
@@ -8251,6 +8297,7 @@ function init() {
     // Show verify step: name + 2-char SAS code
     document.getElementById('ex-verify-avatar').textContent = partnerInitial;
     document.getElementById('ex-verify-name').textContent = partnerName;
+    exVerifyWords(partnerName === 'Connected' ? '' : partnerName);
     document.getElementById('ex-sas-code').textContent = sasResult.code;
     showExStep('verify');
 
@@ -8262,6 +8309,7 @@ function init() {
           var nameEl = document.getElementById('ex-verify-name');
           var avatarEl = document.getElementById('ex-verify-avatar');
           if (nameEl) nameEl.textContent = decrypted._name;
+          exVerifyWords(decrypted._name);
           if (avatarEl) avatarEl.textContent = decrypted._name.charAt(0).toUpperCase();
         }
         // If the user already confirmed SAS and the Review screen is
@@ -10721,7 +10769,7 @@ function init() {
     h += bar('Produced', totalP, 'var(--accent)');
     h += bar('Received', totalR, '#B5742A');
     h += '<div style="font-size:var(--fs-md); color:var(--text); margin-top:14px; line-height:1.5;">' + esc(exPairSentence(totalP, totalR)) + '</div>';
-    if (!totalP && !totalR) h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:6px;">Tap the + button below to start one.</div>';
+    if (!totalP && !totalR) h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:6px;">Tap Start below to begin one.</div>';
     h += '<button style="background:none; border:none; padding:10px 0 0; color:var(--accent); font-size:var(--fs-sm); cursor:pointer; font-family:inherit;" onclick="App.togglePairPanel()">How this is drawn' + (_pairPanelOpen ? ' \u2212' : ' +') + '</button>';
     if (_pairPanelOpen) {
       h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:8px; border-top:1px solid var(--border); padding-top:10px;">';
@@ -13095,7 +13143,7 @@ function init() {
     addSkill, removeSkill, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exX, exCancelExchange, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

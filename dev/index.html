@@ -86,7 +86,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .tab-bar-item .tab-label { font-size: 11px; font-weight: 500; letter-spacing: 0.2px; }
 .tab-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; }
 .tab-content.active { display: block; }
-.tab-content-inner { padding: 0 20px 80px; }
+.tab-content-inner { padding: 0 20px 150px; }
 
 /* === FAB (Floating Action Button) === */
 .fab-bar { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; z-index: 99; display: flex; gap: 12px; align-items: center; }
@@ -628,6 +628,14 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-cell { width: 54px; height: 64px; border: 2px solid var(--border); border-radius: 10px; background: var(--bg-raised); font-family: var(--font-mono); font-size: 30px; font-weight: 600; color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .exs-cell.on { border-color: var(--accent); }
 .exs-cell.empty { color: var(--text-faint); }
+.doors-strip { position: fixed; left: 0; right: 0; bottom: calc(57px + var(--safe-bottom)); z-index: 99; display: flex; gap: 10px; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--border); }
+.doors-strip .btn { flex: 1; width: auto; padding: 13px; font-size: 17px; margin: 0; }
+.doors-strip .btn + .btn { margin-top: 0; }
+@keyframes exsShake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-9px); } 40%,80% { transform: translateX(9px); } }
+.exs-cells.shake { animation: exsShake .4s ease; }
+.exs-cells.shake .exs-cell { border-color: var(--amber, #c8862a); }
+.exs-mark, .exs-mark span { display: inline-flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 600; color: var(--accent) !important; letter-spacing: 2px; }
+.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-cells input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; font-size: 30px; border: none; background: none; }
 .exs-wait { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--text-faint); }
 .exs-wait i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
@@ -906,7 +914,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .paste-section.visible { display: block; }
 
 /* === TOAST === */
-.toast { position: fixed; bottom: calc(80px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px); opacity: 0; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 24px; font-size: 14px; z-index: 200; transition: transform 0.3s ease, opacity 0.3s ease; pointer-events: none; white-space: nowrap; }
+.toast { position: fixed; bottom: calc(150px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px); opacity: 0; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 24px; font-size: 14px; z-index: 200; transition: transform 0.3s ease, opacity 0.3s ease; pointer-events: none; white-space: nowrap; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
 @media (min-width: 481px) {
@@ -1393,14 +1401,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="tab-content-inner" id="tab-settings-content"></div>
   </div>
 
-  <!-- FAB: Exchange action buttons -->
-  <div class="fab-bar" id="fab-bar">
-    <button class="fab-btn fab-btn-use" onclick="App.fabUse()" aria-label="Reuse previous exchange">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-    </button>
-    <button class="fab-btn fab-btn-new" onclick="App.fabNew()" aria-label="New exchange">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
+  <!-- Home doors strip (ruled Oct 2, twelfth session): two equal
+       buttons just above the tab bar, always there on the main tabs.
+       Replaces the floating plus and recycle buttons. -->
+  <div class="doors-strip" id="doors-strip">
+    <button class="btn btn-primary" onclick="App.exStartProviding()">Start</button>
+    <button class="btn btn-primary" onclick="App.exJoinExchange()">Join</button>
   </div>
 
   <!-- Tab bar -->
@@ -1552,18 +1558,20 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
            hs-step is reused by exConfirmSAS for the chain read until
            cycle 2 gives that its own screen. -->
       <div class="hs-step exs" id="ex-step-verify">
-        <div class="connect-partner" id="ex-verify-partner" style="display:flex; justify-content:center; flex-direction:column; align-items:center; padding:24px 0 0; text-align:center;">
-          <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:10px;">?</div>
-          <div class="cp-name exs-h" id="ex-verify-name" style="margin-bottom:22px;">Connected</div>
-          <div class="sas-badge" style="margin:0;">
-            <span class="sas-lock"><svg class="icon icon-md"><use href="#icon-lock"/></svg></span>
-            <span class="sas-code" id="ex-sas-code" style="font-size:26px; letter-spacing:6px;">--</span>
-          </div>
-          <div class="exs-f" style="margin-top:8px;">Check this matches their screen</div>
-          <button class="btn btn-primary" style="margin-top:30px; width:100%;" onclick="App.exConfirmSAS()">It matches</button>
+        <!-- Screen 3, Verify (ruled Oct 2, tenth session): centered;
+             "Confirm Priya has this mark"; the two-character mark with a
+             lock in the regular font (a mark, not a code); It matches at
+             the bottom; quiet Not the right person. -->
+        <div class="connect-partner" id="ex-verify-partner" style="background:none; border:none; margin-bottom:0; display:flex; justify-content:center; flex-direction:column; align-items:center; padding:24px 0 0; text-align:center;">
+          <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:14px;">?</div>
+          <div class="exs-h" id="ex-verify-title" style="margin-bottom:6px;">Confirm they have this mark</div>
+          <div class="exs-m" id="ex-verify-line" style="margin-bottom:28px;">Ask them if this mark is on their screen.</div>
+          <div class="exs-mark"><svg class="icon"><use href="#icon-lock"/></svg><span id="ex-sas-code">--</span></div>
+          <span id="ex-verify-name" style="display:none;">Connected</span>
         </div>
         <div class="exs-grow" id="ex-verify-grow"></div>
-        <button class="exs-quiet" id="ex-verify-reject" onclick="App.exRejectSAS()">Not the right person?</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="App.exConfirmSAS()">It matches</button>
+        <button class="exs-quiet" id="ex-verify-reject" onclick="App.exRejectSAS()">Not the right person</button>
       </div>
 
       <!-- STEP 3: Texture review -->
