@@ -9291,19 +9291,35 @@ function init() {
     var standing = (typeof opts.standing === 'number') ? opts.standing : HCP.walletBalance(state.chain);
     var sp = exStandingParts(standing);
     var html = '';
-    var head = st === 'review' ? esc(other) + ' proposes' : st === 'wait' ? 'Your proposal' : st === 'declined' ? esc(other) + ' did not confirm' : st === 'done' ? 'Exchange complete' : '&nbsp;';
+    var head = st === 'review' ? esc(other) + ' proposes' : st === 'wait' ? 'Your proposal' : st === 'declined' ? esc(other) + ' did not confirm' : st === 'done' ? 'Exchange complete' : 'Recording';
     html += '<div class="exs-m" style="margin:0; text-align:center">' + head + '</div>';
     html += '<div style="height:6px"></div>';
     html += '<div class="exs-h" style="font-size:22px; text-align:center">' + esc(p.task) + '</div>';
     if (meta) html += '<div class="exs-f" style="margin-top:4px; text-align:center">' + esc(meta) + '</div>';
     html += '<div style="height:18px"></div>';
-    html += exSayHTML(p.myDirection, other, p.value, 'ex-rv-say');
-    html += '<div style="height:18px"></div>';
-    // the holder's own number, the thing that moves
-    html += '<div class="exs-own"><div class="lab" id="ex-rv-lab">Your ' + sp.lab.toLowerCase() + '</div><div class="num' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div></div>';
-    if (st !== 'done' && st !== 'flow') {
-      html += '<div style="height:16px"></div>';
-      html += '<div class="exs-icons" style="gap:28px"><button class="exs-icon" onclick="App.exRVToggle(\'shield\')">' + exShieldSVG(sh.color, 26) + '<div class="exs-f">' + esc(other) + '\'s device</div></button><button class="exs-icon" onclick="App.exRVToggle(\'thread\')">' + exThreadSVG(26) + '<div class="exs-f">' + esc(other) + '\'s chain</div></button></div>';
+    if (st === 'flow' || st === 'done') {
+      // Completion (Michael, Oct 2): the other person's circle, the
+      // arrow carrying the amount from them to you (or from you to
+      // them), your number winding, then the check and the sentence.
+      var down = p.myDirection === 'provided';
+      var av = function(ch, lift) { return '<div class="exs-av" style="width:56px; height:56px; font-size:22px;' + (lift ? ' background:var(--accent); color:#fff; border-color:var(--accent);' : '') + '">' + esc(exInitial(ch)) + '</div>'; };
+      html += '<div class="exs-flow' + (st === 'done' ? ' done' : '') + '">';
+      html += '<div class="exs-person">' + av(other, false) + '<div class="exs-n">' + esc(other) + '</div></div>';
+      html += '<div class="exs-arrowrow"><svg class="exs-varrow' + (down ? '' : ' up') + '" width="24" height="62" viewBox="0 0 24 62"><path class="shaft" d="' + (down ? 'M12 4v50' : 'M12 58V8') + '"/><polygon class="head" points="' + (down ? '5,48 12,58 19,48' : '5,14 12,4 19,14') + '"/></svg><div class="exs-ride">' + p.value.toLocaleString() + '</div></div>';
+      html += '<div class="exs-person">' + av(state.declarations.name || 'You', true) + '<div class="exs-own"><div class="lab" id="ex-rv-lab">Your ' + sp.lab.toLowerCase() + '</div><div class="num big' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div><div class="exs-f" id="ex-rv-from">' + (st === 'done' && _exRV.fromLine ? esc(_exRV.fromLine) : '&nbsp;') + '</div></div></div>';
+      html += '</div>';
+    } else {
+      html += exSayHTML(p.myDirection, other, p.value, 'ex-rv-say');
+      html += '<div style="height:18px"></div>';
+      // the holder's own number, the thing that moves
+      html += '<div class="exs-own"><div class="lab" id="ex-rv-lab">Your ' + sp.lab.toLowerCase() + '</div><div class="num' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div></div>';
+      if (st === 'review') {
+        // The receiver reads the proposal and the chain together. The
+        // provider already read the chain before the beats, so the wait
+        // screen carries no icons (Michael, Oct 2).
+        html += '<div style="height:16px"></div>';
+        html += '<div class="exs-icons" style="gap:28px"><button class="exs-icon" onclick="App.exRVToggle(\'shield\')">' + exShieldSVG(sh.color, 26) + '<div class="exs-f">' + esc(other) + '\'s device</div></button><button class="exs-icon" onclick="App.exRVToggle(\'thread\')">' + exThreadSVG(26) + '<div class="exs-f">' + esc(other) + '\'s chain</div></button></div>';
+      }
     }
     html += '<div class="exs-grow"></div>';
     if (st === 'review') {
@@ -9314,12 +9330,12 @@ function init() {
       html += '<div style="height:10px"></div>';
       html += '<button class="exs-quiet" onclick="App.exRVLeaveWait()">Not now</button>';
     } else if (st === 'flow') {
-      html += '<div class="exs-wait"><i></i><span>Recording</span></div><div style="height:10px"></div><div class="exs-quiet">&nbsp;</div>';
+      html += '<div class="exs-check" style="visibility:hidden"></div><div class="exs-m" style="margin-top:12px">&nbsp;</div><div style="height:18px"></div><div class="btn btn-primary" style="width:100%; visibility:hidden">Done</div>';
     } else if (st === 'done') {
-      html += '<div class="exs-check"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
-      html += '<div class="exs-m" style="text-align:center; margin-top:12px; font-size:14px">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
+      html += '<div class="exs-check exs-in"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+      html += '<div class="exs-m exs-in" style="text-align:center; margin-top:12px; font-size:14px">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
       html += '<div style="height:18px"></div>';
-      html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button>';
+      html += '<button class="btn btn-primary exs-in" style="width:100%;" onclick="App.exRVDone()">Done</button>';
     } else if (st === 'declined') {
       html += '<div class="exs-m" style="text-align:center">Nothing was recorded. You can talk it over and try again.</div>';
       html += '<div style="height:10px"></div>';
@@ -9425,22 +9441,32 @@ function init() {
       else sentence += ', from your cosmic share.';
     }
     _exRV.sentence = sentence;
+    var bp = exStandingParts(before);
+    _exRV.fromLine = (after >= before ? 'up from ' : 'down from ') + (bp.amb ? 'a cosmic share of ' : 'a currency of ') + bp.num;
     _exRV.finish = true;
     _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
     exRenderRV('flow', { standing: before });
     var num = document.getElementById('ex-rv-num'), lab = document.getElementById('ex-rv-lab');
     var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
-    var dur = reduce ? 0 : 2200, t0 = performance.now();
-    function step(t) {
-      var k = dur ? Math.min(1, (t - t0) / dur) : 1;
-      var e = 1 - Math.pow(1 - k, 3);
-      var sp = exStandingParts(before + (after - before) * e);
-      if (num) { num.textContent = sp.num; num.classList.toggle('amb', sp.amb); }
-      if (lab) lab.textContent = 'Your ' + sp.lab.toLowerCase();
-      if (k < 1) requestAnimationFrame(step);
-      else setTimeout(function() { exRenderRV('done', { standing: after, sentence: sentence }); }, 500);
-    }
-    requestAnimationFrame(step);
+    var lead = reduce ? 0 : 1100, dur = reduce ? 0 : 1800;
+    // The arrow draws and the amount rides along it (CSS), then the
+    // number winds and swells as it lands, then the check appears.
+    setTimeout(function() {
+      var t0 = performance.now();
+      function step(t) {
+        var k = dur ? Math.min(1, (t - t0) / dur) : 1;
+        var e = 1 - Math.pow(1 - k, 3);
+        var sp = exStandingParts(before + (after - before) * e);
+        if (num) { num.textContent = sp.num; num.classList.toggle('amb', sp.amb); }
+        if (lab) lab.textContent = 'Your ' + sp.lab.toLowerCase();
+        if (k < 1) requestAnimationFrame(step);
+        else {
+          if (num) num.classList.add('land');
+          setTimeout(function() { exRenderRV('done', { standing: after, sentence: sentence }); }, reduce ? 100 : 700);
+        }
+      }
+      requestAnimationFrame(step);
+    }, lead);
     return true;
   }
 
@@ -9567,7 +9593,10 @@ function init() {
       html += '<input class="exs-field c" id="ex-meta" style="font-size:13px; margin-top:4px;" placeholder="kind of work, how long" value="' + esc(_exBeat.meta) + '" oninput="App.exBeatField(\'meta\', this.value)">';
       html += '<div style="height:16px"></div>';
       html += '<div class="exs-valc"><input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" size="' + Math.max(3, String(_exBeat.value).length + 1) + '" oninput="App.exBeatField(\'value\', this.value); this.size = Math.max(3, this.value.length + 1);"><small>currency</small></div>';
-      if (_exBeat.dir === 'provided') html += '<div style="text-align:center"><button class="exs-link" id="ex-beat-save" onclick="App.exBeatSaveService()">Save as a service you offer</button></div>';
+      // Save shows only when an existing item was picked and changed
+      // (Michael, Oct 2); a new act needs nothing, it will be a past
+      // exchange once the exchange completes.
+      html += '<div style="text-align:center; min-height:40px"><button class="exs-save" id="ex-beat-save" style="display:' + (exBeatChanged() ? 'inline-flex' : 'none') + '" onclick="App.exBeatSaveService()" aria-label="Save change to your service"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Save change to your service</button></div>';
       html += '<div style="height:18px"></div>';
       html += exSayHTML(_exBeat.dir, other, _exBeat.value, 'ex-beat-say');
       html += '<div class="exs-grow"></div>';
@@ -9583,17 +9612,24 @@ function init() {
     exRenderBeat(1);
   }
   function exBeatDoor(kind) { exRenderBeat(2, kind); }
-  function exBeatNew() { _exBeat.task = ''; _exBeat.meta = ''; _exBeat.value = ''; exRenderBeat(3); }
+  function exBeatNew() { _exBeat.task = ''; _exBeat.meta = ''; _exBeat.value = ''; _exBeat.picked = null; exRenderBeat(3); }
   function exBeatPickItem(kind, i) {
     var it = _exBeat.list && _exBeat.list[i]; if (!it) return;
     _exBeat.task = it.description || '';
     _exBeat.meta = kind === 'services' ? (it.meta || '') : exMetaLine(it.category, it.duration);
     _exBeat.value = it.value || '';
+    _exBeat.picked = { kind: kind, description: _exBeat.task, meta: _exBeat.meta, value: _exBeat.value };
     exRenderBeat(3);
+  }
+  function exBeatChanged() {
+    var pk = _exBeat.picked;
+    if (!pk || _exBeat.dir !== 'provided') return false;
+    return (_exBeat.task || '').trim() !== (pk.description || '').trim() || (_exBeat.meta || '').trim() !== (pk.meta || '').trim() || String(_exBeat.value || '') !== String(pk.value || '');
   }
   function exBeatField(k, v) {
     _exBeat[k] = v;
     if (k === 'value') { var a = document.querySelector('#ex-beat-say [data-say-amt]'); if (a) a.textContent = (Number(v) || 0).toLocaleString(); }
+    var sv = document.getElementById('ex-beat-save'); if (sv) sv.style.display = exBeatChanged() ? 'inline-flex' : 'none';
   }
   // One free-text line holds kind of work and duration, split at the
   // first comma (accepted tradeoff in the ruling: looser matching).
@@ -9621,6 +9657,8 @@ function init() {
     var entry = { description: _exBeat.task.trim(), meta: (_exBeat.meta || '').trim(), value: parseFloat(_exBeat.value) || 0 };
     if (existing) Object.assign(existing, entry); else list.push(entry);
     save();
+    _exBeat.picked = { kind: 'services', description: entry.description, meta: entry.meta, value: entry.value };
+    var sv = document.getElementById('ex-beat-save'); if (sv) sv.style.display = 'none';
     toast(existing ? 'Service updated' : 'Saved to services you offer');
   }
 

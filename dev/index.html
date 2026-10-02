@@ -657,6 +657,25 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .exs-valc input { border: none; border-bottom: 1px solid var(--border); background: none; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); padding: 4px 0; outline: none; text-align: center; min-width: 3ch; max-width: 60%; }
 .exs-valc input:focus { border-bottom-color: var(--accent); }
 .exs-valc small { font-size: 13px; color: var(--text-faint); }
+.exs-save { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg-raised); border-radius: 20px; padding: 8px 14px; min-height: 36px; color: var(--text-dim); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 4px; }
+/* the completion: other person, the arrow carrying the amount, you */
+.exs-flow { display: flex; flex-direction: column; align-items: center; }
+.exs-person { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.exs-person .exs-av { width: 56px; height: 56px; border-radius: 50%; background: var(--bg-input); border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text-dim); }
+.exs-arrowrow { display: flex; align-items: center; justify-content: center; gap: 14px; height: 70px; margin: 4px 0; }
+.exs-varrow .shaft { stroke: var(--accent); stroke-width: 3; fill: none; stroke-linecap: round; stroke-dasharray: 60; stroke-dashoffset: 60; animation: exsDraw 0.7s ease-out 0.15s forwards; }
+.exs-varrow .head { fill: var(--accent); opacity: 0; animation: exsAppear 0.2s ease-out 0.8s forwards; }
+.exs-ride { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--accent); opacity: 0; animation: exsRide 0.9s ease-in-out 0.2s forwards; }
+.exs-varrow.up + .exs-ride { animation-name: exsRideUp; }
+.exs-flow.done .exs-varrow .shaft, .exs-flow.done .exs-varrow .head, .exs-flow.done .exs-ride { animation: none; stroke-dashoffset: 0; opacity: 1; transform: none; }
+.exs-own .num.big { font-size: 40px; line-height: 1; transition: transform 0.25s ease-out; }
+.exs-own .num.land { animation: exsLand 0.5s ease-out; }
+.exs-in { animation: exsAppear 0.4s ease-out; }
+@keyframes exsDraw { to { stroke-dashoffset: 0; } }
+@keyframes exsAppear { from { opacity: 0; } to { opacity: 1; } }
+@keyframes exsRide { 0% { opacity: 0; transform: translateY(-26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(26px); } }
+@keyframes exsRideUp { 0% { opacity: 0; transform: translateY(26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(-26px); } }
+@keyframes exsLand { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
 .exs-field.c { text-align: center; }
 .exs-box { width: 104px; padding: 12px 8px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-raised); text-align: center; cursor: pointer; font-family: inherit; }
 .exs-box.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
