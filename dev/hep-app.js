@@ -1539,7 +1539,15 @@ const PAIR_CODE_LENGTH = 4;
     renderSkillPicker();
   }
 
+  // Once the pipe exists (a partner is connected), nothing is recorded
+  // and nobody has ended it yet, every exit is a cancel and shows the
+  // end screen on both phones (ruled Oct 2, twelfth session). Before
+  // the pipe exists there is nothing to cancel and the exit just closes.
+  function exPipeOpen() {
+    return !!(sessionPartner && sessionCode && !_sessionWritten && !_exEndedBy);
+  }
   function closeExchange() {
+    if (exPipeOpen()) { exShowEndedLocal('cancelled'); return; }
     var wasDone = _sessionWritten || (state.doneSummary && state.doneSummary.length > 0);
     // Invite pipeline: backing out of a pipe-born connection marks the
     // redeemed record dismissed so foreground re-checks stop reopening
@@ -3563,13 +3571,9 @@ const PAIR_CODE_LENGTH = 4;
     try { stopSnapshotPoll(); } catch(_) {}
     state.pendingProposal = null;
     localStorage.removeItem('hcp_dev_pending_proposal');
-    var ov = document.getElementById('exchange-overlay');
-    if (!ov || !ov.classList.contains('active')) {
-      // Not looking at the exchange: say so once and clear up.
-      toast(_exRV.endedName + (reason === 'disconnected' ? ' disconnected from the exchange' : ' cancelled the exchange'));
-      closeExchange();
-      return;
-    }
+    // Even if they have stepped away to another screen, the end screen
+    // opens over it: once piped, both sides must know where they stand.
+    exEnsureOverlay();
     showExStep('rv');
     exRenderRV('ended');
   }
@@ -8168,6 +8172,9 @@ function init() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
     if (!sessionPartner) return;
     sessionSetState('connected');
+    // The pipe exists from here, so listen for the other side ending it
+    // from here too, not only once Verify is confirmed (ruled Oct 2).
+    try { exPresenceStart(); } catch(_) {}
 
     // Derive ECDH shared key for encrypted relay
     try {
@@ -8464,11 +8471,7 @@ function init() {
   }
 
   function exRejectSAS() {
-    toast('Connection failed verification — closing');
-    exNotifyCancel();
-    cleanupSession();
-    exFlowActive = false;
-    closeModal('exchange');
+    closeExchange();   // piped: shows the end screen and tells the other phone
   }
 
   // =====================================================
@@ -9862,10 +9865,6 @@ function init() {
     // sees the same end screen as the other person (ruled Oct 2,
     // twelfth session: both sides match), worded "You cancelled". The
     // notify to the witness still fires from closeExchange on Done.
-    if (sessionPartner && sessionCode && !_sessionWritten && !_exEndedBy) {
-      var ov = document.getElementById('exchange-overlay');
-      if (ov && ov.classList.contains('active')) { exShowEndedLocal('cancelled'); return; }
-    }
     closeExchange();
   }
   // The end screen for the person who ends it (their own cancel or a
@@ -9881,8 +9880,13 @@ function init() {
     try { stopSnapshotPoll(); } catch(_) {}
     state.pendingProposal = null;
     localStorage.removeItem('hcp_dev_pending_proposal');
+    exEnsureOverlay();
     showExStep('rv');
     exRenderRV('ended');
+  }
+  function exEnsureOverlay() {
+    var ov = document.getElementById('exchange-overlay');
+    if (ov && !ov.classList.contains('active')) { exFlowActive = true; showModal('exchange'); }
   }
   function exFrameHeader() {
     var h = document.getElementById('exchange-header'); if (h) h.textContent = '';
