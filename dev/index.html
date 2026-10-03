@@ -1221,7 +1221,9 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       An ancient practice, with a modern memory.
     </div>
     <button class="btn btn-primary" onclick="App.goToInstallOrPin()">Get Started</button>
-    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous chain? Import here</button></div>
+    <!-- v2.97.0 (Michael, Oct 3): bringing in an existing chain is a first-class choice on first open, not a small link -->
+    <button class="btn btn-secondary" style="margin-top:12px;" onclick="App.importBackup()">I have a backup</button>
+    <div style="margin-top:8px; text-align:center; font-size:13px; color:var(--text-faint); line-height:1.5;">Used HEP before, on another phone or in the browser? Bring your chain in now.</div>
   </div>
 
   <!-- INSTALL FIRST (any installable platform) -->
