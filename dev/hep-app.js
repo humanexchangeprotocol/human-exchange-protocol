@@ -5308,8 +5308,12 @@ const PAIR_CODE_LENGTH = 4;
     renderSkillsList('edit');
     renderEduList();
     var body = document.querySelector('#declarations-overlay .modal-body'); if (body) body.scrollTop = 0;
+    dcCloseCV();
     showModal('declarations');
   }
+  // v2.85.0: "How this is different from a CV", a reading sheet over About you (rules 2, 9). X returns to the edit sheet with the draft untouched.
+  function dcOpenCV() { var el = document.getElementById('dc-sheet-cv'); if (el) { el.hidden = false; el.scrollTop = 0; } }
+  function dcCloseCV() { var el = document.getElementById('dc-sheet-cv'); if (el) el.hidden = true; }
   function closeDeclarationsEdit() {
     _declDraft = null;
     closeModal('declarations');
@@ -13454,7 +13458,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, dcOpenCV, dcCloseCV, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
