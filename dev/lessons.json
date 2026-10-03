@@ -112,8 +112,8 @@
      }
     },
     {
-     "title": "A record, not a coin",
-     "body": "No coin or token passes between you. The person who provided gains currency, the running total of what they have produced. The person who received gains cosmic share, the running total of what they have received. Value is transferred; nothing is handed over.",
+     "title": "What each of you gains",
+     "body": "The person who provided gains currency, the running total of what they have produced. The person who received gains cosmic share, the running total of what they have received.",
      "fig": {
       "t": "pair",
       "s": 2
@@ -121,7 +121,7 @@
     },
     {
      "title": "It belongs to you",
-     "body": "Your record lives on your phone. No company holds it, nobody can take it from you, and nobody can spend it, not even you. It is a memory of what you have done with other people."
+     "body": "Your record lives on your phone, and no company holds it. It is a memory of what you have done with other people."
     }
    ]
   },
@@ -299,7 +299,7 @@
     },
     {
      "title": "It stays",
-     "body": "The record cannot be changed, moved, or spent. It is a shared fact between two people, kept by both of them."
+     "body": "Once both of you sign, the record cannot be changed. It is a shared fact between two people, kept by both of them."
     }
    ]
   },
