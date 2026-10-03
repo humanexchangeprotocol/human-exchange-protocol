@@ -20,7 +20,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 5. Five sizes, no others: caption 12, label 13, body 15, title 18, display 32 (`--fs-caption` to `--fs-display`). A number that is the moment (an agreed value, a standing) may use display.
 6. Two weights: regular and semibold. Mono is for keys and hashes only.
 7. Center for moments, left for reading. A question, a name, a number, a one-line sentence may be centered. Anything a person reads as prose, any list, and anything that wraps past two lines is left-aligned. Centered and left-aligned text never share a screen; reading lives in a reading sheet.
-8. The unit beside a number is the HEP mark, small and muted, never a coin or a money glyph. Words for the totals (ruled Oct 2): currency is the running total of what you have produced, cosmic share the running total of what you have received, standing the difference. A standing is shown unsigned with "above" or "below" ("2,000 below"), never a minus sign, never red.
+8. The unit beside a number is the HEP mark, two overlapping circles (ruled Oct 2), small and muted, never a coin or a money glyph. Words for the totals (ruled Oct 2): currency is the running total of what you have produced, cosmic share the running total of what you have received, standing the difference. A standing is shown unsigned with "above" or "below" ("2,000 below"), never a minus sign, never red.
 
 ## Disclosure
 
@@ -50,4 +50,5 @@ A design question these rules do not answer is written here when it comes up, ru
 - Segmented controls (Actual / Typical, Each / Week / Month / Year on the textures): no rule yet. The mockup uses a quiet pill row on `--bg-input`.
 - Charts (line weights, fills, axis labels, bar strips): no rule yet beyond rule 16's colours.
 - Where Reach is turned on. Ruled off by default, own phone only; the mockup shows it as already on. The switch has no home yet.
+- The My chain icon on Home: Michael wants a wallet holding the HEP mark, with no circle around it (Oct 2). Three options drawn (scaffolding/hep-wallet-icon-options.html). Rule 15 asks for a word beside every icon except X and chevron; the Home icon has none today.
 - The word for standing in the wallet: "Standing" is in use; whether it is final is open.
