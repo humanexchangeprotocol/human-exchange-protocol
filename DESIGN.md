@@ -35,7 +35,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 ## Icons
 
-14. One icon style, the bottom bar's (ruled Oct 2: every icon matches the system already built). Icons sit on a 24 grid and are solid: shapes filled with the current colour. Shapes that overlap are filled at 0.55 so the overlap reads darker (the HEP mark, Share, network). A line, where a shape needs one, is 2.5 wide with round ends and joins (3 for check). No thin outline icons, no emoji. A small named set defined once in the sprite and reused by name.
+14. One icon style, the bottom bar's (ruled Oct 2: every icon matches the system already built). Icons sit on a 24 grid and are solid: shapes filled with the current colour. Shapes that overlap are filled at 0.55 so the overlap reads darker (the HEP mark, Share, network). A line, where a shape needs one, is 2.5 wide with round ends and joins (3 for check). No thin outline icons, no emoji. Outline icons (like History) leave their inside white so anything inside reads crisply. Icons rest in the faint tone at 22px, the bottom bar's tone and size, and turn blue when active; none sits darker than the bar. A small named set defined once in the sprite and reused by name.
 15. An icon never carries meaning alone except X and chevron. Every other icon has a word beside it.
 
 ## Color and shape
