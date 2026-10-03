@@ -20,6 +20,8 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 5. Five sizes, no others: caption 12, label 13, body 15, title 18, display 32 (`--fs-caption` to `--fs-display`). A number that is the moment (an agreed value, a standing) may use display.
 6. Two weights: regular and semibold. Mono is for keys and hashes only.
 7. Center for moments, left for reading. A question, a name, a number, a one-line sentence may be centered. Anything a person reads as prose, any list, and anything that wraps past two lines is left-aligned. Centered and left-aligned text never share a screen; reading lives in a reading sheet.
+7a. One exception (ruled Oct 3): on a screen about one person, the person block (photo, name, caption, and an Edit control under it) may sit centred above a left-aligned reading list. Nothing else on that screen is centred.
+7b. A reading screen groups its rows under captions ("Your texture", "Your record", "This phone"), the same caption that groups a sheet's numbers.
 8. The unit beside a number is the HEP mark, two overlapping circles (ruled Oct 2), small and muted, never a coin or a money glyph. Words for the totals (ruled Oct 2): currency is the running total of what you have produced, cosmic share the running total of what you have received, standing the difference. A standing is shown unsigned with "above" or "below" ("2,000 below"), never a minus sign, never red.
 
 ## Disclosure
