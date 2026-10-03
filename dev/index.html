@@ -2233,13 +2233,21 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <div class="exs-fl"><label for="edit-name">Name</label><input class="exs-box-in" type="text" id="edit-name" placeholder="What should people call you?"></div>
       <div class="exs-fl"><label for="edit-about">About</label><textarea class="exs-box-in dc-area" id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea></div>
       <div class="exs-cap mc-group">Skills and qualifications</div>
-      <p class="exs-lab dc-help">Anything that helps people understand what you bring: books you have read, courses you have taken, degrees, mentoring you received, self-study. Describe yourself truthfully, the way you want to be known.</p>
+      <p class="exs-lab dc-help">What you can do for others: trades, crafts, services, licenses, certificates.</p>
       <div id="edit-skills-list"></div>
       <div class="dc-addrow">
-        <input class="exs-box-in" type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, read Schumacher, self-taught welder" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
+        <input class="exs-box-in" type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, carpentry, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
         <button class="dc-add" onclick="App.addSkill('edit')">Add</button>
       </div>
-      <p class="exs-cap dc-note">Your photo helps show you are a real person. It stays on this phone.</p>
+      <div class="exs-cap mc-group">Education</div>
+      <p class="exs-lab dc-help">What has shaped what you know: degrees, courses, books you have read, mentoring you received, self-study.</p>
+      <div id="edit-edu-list"></div>
+      <div class="dc-addrow">
+        <input class="exs-box-in" type="text" id="edit-edu-input" placeholder="e.g. BA in history, read Schumacher, apprenticed to a welder" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addEdu()}">
+        <button class="dc-add" onclick="App.addEdu()">Add</button>
+      </div>
+      <p class="exs-cap dc-note">Describe yourself truthfully, the way you want to be known. Everything here stays on this phone.</p>
+      <p class="exs-cap" style="margin-top:8px">Your photo helps show you are a real person.</p>
       <button class="btn btn-primary dc-save" onclick="App.saveDeclarationsEdit()">Save</button>
     </div>
   </div>

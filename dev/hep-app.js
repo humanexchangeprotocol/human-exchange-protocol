@@ -224,7 +224,7 @@ const PAIR_CODE_LENGTH = 4;
     publicKeyJwk: null, privateKeyJwk: null,
     fingerprint: '',
     pin: '',
-    declarations: { name: '', about: '', photo: null, photoDate: null, skills: [] },
+    declarations: { name: '', about: '', photo: null, photoDate: null, skills: [], education: [] },
     settings: { locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
     direction: 'provided',
     pendingHandshake: null,
@@ -258,6 +258,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
     if (!state.declarations.skills) state.declarations.skills = [];
     if (!Array.isArray(state.declarations.services)) state.declarations.services = [];
+    if (!Array.isArray(state.declarations.education)) state.declarations.education = [];
     state.settings = Object.assign({ locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
     if (!state.settings.witnessUrl) state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     return true;
@@ -658,6 +659,30 @@ const PAIR_CODE_LENGTH = 4;
     if (added === 0 && items.length > 0) { toast('Already added'); return; }
     input.value = '';
     renderSkillsList(prefix);
+  }
+
+  // v2.83.0: Education, a second list on "About you" (degrees, courses, books, mentoring, self-study). Phone-local like skills; draft until Save.
+  function addEdu() {
+    if (!_declDraft) return;
+    const input = document.getElementById('edit-edu-input');
+    const items = input.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    if (!items.length) return;
+    let added = 0;
+    items.forEach(v => { if (!_declDraft.education.includes(v)) { _declDraft.education.push(v); added++; } });
+    if (!added) { toast('Already added'); return; }
+    input.value = '';
+    renderEduList();
+  }
+  function removeEdu(idx) { if (!_declDraft) return; _declDraft.education.splice(idx, 1); renderEduList(); }
+  function renderEduList() {
+    const c = document.getElementById('edit-edu-list'); if (!c || !_declDraft) return;
+    c.innerHTML = '';
+    _declDraft.education.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'exs-row mc-vrow';
+      row.innerHTML = '<div class="exs-rowmain"><div class="exs-body">' + esc(item) + '</div></div><button class="dc-rm" onclick="App.removeEdu(' + i + ')">Remove</button>';
+      c.appendChild(row);
+    });
   }
 
   function removeSkill(prefix, idx) {
@@ -5243,12 +5268,14 @@ const PAIR_CODE_LENGTH = 4;
   }
   function openDeclarationsEdit() {
     var d = state.declarations;
-    _declDraft = { photo: d.photo || null, photoDate: d.photoDate || null, photoSource: d.photoSource, skills: (Array.isArray(d.skills) ? d.skills : []).slice() };
+    _declDraft = { photo: d.photo || null, photoDate: d.photoDate || null, photoSource: d.photoSource, skills: (Array.isArray(d.skills) ? d.skills : []).slice(), education: (Array.isArray(d.education) ? d.education : []).slice() };
     document.getElementById('edit-name').value = d.name || '';
     document.getElementById('edit-about').value = d.about || '';
     document.getElementById('edit-skill-input').value = '';
+    document.getElementById('edit-edu-input').value = '';
     renderDeclPhoto();
     renderSkillsList('edit');
+    renderEduList();
     var body = document.querySelector('#declarations-overlay .modal-body'); if (body) body.scrollTop = 0;
     showModal('declarations');
   }
@@ -5272,6 +5299,7 @@ const PAIR_CODE_LENGTH = 4;
     d.about = document.getElementById('edit-about').value.trim();
     if (_declDraft.photo !== (d.photo || null)) { d.photo = _declDraft.photo; d.photoDate = _declDraft.photoDate; d.photoSource = _declDraft.photoSource; }
     d.skills = _declDraft.skills.slice();
+    d.education = _declDraft.education.slice();
     _declDraft = null;
     save(); closeModal('declarations'); refreshHome();
     var w = document.getElementById('wallet-overlay');
@@ -13371,7 +13399,7 @@ function init() {
     switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
-    addSkill, removeSkill, toggleSkillPicker,
+    addSkill, removeSkill, addEdu, removeEdu, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
     startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
