@@ -1,5 +1,5 @@
 // ============================================================
-// APPLICATION LAYER v2.63.0
+// APPLICATION LAYER v2.64.0
 // ============================================================
 const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
@@ -224,7 +224,7 @@ const PAIR_CODE_LENGTH = 4;
     publicKeyJwk: null, privateKeyJwk: null,
     fingerprint: '',
     pin: '',
-    declarations: { name: '', about: '', photo: null, photoDate: null, skills: [] },
+    declarations: { name: '', about: '', photo: null, photoDate: null, skills: [], education: [] },
     settings: { locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false },
     direction: 'provided',
     pendingHandshake: null,
@@ -234,7 +234,26 @@ const PAIR_CODE_LENGTH = 4;
     doneDetails: null,
   };
 
-  const SK = 'hcp_dev_data';
+  // v2.99.3: production and the /dev/ build share one origin, so they used to
+  // share one chain in localStorage and an open production tab could overwrite
+  // what dev saved. Production keeps the original key (every real user's data
+  // is there); /dev/ gets its own, copied once from the shared key so testers
+  // keep their chain. Path-based, so the same file promotes unchanged.
+  const SK = (function() {
+    var prodKey = 'hcp_dev_data';
+    if (window.location.pathname.indexOf('/dev/') !== 0) return prodKey;
+    var devKey = 'hep_devbuild_data';
+    try {
+      if (localStorage.getItem(devKey) === null && localStorage.getItem(prodKey) !== null) {
+        ['', '_keys', '_backup'].forEach(function(sfx) {
+          var v = localStorage.getItem(prodKey + sfx);
+          if (v !== null) localStorage.setItem(devKey + sfx, v);
+        });
+        console.log('[storage] dev build: copied chain from the shared key once');
+      }
+    } catch (e) { console.warn('[storage] dev key copy failed:', e && e.message); }
+    return devKey;
+  })();
 
   // --- Storage ---
   function save() {
@@ -257,6 +276,8 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations = Object.assign({ name: '', about: '', photo: null, photoDate: null, skills: [], rangeSimpleVal: 0, rangeComplexVal: 0, rangeDailyVal: 0, valTagsSimple: [], valTagsComplex: [], valTagsDaily: [] }, d.declarations || {});
     if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
     if (!state.declarations.skills) state.declarations.skills = [];
+    if (!Array.isArray(state.declarations.services)) state.declarations.services = [];
+    if (!Array.isArray(state.declarations.education)) state.declarations.education = [];
     state.settings = Object.assign({ locationAuto: false, hideNames: false, hideLocations: true, witnessUrl: DEFAULT_WITNESS_URL, sensorMotion: false, sensorMotionGranted: false }, d.settings || {});
     if (!state.settings.witnessUrl) state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     return true;
@@ -363,8 +384,14 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('setup-' + step).classList.add('active');
     // Scroll to top of setup screen
     document.getElementById('setup').scrollTop = 0;
+    if (step === 'name' && inviteOnboardingActive()) {
+      var nameStepEl = document.getElementById('setup-name');
+      if (nameStepEl && !document.getElementById('invite-name-hint')) {
+        nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size:14px; color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
+      }
+    }
     if (step === 'pin') buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
-    else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep('photo'); } else shake(); });
+    else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep(inviteOnboardingActive() ? 'name' : 'photo'); } else shake(); });
   }
 
   function capturePhoto() { document.getElementById('photo-capture-input').click(); }
@@ -380,12 +407,18 @@ const PAIR_CODE_LENGTH = 4;
     state.declarations.about = document.getElementById('setup-about').value.trim();
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
+    // Invite pipeline 1c: the trimmed path generates identity now.
+    // Photo, sensors, and the rest of the declaration stay available
+    // afterward; the protocol already treats them as optional, and a
+    // chain that grounds itself over time looks like what it is.
+    if (inviteOnboardingActive()) { setupStep('generating'); generateIdentity(state.pin); return; }
     // Skip range exercise (now available in Learn tab as "Find Your Unit")
     setupStep('sensors');
   }
   function skipDeclarations() {
     // Save name from the name step
     state.declarations.name = (document.getElementById('setup-name-input').value || '').trim();
+    if (inviteOnboardingActive()) { setupStep('generating'); generateIdentity(state.pin); return; }
     setupStep('sensors');
   }
 
@@ -623,35 +656,103 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Skills ---
+  // v2.81.0: on "About you" (prefix 'edit') skills change a draft that Save commits and X discards; setup still writes straight to state.
+  function skillList(prefix) {
+    if (prefix === 'edit' && _declDraft) return _declDraft.skills;
+    if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
+    return state.declarations.skills;
+  }
   function addSkill(prefix) {
     const input = document.getElementById(prefix + '-skill-input');
     const raw = input.value.trim();
     if (!raw) return;
-    if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
+    const list = skillList(prefix);
     const items = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
     let added = 0;
     items.forEach(val => {
-      if (!state.declarations.skills.includes(val)) {
-        state.declarations.skills.push(val);
+      if (!list.includes(val)) {
+        list.push(val);
         added++;
       }
     });
     if (added === 0 && items.length > 0) { toast('Already added'); return; }
     input.value = '';
     renderSkillsList(prefix);
-    if (prefix === 'edit') save();
+  }
+
+  // v2.83.0: Education, a second list on "About you" (degrees, courses, books, mentoring, self-study). Phone-local like skills; draft until Save.
+  function addEdu() {
+    if (!_declDraft) return;
+    const input = document.getElementById('edit-edu-input');
+    const items = input.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    if (!items.length) return;
+    let added = 0;
+    items.forEach(v => { if (!_declDraft.education.includes(v)) { _declDraft.education.push(v); added++; } });
+    if (!added) { toast('Already added'); return; }
+    input.value = '';
+    renderEduList();
+  }
+  // v2.84.0: drag to reorder a typed list (DESIGN.md rule 11a). Press the grip and drag; rows swap in place, nothing slides (rule 4a).
+  // Pointer events cover mouse and touch alike. The new order lands in the draft; Save commits it like any other change.
+  function dcDrag(e, key) {
+    if (!_declDraft) return;
+    var list = key === 'education' ? _declDraft.education : _declDraft.skills;
+    var handle = e.currentTarget, row = handle.closest('.exs-row'), box = row && row.parentNode;
+    if (!box) return;
+    e.preventDefault();
+    // Listen on window, not the handle: moving the row in the DOM releases pointer capture, which lost the drag after the first swap.
+    row.classList.add('dc-dragging'); document.body.classList.add('dc-drag');
+    function move(ev) {
+      if (ev.pointerId !== e.pointerId) return;
+      var y = ev.clientY;
+      var others = Array.prototype.filter.call(box.children, function(r) { return r !== row; });
+      var idx = others.filter(function(r) { var b = r.getBoundingClientRect(); return b.top + b.height / 2 < y; }).length;
+      var ref = others[idx] || null;
+      if (ref !== row.nextElementSibling) box.insertBefore(row, ref);
+    }
+    function up(ev) {
+      if (ev && ev.pointerId !== e.pointerId) return;
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+      row.classList.remove('dc-dragging'); document.body.classList.remove('dc-drag');
+      var order = Array.prototype.map.call(box.children, function(r) { return list[+r.dataset.i]; });
+      list.splice.apply(list, [0, list.length].concat(order));
+      if (key === 'education') renderEduList(); else renderSkillsList('edit');
+    }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  }
+
+  function removeEdu(idx) { if (!_declDraft) return; _declDraft.education.splice(idx, 1); renderEduList(); }
+  function renderEduList() {
+    const c = document.getElementById('edit-edu-list'); if (!c || !_declDraft) return;
+    c.innerHTML = '';
+    _declDraft.education.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'exs-row mc-vrow';
+      row.dataset.i = i;
+      row.innerHTML = (_declDraft.education.length > 1 ? '<button class="dc-grip" aria-label="Drag to reorder" onpointerdown="App.dcDrag(event,\'education\')"><svg width="20" height="20" aria-hidden="true"><use href="#icon-grip"/></svg></button>' : '') + '<div class="exs-rowmain"><div class="exs-body">' + esc(item) + '</div></div><button class="dc-rm" onclick="App.removeEdu(' + i + ')">Remove</button>';
+      c.appendChild(row);
+    });
   }
 
   function removeSkill(prefix, idx) {
-    if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
-    state.declarations.skills.splice(idx, 1);
+    skillList(prefix).splice(idx, 1);
     renderSkillsList(prefix);
-    if (prefix === 'edit') save();
   }
 
   function renderSkillsList(prefix) {
     const container = document.getElementById(prefix + '-skills-list');
     container.innerHTML = '';
+    if (prefix === 'edit') {
+      // v2.81.0: plain rows with the word Remove (rule 15: X means back, so no x on a row)
+      skillList('edit').forEach((skill, i) => {
+        const row = document.createElement('div');
+        row.className = 'exs-row mc-vrow';
+        row.dataset.i = i;
+        row.innerHTML = (skillList('edit').length > 1 ? '<button class="dc-grip" aria-label="Drag to reorder" onpointerdown="App.dcDrag(event,\'skills\')"><svg width="20" height="20" aria-hidden="true"><use href="#icon-grip"/></svg></button>' : '') + '<div class="exs-rowmain"><div class="exs-body">' + esc(skill) + '</div></div><button class="dc-rm" onclick="App.removeSkill(\'edit\',' + i + ')">Remove</button>';
+        container.appendChild(row);
+      });
+      return;
+    }
     state.declarations.skills.forEach((skill, i) => {
       const chip = document.createElement('div');
       chip.className = 'skill-chip';
@@ -735,6 +836,15 @@ const PAIR_CODE_LENGTH = 4;
 
     await saveKeys(pin); save();
     document.getElementById('setup-fp').textContent = state.fingerprint;
+    // Invite pipeline 1c: an invited person skips the done branching
+    // screen entirely; the exchange they were invited into IS the next
+    // step. state.initialized is true by this point, so the redemption
+    // proceeds.
+    if (hasPendingInvite()) {
+      showScreen('home'); refreshHome(); showPendingUpdateBanner();
+      checkPendingInvite();
+      return;
+    }
     setupStep('done');
   }
   function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); }
@@ -834,6 +944,7 @@ const PAIR_CODE_LENGTH = 4;
         showPendingUpdateBanner();
         checkForUpdates();
         handleIncomingPayload();
+        checkPendingInvite();
         resumePendingPair();
         checkPingOnOpen();
         checkPhotoNudge();
@@ -852,89 +963,462 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Home ---
-  function openWallet() {
-    // v2.61.19: balance demoted from 56px headline to a row in the
-    // breakdown card. v2.61.21: Participation card consolidated INTO
-    // this same breakdown card -- People, Repeat counterparties,
-    // Categories, Chain age, and Witnessed share now sit alongside
-    // the value totals as a single source of truth for chain stats.
-    // Per-direction totals (Total provided / Total received) read as
-    // plain magnitudes; the signed Net balance row carries direction.
-    const bal = HCP.walletBalance(state.chain);
-    const ex = state.chain.filter(HCP.isAct);
-    let totalP = 0, totalR = 0, actsP = 0, actsR = 0;
-    var cpCounts = {};
-    var cats = {};
-    var witnessedCount = 0;
-    ex.forEach(function(r) {
-      if (r.energyState === 'provided') { totalP += r.value; actsP++; }
-      else if (r.energyState === 'received') { totalR += r.value; actsR++; }
-      if (r.counterparty) cpCounts[r.counterparty] = (cpCounts[r.counterparty] || 0) + 1;
-      var k = r.category || 'uncategorized';
-      cats[k] = (cats[k] || 0) + 1;
-      if (r.witnessAttestation) witnessedCount++;
+  // v2.77.0: My chain (registry, Component 2, "MY CHAIN REBUILT"; DESIGN.md
+  // rules 2, 2a, 4a, 5, 7, 8, 9, 16). The list carries standing itself: the
+  // two totals on one scale, the gap drawn, the standing beneath, coloured
+  // by side. Sheets: Numbers, Wave (+ How Typical), People, Reach, Device,
+  // How standing is drawn. A sheet can open another over it; X closes the
+  // top one. Every drawing reads only the person's own chain, on this phone.
+  var _mcStack = [];
+  var MC_AMB = 'var(--amber)';
+  function mcOpen(k) {
+    var el = document.getElementById('mc-sheet-' + k);
+    if (!el) return;
+    try {
+      if (k === 'wave') mcDrawWave();
+      else if (k === 'people') mcDrawPeople();
+      else if (k === 'reach') mcDrawReach();
+      else if (k === 'learn') lrRenderHome();
+    } catch (e) { console.log('[my-chain] draw failed:', e.message); }
+    el.style.zIndex = 6 + _mcStack.length;
+    el.hidden = false; el.scrollTop = 0;
+    _mcStack.push(el);
+  }
+  function mcClose() { var el = _mcStack.pop(); if (el) el.hidden = true; }
+  function mcFmt(n) { return Math.round(n).toLocaleString('en-US'); }
+  function mcStandWords(st) { return st === 0 ? 'even' : mcFmt(Math.abs(st)) + ' ' + (st > 0 ? 'above' : 'below'); }
+  function mcRatioSentence(p, r) {
+    if (!p && !r) return 'Nothing recorded yet.';
+    if (!r) return 'You have produced, and received nothing yet.';
+    if (!p) return 'You have received, and produced nothing yet.';
+    if (p === r) return 'You have produced as much as you have received.';
+    var q = p / r;
+    for (var d = 1; d <= 12; d++) { var n = Math.round(q * d); if (n > 0 && Math.abs(n / d - q) / q < 0.02) return 'For every ' + d + ' you have received, you have produced ' + n + '.'; }
+    return 'For every 100 you have received, you have produced ' + Math.round(q * 100) + '.';
+  }
+  function mcEl(t, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', t); for (var k in a) e.setAttribute(k, a[k]); return e; }
+  function mcText(svg, x, y, txt, anchor) { var t = mcEl('text', { x: x, y: y, 'font-size': '12', fill: 'var(--text-faint)', 'text-anchor': anchor || 'start' }); t.textContent = txt; svg.appendChild(t); }
+  // The chain as the drawings need it: time in days from the first exchange.
+  function mcActs() {
+    var ex = state.chain.filter(HCP.isAct).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
+    if (!ex.length) return { list: [], span: 1 };
+    var t0 = new Date(ex[0].timestamp).getTime();
+    var list = ex.map(function(r) {
+      return { t: (new Date(r.timestamp).getTime() - t0) / 86400000, dir: r.energyState === 'provided' ? 'p' : 'r', v: Number(r.value) || 0, person: r.counterparty || '?', city: (r.city || '').trim().toLowerCase(), st: (r.state || '').trim().toLowerCase(), rb: (typeof r.reachBand === 'number' && r.reachBand >= 0 && r.reachBand <= 4) ? r.reachBand : null };
     });
-    var peopleCount = Object.keys(cpCounts).length;
-    var repeatCount = 0;
-    Object.keys(cpCounts).forEach(function(k) { if (cpCounts[k] >= 2) repeatCount++; });
-    var catCount = Object.keys(cats).length;
-    document.getElementById('wallet-provided').textContent = totalP.toFixed(0);
-    document.getElementById('wallet-received').textContent = totalR.toFixed(0);
-    document.getElementById('wallet-acts').textContent = ex.length;
-    document.getElementById('wallet-people').textContent = peopleCount;
-    document.getElementById('wallet-repeat').textContent = repeatCount;
-    document.getElementById('wallet-categories').textContent = catCount;
-    // Chain age -- compact format matching the previous Participation card.
-    var ageEl = document.getElementById('wallet-age');
-    if (ageEl) {
-      if (state.chain.length > 0) {
-        var genesis = new Date(state.chain[0].timestamp);
-        var days = Math.floor((Date.now() - genesis.getTime()) / 86400000);
-        var ageStr = days === 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? days + ' days' : days < 365 ? Math.floor(days / 30) + ' months' : Math.floor(days / 365) + 'y ' + Math.floor((days % 365) / 30) + 'm';
-        ageEl.textContent = ageStr;
-      } else {
-        ageEl.textContent = '\u2014';
-      }
-    }
-    // Witnessed: "N / total" preserves context without inviting percentage gaming.
-    var witEl = document.getElementById('wallet-witnessed');
-    if (witEl) witEl.textContent = ex.length > 0 ? (witnessedCount + ' / ' + ex.length) : '\u2014';
-    var netEl = document.getElementById('wallet-net-balance');
-    if (netEl) netEl.textContent = (bal >= 0 ? '+' : '') + bal.toFixed(0);
+    var span = Math.max(1, (Date.now() - t0) / 86400000);
+    return { list: list, span: span };
+  }
+  function mcSegPress(id, v) { document.querySelectorAll('#' + id + ' button').forEach(function(b) { b.setAttribute('aria-pressed', b.dataset.v === v ? 'true' : 'false'); }); }
 
-    // v2.61.22: identity panel rendered at the TOP of the modal body
-    // (above the stats card) so the user reads "this is you" before
-    // the chain stats. Was previously buried halfway down the modal
-    // inside renderStandingTab.
+  // ---- Learn (v2.99.0, seventeenth session) ----
+  // Modules > lessons > steps, from lessons.json version 2. The Learn and
+  // module sheets are reading sheets; the lesson player is a flow sheet
+  // (Continue pinned, X back one step, DESIGN.md 2a and 3a). A lesson is
+  // marked read when its last step is passed; the completion screen is
+  // modelled on the exchange's Settled screen.
+  var LR_KEY = 'hep_dev_learn_done';
+  var _lr = { mod: null, les: null, step: 0, done: false };
+  function lrRead() { try { return JSON.parse(localStorage.getItem(LR_KEY) || '{}'); } catch (e) { return {}; } }
+  function lrMark(k) { var d = lrRead(); d[k] = Date.now(); try { localStorage.setItem(LR_KEY, JSON.stringify(d)); } catch (e) {} }
+  function lrMods() { return (LEARN_DATA && LEARN_DATA.modules) || []; }
+  function lrLes(k) { return (LEARN_DATA && LEARN_DATA.lessons && LEARN_DATA.lessons[k]) || null; }
+  function lrModByKey(k) { return lrMods().filter(function(m) { return m.key === k; })[0] || null; }
+  function lrRow(onclick, word, cap) {
+    return '<button class="exs-row" onclick="' + onclick + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+  }
+  function lrModCap(m, done) {
+    if (m.kind === 'links') return m.subtitle;
+    var n = (m.lessons || []).length, r = (m.lessons || []).filter(function(k) { return done[k]; }).length;
+    return m.subtitle + (r === 0 ? '' : r === n ? ' \u00b7 All read' : ' \u00b7 ' + r + ' of ' + n + ' read');
+  }
+  function lrRenderHome() {
+    var el = document.getElementById('lr-modules');
+    if (!el) return;
+    if (!lessonsReady) { el.innerHTML = '<p class="exs-cap">Loading\u2026</p>'; loadLessons().then(lrRenderHome); return; }
+    var done = lrRead();
+    el.innerHTML = lrMods().map(function(m) { return lrRow("App.lrOpenModule('" + m.key + "')", m.title, lrModCap(m, done)); }).join('');
+  }
+  function lrRenderModule() {
+    var m = lrModByKey(_lr.mod); if (!m) return;
+    document.getElementById('lr-mod-title').textContent = m.title;
+    document.getElementById('lr-mod-sub').textContent = m.subtitle;
+    var done = lrRead(), h = '';
+    if (m.kind === 'links') {
+      (m.items || []).forEach(function(it) {
+        h += '<a class="exs-row" href="' + esc(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none"><div class="exs-rowmain"><div class="exs-body">' + esc(it.title) + '</div><div class="exs-cap">' + esc(it.caption) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></a>';
+      });
+    } else {
+      (m.lessons || []).forEach(function(k) {
+        var l = lrLes(k); if (!l) return;
+        h += lrRow("App.lrOpenLesson('" + k + "')", l.title, done[k] ? 'Read' : l.caption);
+      });
+    }
+    document.getElementById('lr-mod-rows').innerHTML = h;
+  }
+  function lrOpenModule(k) {
+    if (!lessonsReady) { loadLessons().then(function() { lrOpenModule(k); }); return; }
+    _lr.mod = k; lrRenderModule();
+    var el = document.getElementById('mc-sheet-lmod');
+    if (el && el.hidden) mcOpen('lmod');
+  }
+  function lrOpenLesson(k) {
+    var l = lrLes(k); if (!l) return;
+    if (!_lr.mod) { var mm = lrMods().filter(function(m) { return (m.lessons || []).indexOf(k) >= 0; })[0]; _lr.mod = mm ? mm.key : null; }
+    _lr.les = k; _lr.step = 0; _lr.done = false;
+    lrRenderStep();
+    var el = document.getElementById('mc-sheet-lesson');
+    if (el && el.hidden) mcOpen('lesson');
+  }
+  function lrRenderStep() {
+    var l = lrLes(_lr.les); if (!l) return;
+    var st = l.steps[_lr.step], n = l.steps.length;
+    document.getElementById('lr-l-title').textContent = l.title;
+    document.getElementById('lr-l-x').style.visibility = '';
+    var prog = document.getElementById('lr-l-prog'); prog.hidden = false;
+    var p = ''; for (var i = 0; i < n; i++) p += '<i class="' + (i <= _lr.step ? 'on' : '') + '"></i>'; prog.innerHTML = p;
+    var h = '<h3 class="lr-step-t">' + esc(st.title) + '</h3><p class="lr-step-b">' + esc(st.body) + '</p>';
+    if (st.fig && typeof lrFig === 'function') { var f = lrFig(st.fig.t, st.fig.s); if (f) h += '<div class="lr-fig">' + f + '</div>'; }
+    if (st.link) h += '<p class="mc-link"><a href="#" onclick="App.mcOpen(\'' + st.link.open + '\');return false">' + esc(st.link.label) + '</a></p>';
+    var body = document.getElementById('lr-l-body'); body.innerHTML = h; body.scrollTop = 0;
+    document.getElementById('lr-l-foot').innerHTML = '<button class="btn btn-primary" onclick="App.lrNext()">' + (_lr.step === n - 1 ? 'Finish' : 'Continue') + '</button>';
+  }
+  function lrNext() {
+    var l = lrLes(_lr.les); if (!l) return;
+    if (_lr.step < l.steps.length - 1) { _lr.step++; lrRenderStep(); return; }
+    lrMark(_lr.les); _lr.done = true; lrRenderDone();
+    lrRenderModule(); lrRenderHome();
+  }
+  function lrBack() {
+    if (_lr.done || _lr.step === 0) { mcClose(); return; }
+    _lr.step--; lrRenderStep();
+  }
+  function lrNextTarget() {
+    var mods = lrMods(), m = lrModByKey(_lr.mod);
+    if (!m) return null;
+    var ls = m.lessons || [], i = ls.indexOf(_lr.les);
+    if (i >= 0 && i < ls.length - 1) return { les: ls[i + 1], label: 'Next lesson' };
+    var mi = mods.indexOf(m);
+    if (mi >= 0 && mi < mods.length - 1) return { mod: mods[mi + 1].key, label: 'Next: ' + mods[mi + 1].title, moduleDone: true };
+    return { end: true, label: 'Done', moduleDone: true };
+  }
+  function lrRenderDone() {
+    var l = lrLes(_lr.les), t = lrNextTarget();
+    document.getElementById('lr-l-x').style.visibility = 'hidden';
+    document.getElementById('lr-l-title').textContent = '';
+    document.getElementById('lr-l-prog').hidden = true;
+    var mAll = lrModByKey(_lr.mod), rd = lrRead(), allRead = !!mAll && (mAll.lessons || []).every(function(k) { return rd[k]; });
+    var h = '<div class="lr-done"><div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="52" height="52"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+    h += '<div class="exs-settle-t1">' + (allRead ? 'Module complete' : 'Lesson complete') + '</div>';
+    h += '<div class="exs-t exs-settle-t3" style="color:var(--text)">' + esc(l.title) + '</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div></div>';
+    document.getElementById('lr-l-body').innerHTML = h;
+    var f = '<div class="exs-settle-btns"><button class="btn btn-primary" onclick="App.lrContinue()">' + esc(t ? t.label : 'Done') + '</button>';
+    if (t && !t.end) f += '<button class="exs-quiet" onclick="App.mcClose()">Back to lessons</button>';
+    f += '</div>';
+    document.getElementById('lr-l-foot').innerHTML = f;
+  }
+  function lrContinue() {
+    var t = lrNextTarget();
+    if (!t || t.end) { mcClose(); return; }
+    if (t.les) { lrOpenLesson(t.les); return; }
+    mcClose(); lrOpenModule(t.mod);
+  }
+
+  // ---- Learn illustrations (v2.100.0): generic examples, never the person's data.
+  // Each takes a stage; later steps of a lesson draw more of the same picture.
+  var LR_BLUE = 'var(--accent)', LR_AMB = 'var(--amber)', LR_FAINT = 'var(--text-faint)', LR_LINE = 'var(--border)';
+  function lrT(x, y, txt, o) { o = o || {}; return '<text x="' + x + '" y="' + y + '" font-size="' + (o.s || 12) + '" fill="' + (o.c || LR_FAINT) + '" text-anchor="' + (o.a || 'start') + '"' + (o.w ? ' font-weight="600"' : '') + '>' + txt + '</text>'; }
+  function lrRand(seed) { var x = seed; return function() { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
+  function lrFig(t, s) {
+    var h = '';
+    if (t === 'pair') {
+      h = '<svg viewBox="0 0 340 ' + (s >= 2 ? 190 : 120) + '">';
+      h += '<circle cx="60" cy="44" r="26" fill="var(--accent-light)" stroke="' + LR_BLUE + '" stroke-width="2"/>' + lrT(60, 92, 'Provided', { a: 'middle', c: 'var(--text)', s: 13 });
+      h += '<circle cx="280" cy="44" r="26" fill="rgba(181,116,42,0.12)" stroke="' + LR_AMB + '" stroke-width="2"/>' + lrT(280, 92, 'Received', { a: 'middle', c: 'var(--text)', s: 13 });
+      h += '<line x1="98" y1="44" x2="242" y2="44" stroke="' + LR_LINE + '" stroke-width="2" stroke-dasharray="5 5"/>';
+      h += '<rect x="132" y="26" width="76" height="36" rx="8" fill="var(--bg-raised)" stroke="' + LR_LINE + '"/>' + lrT(170, 50, '40', { a: 'middle', c: 'var(--text)', s: 18, w: 1 });
+      h += lrT(170, 80, 'agreed by both', { a: 'middle' });
+      if (s >= 2) {
+        h += '<rect x="20" y="116" width="80" height="12" rx="4" fill="' + LR_BLUE + '"/>' + lrT(20, 148, 'Currency grows by 40', { c: LR_BLUE });
+        h += '<rect x="240" y="116" width="80" height="12" rx="4" fill="' + LR_AMB + '"/>' + lrT(320, 148, 'Cosmic share grows by 40', { c: LR_AMB, a: 'end' });
+        h += lrT(170, 178, 'One record, written on both phones', { a: 'middle' });
+      }
+      return h + '</svg>';
+    }
+    if (t === 'scale') {
+      h = '<svg viewBox="0 0 340 110">';
+      var x0 = 14, x1 = 326, labels = ['1', '10', '100', '1k', '10k', '100k', '1M'];
+      h += '<line x1="' + x0 + '" y1="50" x2="' + x1 + '" y2="50" stroke="var(--text-dim)" stroke-width="2"/>';
+      for (var i = 0; i < 7; i++) { var x = x0 + (x1 - x0) * i / 6; h += '<line x1="' + x + '" y1="42" x2="' + x + '" y2="58" stroke="var(--text-dim)" stroke-width="1.5"/>' + lrT(x, 76, labels[i], { a: 'middle' }); }
+      h += lrT(x0, 24, 'One ruler, 1 to 1,000,000, the same for everyone');
+      if (s >= 2) {
+        var r = lrRand(7);
+        for (var k = 0; k < 9; k++) { var px = x0 + 30 + r() * 120; h += '<circle cx="' + px.toFixed(1) + '" cy="50" r="5" fill="var(--bg)" stroke="' + LR_BLUE + '" stroke-width="2"/>'; }
+        h += lrT(x0, 100, 'Your own marks, found by exchanging with people', { c: LR_BLUE });
+      }
+      return h + '</svg>';
+    }
+    if (t === 'bars') {
+      var cur = 70, cos = s >= 3 ? 85 : 50, W = 236, X = 104, mx = 100;
+      var st = cur - cos;
+      h = '<svg viewBox="0 0 340 ' + (s >= 2 ? 168 : 100) + '">';
+      h += lrT(0, 30, 'Currency', { c: 'var(--text)', s: 13 }) + '<rect x="' + X + '" y="18" width="' + W + '" height="14" rx="4" fill="var(--bg-input)"/><rect x="' + X + '" y="18" width="' + (W * cur / mx) + '" height="14" rx="4" fill="' + LR_BLUE + '"/>';
+      h += lrT(0, 70, 'Cosmic share', { c: 'var(--text)', s: 13 }) + '<rect x="' + X + '" y="58" width="' + W + '" height="14" rx="4" fill="var(--bg-input)"/><rect x="' + X + '" y="58" width="' + (W * cos / mx) + '" height="14" rx="4" fill="' + LR_AMB + '"/>';
+      if (s >= 2) {
+        var a = X + W * Math.min(cur, cos) / mx, b = X + W * Math.max(cur, cos) / mx, col = st >= 0 ? LR_BLUE : LR_AMB;
+        h += '<rect x="' + a + '" y="' + (st >= 0 ? 18 : 58) + '" width="' + (b - a) + '" height="14" rx="4" fill="none" stroke="' + col + '" stroke-width="1.5" stroke-dasharray="4 3"/>';
+        h += lrT(0, 112, Math.abs(st) + ' ' + (st >= 0 ? 'above' : 'below'), { c: col, s: 18, w: 1 });
+        if (s >= 3) h += lrT(0, 140, 'A new exchange added to cosmic share.') + lrT(0, 158, 'Neither total went down.'); else h += lrT(0, 140, 'Your standing is the difference');
+      }
+      return h + '</svg>';
+    }
+    if (t === 'wave') {
+      var pts = [], N = 60;
+      for (var j = 0; j <= N; j++) { var u = j / N; var y = 0.55 * Math.sin(u * 5.2) + 0.35 * Math.sin(u * 13 + 1) - (u > 0.42 && u < 0.72 ? 0.9 * Math.sin((u - 0.42) / 0.3 * Math.PI) : 0) + (u > 0.72 ? 1.0 * (u - 0.72) / 0.28 : 0); pts.push([u, y]); }
+      var upto = s === 1 ? 0.38 : s === 2 ? 0.7 : 1, Y0 = 80, A = 46, L = 10, R = 330;
+      var vis = pts.filter(function(q) { return q[0] <= upto + 1e-9; });
+      var d = vis.map(function(q, n) { return (n ? 'L' : 'M') + (L + (R - L) * q[0]).toFixed(1) + ' ' + (Y0 - A * q[1]).toFixed(1); }).join(' ');
+      var lastX = (L + (R - L) * vis[vis.length - 1][0]).toFixed(1);
+      h = '<svg viewBox="0 0 340 176"><defs><clipPath id="lrUp"><rect x="0" y="0" width="340" height="' + Y0 + '"/></clipPath><clipPath id="lrDn"><rect x="0" y="' + Y0 + '" width="340" height="100"/></clipPath></defs>';
+      var area = d + ' L' + lastX + ' ' + Y0 + ' L' + L + ' ' + Y0 + ' Z';
+      h += '<path d="' + area + '" fill="var(--accent-light)" clip-path="url(#lrUp)"/><path d="' + area + '" fill="rgba(181,116,42,0.15)" clip-path="url(#lrDn)"/>';
+      h += '<line x1="' + L + '" y1="' + Y0 + '" x2="' + R + '" y2="' + Y0 + '" stroke="var(--text-faint)" stroke-width="1" stroke-dasharray="3 3"/>';
+      h += '<path d="' + d + '" fill="none" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+      h += lrT(L, Y0 - 56, 'above', { c: LR_BLUE }) + lrT(L, Y0 + 62, 'below', { c: LR_AMB });
+      if (s >= 2) h += lrT(L + (R - L) * 0.57, Y0 + 82, 'a hard year', { a: 'middle' });
+      h += lrT(L, 172, 'time \u2192');
+      return h + '</svg>';
+    }
+    if (t === 'people') {
+      var rows = 5, r2 = lrRand(3), uni = s >= 3;
+      function block(x, w, col, seed) {
+        var g = '', rr = lrRand(seed);
+        for (var q = 0; q < rows; q++) { var yy = 30 + q * 22, start = q * 0.14; g += '<line x1="' + x + '" y1="' + yy + '" x2="' + (x + w) + '" y2="' + yy + '" stroke="' + LR_LINE + '"/>';
+          for (var m = 0; m < 5; m++) { var tt = start + rr() * (1 - start); var sz = uni ? 3 : 2.5 + rr() * 5; g += '<circle cx="' + (x + w * tt).toFixed(1) + '" cy="' + yy + '" r="' + sz.toFixed(1) + '" fill="' + (uni ? 'var(--text-faint)' : col) + '"/>'; } }
+        return g;
+      }
+      h = '<svg viewBox="0 0 340 160">';
+      h += lrT(0, 14, uni ? 'As others see it' : 'Whose work you did', { c: uni ? 'var(--text)' : LR_BLUE }) + block(0, s >= 2 ? 160 : 340, LR_BLUE, 11);
+      if (s >= 2) h += lrT(180, 14, uni ? '' : 'Whose work you received', { c: LR_AMB }) + block(180, 160, LR_AMB, 29);
+      h += lrT(0, 150, uni ? 'Rows only: plain marks, no sizes, no numbers' : 'Each row is a person; each mark is one exchange');
+      return h + '</svg>';
+    }
+    if (t === 'reach') {
+      var cx = 170, cy = 120, radii = [18, 40, 64, 88, 110], names = ['nearby', 'region', 'country', 'continent', 'world'];
+      var counts = s === 1 ? [4, 2, 0, 0, 0] : s === 2 ? [7, 4, 2, 0, 0] : [9, 6, 3, 2, 1];
+      h = '<svg viewBox="0 0 340 270">';
+      radii.forEach(function(rr, n) { h += '<circle cx="' + cx + '" cy="' + cy + '" r="' + rr + '" fill="none" stroke="' + LR_LINE + '" stroke-width="1.5"/>'; });
+      h += lrT(cx, 248, 'Rings from the centre: nearby, your region,', { a: 'middle' }) + lrT(cx, 264, 'your country, your continent, the world', { a: 'middle' });
+      h += '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="var(--text)"/>';
+      var rr3 = lrRand(5);
+      counts.forEach(function(c, n) { var inner = n ? radii[n - 1] : 0; for (var q = 0; q < c; q++) { var ang = rr3() * Math.PI * 2, rad = inner + 5 + rr3() * (radii[n] - inner - 8); h += '<circle cx="' + (cx + rad * Math.cos(ang)).toFixed(1) + '" cy="' + (cy + rad * Math.sin(ang)).toFixed(1) + '" r="4" fill="' + LR_BLUE + '"/>'; } });
+      return h + '</svg>';
+    }
+    return '';
+  }
+  // Entry points from outside Account: the setup screen and the old "Learn why" links.
+  function lrOpenFromOutside(lessonKey) {
+    var ov = document.getElementById('wallet-overlay');
+    if (!ov || ov.style.display !== 'flex') openWallet();
+    lrRenderHome(); mcOpen('learn');
+    if (lessonKey) loadLessons().then(function() { lrOpenLesson(lessonKey); });
+  }
+
+  // ---- Wave ----
+  var _mcWMode = 'a', _mcWIv = '30.44';
+  function mcWaveMode(m) { _mcWMode = m; mcDrawWave(); }
+  function mcWaveIv(v) { _mcWIv = v; mcDrawWave(); }
+  function mcTypical(list) {
+    var out = list.map(function(e) { return { t: e.t, dir: e.dir, v: e.v }; }), n = 0;
+    function med(a) { var s = a.slice().sort(function(x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
+    ['p', 'r'].forEach(function(d) {
+      var idx = out.map(function(e, i) { return e.dir === d ? i : -1; }).filter(function(i) { return i >= 0; });
+      if (idx.length < 20) return;
+      var v = idx.map(function(i) { return out[i].v; }), m = med(v), mad = med(v.map(function(x) { return Math.abs(x - m); })) || 1;
+      idx.forEach(function(i) { if (0.6745 * Math.abs(out[i].v - m) / mad > 3.5) { out[i].v = m; n++; } });
+    });
+    return { list: out, flagged: n };
+  }
+  function mcDrawWave() {
+    var A = mcActs(), SPAN = A.span, typ = mcTypical(A.list);
+    var nP = A.list.filter(function(e) { return e.dir === 'p'; }).length, nR = A.list.length - nP;
+    var canTyp = nP >= 20 || nR >= 20;
+    if (!canTyp) _mcWMode = 'a';
+    var D = _mcWMode === 't' ? typ.list : A.list, p = _mcWIv, X0 = 14, X1 = 326, Z = 86;
+    var stNow = A.list.reduce(function(s, e) { return s + (e.dir === 'p' ? e.v : -e.v); }, 0);
+    var sent = document.getElementById('mc-w-sentence');
+    sent.innerHTML = !A.list.length ? 'Nothing recorded yet.' : (stNow === 0 ? 'Today you stand even, on the line.' : 'Today you stand <span class="' + (stNow > 0 ? 'mc-blue' : 'mc-amber') + '" style="font-weight:600">' + mcFmt(Math.abs(stNow)) + ' ' + exMarkSVG(14) + ' ' + (stNow > 0 ? 'above' : 'below') + '</span> the line.');
+    var pts = [[0, 0]], s = 0;
+    if (p === 'each') D.forEach(function(e) { s += e.dir === 'p' ? e.v : -e.v; pts.push([e.t, s]); });
+    else { var P = +p, nb = Math.max(1, Math.ceil(SPAN / P)), j = 0; for (var b = 1; b <= nb; b++) { var end = Math.min(b * P, SPAN); while (j < D.length && D[j].t < end) { s += D[j].dir === 'p' ? D[j].v : -D[j].v; j++; } pts.push([end, s]); } while (j < D.length) { s += D[j].dir === 'p' ? D[j].v : -D[j].v; j++; } pts[pts.length - 1][1] = s; }
+    var mx = Math.max.apply(null, [1].concat(pts.map(function(q) { return Math.abs(q[1]); }))), sc = 64 / mx;
+    function X(t) { return X0 + (X1 - X0) * Math.min(t, SPAN) / SPAN; } function Y(v) { return Z - v * sc; }
+    var line = [];
+    if (p === 'each') pts.forEach(function(q, i) { if (i) line.push(X(q[0]).toFixed(1) + ',' + Y(pts[i - 1][1]).toFixed(1)); line.push(X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1)); });
+    else { line.push(X(0) + ',' + Y(0)); for (var i = 1; i < pts.length; i++) { line.push(X(pts[i - 1][0]).toFixed(1) + ',' + Y(pts[i][1]).toFixed(1)); line.push(X(pts[i][0]).toFixed(1) + ',' + Y(pts[i][1]).toFixed(1)); } }
+    var last = pts[pts.length - 1], L = line.join(' '), PG = X0 + ',' + Z + ' ' + L + ' ' + X(last[0]).toFixed(1) + ',' + Z;
+    var w = document.getElementById('mc-w-svg'); w.innerHTML = '';
+    var defs = mcEl('defs', {}), cu = mcEl('clipPath', { id: 'mc-cu' }), cd = mcEl('clipPath', { id: 'mc-cd' });
+    cu.appendChild(mcEl('rect', { width: 340, height: Z })); cd.appendChild(mcEl('rect', { y: Z, width: 340, height: 184 - Z })); defs.appendChild(cu); defs.appendChild(cd); w.appendChild(defs);
+    w.appendChild(mcEl('polygon', { points: PG, fill: 'var(--accent)', 'fill-opacity': '.14', 'clip-path': 'url(#mc-cu)' }));
+    w.appendChild(mcEl('polygon', { points: PG, fill: MC_AMB, 'fill-opacity': '.22', 'clip-path': 'url(#mc-cd)' }));
+    w.appendChild(mcEl('line', { x1: X0, y1: Z, x2: X1, y2: Z, stroke: 'var(--text-faint)', 'stroke-width': '.8' }));
+    if (A.list.length) {
+      w.appendChild(mcEl('polyline', { points: L, fill: 'none', stroke: 'var(--text)', 'stroke-width': '1.6', 'stroke-linejoin': 'round' }));
+      w.appendChild(mcEl('circle', { cx: X(last[0]), cy: Y(last[1]), r: 2.6, fill: 'var(--text)' }));
+    }
+    mcText(w, X0, 180, 'first exchange'); mcText(w, X1, 180, 'today', 'end');
+    var P2 = p === 'each' ? 7 : +p, nb2 = Math.max(1, Math.ceil(SPAN / P2)), up = [], dn = [];
+    for (var k = 0; k < nb2; k++) { up.push(0); dn.push(0); }
+    D.forEach(function(e) { var k2 = Math.min(nb2 - 1, Math.floor(e.t / P2)); if (e.dir === 'p') up[k2]++; else dn[k2]++; });
+    var mc = Math.max.apply(null, [1].concat(up, dn)), bw = (X1 - X0) / nb2, gp = Math.min(2, bw * 0.25), st = document.getElementById('mc-w-strip'); st.innerHTML = '';
+    st.appendChild(mcEl('line', { x1: X0, y1: 22.5, x2: X1, y2: 22.5, stroke: 'var(--border)' }));
+    for (k = 0; k < nb2; k++) {
+      var x = X0 + k * bw + gp / 2, ww = Math.max(0.6, bw - gp);
+      if (up[k]) st.appendChild(mcEl('rect', { x: x, y: 22 - up[k] / mc * 19, width: ww, height: up[k] / mc * 19, fill: 'var(--text-dim)' }));
+      if (dn[k]) st.appendChild(mcEl('rect', { x: x, y: 23, width: ww, height: dn[k] / mc * 19, fill: 'var(--text-dim)', 'fill-opacity': '.5' }));
+    }
+    document.getElementById('mc-w-counts').textContent = 'Provided ' + nP + ' times, received ' + nR + ' times.';
+    var notes = { each: 'Every exchange, one by one, ', '7': 'Each step is where you stood at the end of a week, ', '30.44': 'Each step is where you stood at the end of a month, ', '365.25': 'Each step is where you stood at the end of a year, ' };
+    document.getElementById('mc-w-note').textContent = notes[p] + (_mcWMode === 't' ? 'with the few exchanges far bigger than your usual evened out.' : 'counting every exchange as it happened.') + (canTyp ? '' : ' Typical opens once you have 20 exchanges of a kind.');
+    document.getElementById('mc-w-typlink').hidden = _mcWMode !== 't';
+    document.getElementById('mc-t-count').textContent = typ.flagged + ' of your ' + A.list.length + ' exchanges evened out.';
+    var tb = document.querySelector('#mc-w-mode button[data-v="t"]'); if (tb) tb.disabled = !canTyp;
+    mcSegPress('mc-w-mode', _mcWMode); mcSegPress('mc-w-iv', p);
+  }
+
+  // ---- People (productive and consumption) ----
+  var _mcPIv = 'each';
+  function mcPeopleIv(v) { _mcPIv = v; mcDrawPeople(); }
+  function mcDrawRows(A, dir, rowsId, barsId, color) {
+    var SPAN = A.span, D = A.list.filter(function(e) { return e.dir === dir; }), order = [];
+    D.forEach(function(e) { if (order.indexOf(e.person) < 0) order.push(e.person); });
+    var X0 = 8, X1 = 332, RH = order.length ? Math.max(4, Math.min(10, 120 / order.length)) : 10, H = Math.max(1, order.length) * RH + 6;
+    var svg = document.getElementById(rowsId); svg.setAttribute('viewBox', '0 0 340 ' + H); svg.innerHTML = '';
+    var bars = document.getElementById(barsId); bars.innerHTML = '';
+    if (!D.length) { mcText(svg, 8, 12, 'Nothing yet.'); return 0; }
+    order.forEach(function(p, i) { var y = 3 + i * RH + RH / 2; svg.appendChild(mcEl('line', { x1: X0, y1: y, x2: X1, y2: y, stroke: 'var(--border)', 'stroke-width': '.6' })); });
+    function X(t) { return X0 + (X1 - X0) * Math.min(t, SPAN) / SPAN; }
+    var items;
+    if (_mcPIv === 'each') items = D.map(function(e) { return { row: order.indexOf(e.person), t: e.t, v: e.v }; });
+    else { var P = +_mcPIv, acc = {}; D.forEach(function(e) { var b = Math.floor(e.t / P), key = e.person + '|' + b; acc[key] = acc[key] || { row: order.indexOf(e.person), t: Math.min(SPAN, (b + 0.5) * P), v: 0 }; acc[key].v += e.v; }); items = Object.keys(acc).map(function(k) { return acc[k]; }); }
+    var mx = Math.max.apply(null, [1].concat(items.map(function(q) { return q.v; })));
+    items.forEach(function(q) { svg.appendChild(mcEl('circle', { cx: X(q.t), cy: 3 + q.row * RH + RH / 2, r: (1.2 + Math.sqrt(q.v / mx) * (RH * 0.55)).toFixed(2), fill: color, 'fill-opacity': '.75' })); });
+    var BH = 48, bi;
+    if (_mcPIv === 'each') bi = D.map(function(e) { return { t: e.t, v: e.v, w: 1.6 }; });
+    else { var P2 = +_mcPIv, nb = Math.max(1, Math.ceil(SPAN / P2)), sm = []; for (var k = 0; k < nb; k++) sm.push(0); D.forEach(function(e) { sm[Math.min(nb - 1, Math.floor(e.t / P2))] += e.v; }); bi = sm.map(function(v, k) { return { t: Math.min(SPAN, (k + 0.5) * P2), v: v, w: Math.max(1.6, (X1 - X0) / nb * 0.7) }; }); }
+    var bm = Math.max.apply(null, [1].concat(bi.map(function(q) { return q.v; })));
+    bi.forEach(function(q) { if (!q.v) return; var h = q.v / bm * (BH - 2); bars.appendChild(mcEl('rect', { x: (X(q.t) - q.w / 2).toFixed(1), y: (BH - h).toFixed(1), width: q.w.toFixed(1), height: h.toFixed(1), fill: color, 'fill-opacity': '.65' })); });
+    bars.appendChild(mcEl('line', { x1: X0, y1: BH, x2: X1, y2: BH, stroke: 'var(--text-faint)', 'stroke-width': '.8' }));
+    return order.length;
+  }
+  function mcDrawPeople() {
+    var A = mcActs();
+    var a = mcDrawRows(A, 'p', 'mc-pp-rows', 'mc-pp-bars', 'var(--accent)'), b = mcDrawRows(A, 'r', 'mc-pc-rows', 'mc-pc-bars', MC_AMB);
+    document.getElementById('mc-pp-n').textContent = 'You have done work for ' + a + (a === 1 ? ' person.' : ' people.');
+    document.getElementById('mc-pc-n').textContent = 'You have received work from ' + b + (b === 1 ? ' person.' : ' people.');
+    var notes = { each: 'Every exchange, at the time it happened.', '7': 'Each mark adds up a person\u2019s credit for the week.', '30.44': 'Each mark adds up a person\u2019s credit for the month.', '365.25': 'Each mark adds up a person\u2019s credit for the year.' };
+    document.getElementById('mc-p-note').textContent = notes[_mcPIv];
+    mcSegPress('mc-p-iv', _mcPIv);
+  }
+
+  // ---- Reach (v2.88.0): distance between you and the other person, five bands; distance only, no direction ----
+  // Reads record.reachBand (0-4) when present (writing it is a pending protocol change, writing/reach-band-spec.md).
+  // Older records with only typed city/state: same town as usual = nearby, same state = region; farther ones are counted, not drawn.
+  function mcDrawReach() {
+    var A = mcActs(), svg = document.getElementById('mc-r-svg'); svg.innerHTML = '';
+    var cx = 170, cy = 150, R = [28, 56, 85, 114, 142], LAB = ['nearby', 'region', 'country', 'continent', 'world'];
+    R.slice().reverse().forEach(function(r) { svg.appendChild(mcEl('circle', { cx: cx, cy: cy, r: r, fill: 'none', stroke: 'var(--border)' })); });
+    R.forEach(function(r, i) { mcText(svg, cx + 4, cy - r + 12, LAB[i]); });
+    var cc = {}, sc = {};
+    A.list.forEach(function(e) { if (e.rb !== null) return; if (e.city) cc[e.city + '|' + e.st] = (cc[e.city + '|' + e.st] || 0) + 1; if (e.st) sc[e.st] = (sc[e.st] || 0) + 1; });
+    function top(o) { var best = null, n = 0; Object.keys(o).forEach(function(k) { if (o[k] > n) { n = o[k]; best = k; } }); return best; }
+    var homeCity = top(cc), homeSt = top(sc);
+    var seed = 19; function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    var counts = [0, 0, 0, 0, 0], unplaced = 0, olderFar = 0;
+    A.list.forEach(function(e) {
+      var ring = e.rb;
+      if (ring === null) {
+        if (!e.city && !e.st) { unplaced++; return; }
+        if (homeCity && e.city && (e.city + '|' + e.st) === homeCity) ring = 0;
+        else if (!e.st && e.city && homeCity && homeCity.split('|')[0] === e.city) ring = 0;
+        else if (homeSt && e.st && e.st === homeSt) ring = 1;
+        else if (e.st) { olderFar++; return; }
+        else { unplaced++; return; }
+      }
+      counts[ring]++;
+      var r0 = ring ? R[ring - 1] : 0, r1 = R[ring], a = rnd() * Math.PI * 2, d = r0 + 5 + rnd() * Math.max(1, r1 - r0 - 10);
+      svg.appendChild(mcEl('circle', { cx: (cx + Math.cos(a) * d).toFixed(1), cy: (cy + Math.sin(a) * d).toFixed(1), r: 2.4, fill: 'var(--accent)', 'fill-opacity': '.7' }));
+    });
+    svg.appendChild(mcEl('circle', { cx: cx, cy: cy, r: 3, fill: 'var(--text)' }));
+    var W = ['nearby', 'in your region', 'across your country', 'across your continent', 'across the world'];
+    var placed = counts.reduce(function(a, b) { return a + b; }, 0), sent;
+    if (!placed) sent = 'None of your exchanges carry a distance yet, so there is nothing to draw.';
+    else {
+      var most = counts.indexOf(Math.max.apply(null, counts)), far = 0;
+      for (var k = 4; k >= 0; k--) { if (counts[k]) { far = k; break; } }
+      sent = 'Most of the people you exchange with are ' + W[most] + '.' + (far > most ? ' The farthest was ' + W[far] + '.' : '');
+    }
+    document.getElementById('mc-r-sentence').textContent = sent;
+    var notes = [];
+    if (olderFar) notes.push(olderFar + (olderFar === 1 ? ' older exchange was' : ' older exchanges were') + ' farther than your state; how far was not recorded.');
+    if (unplaced) notes.push(unplaced + (unplaced === 1 ? ' exchange carries' : ' exchanges carry') + ' no distance and ' + (unplaced === 1 ? 'is' : 'are') + ' not drawn.');
+    document.getElementById('mc-r-unplaced').textContent = notes.join(' ');
+  }
+
+  // v2.81.0: My chain's person block, drawn here and again after "About you" is saved
+  function mcPhoto() {
+    var photo = state.declarations.photo || '';
+    if (!photo) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) photo = g.photoData; }
+    return photo;
+  }
+  function mcRenderPerson() {
+    var photo = mcPhoto(), name = state.declarations.name || 'Anonymous';
+    document.getElementById('mc-photo').innerHTML = photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase());
+    document.getElementById('mc-name').textContent = name;
+  }
+
+  function openWallet() {
+    _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
+    document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
+    var ex = state.chain.filter(HCP.isAct);
+    var cur = 0, cos = 0, nP = 0, nR = 0, wit = 0, cp = {};
+    ex.forEach(function(r) {
+      if (r.energyState === 'provided') { cur += r.value; nP++; }
+      else if (r.energyState === 'received') { cos += r.value; nR++; }
+      if (r.counterparty) cp[r.counterparty] = (cp[r.counterparty] || 0) + 1;
+      if (r.witnessAttestation) wit++;
+    });
+    var st = cur - cos, M = exMarkSVG(14), side = st > 0 ? 'mc-blue' : (st < 0 ? 'mc-amber' : '');
+    var people = Object.keys(cp).length, more = Object.keys(cp).filter(function(k) { return cp[k] >= 2; }).length;
+    mcRenderPerson();
+    var since = '';
+    if (state.chain.length) { var d0 = new Date(state.chain[0].timestamp); since = 'Chain since ' + d0.toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
+    document.getElementById('mc-since').textContent = since;
+    function set(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
+    // Standing on the list: the two totals on one scale, the gap drawn, the standing beneath coloured by side
+    set('mc-s-cur', mcFmt(cur) + M); set('mc-s-cos', mcFmt(cos) + M);
+    var mx = Math.max(cur, cos) || 1;
+    document.getElementById('mc-s-curbar').style.width = (cur / mx * 100) + '%';
+    document.getElementById('mc-s-cosbar').style.width = (cos / mx * 100) + '%';
+    var cg = document.getElementById('mc-s-curgap'), sg = document.getElementById('mc-s-cosgap');
+    cg.hidden = true; sg.hidden = true;
+    if (st !== 0) { var gap = st < 0 ? cg : sg; gap.className = 'mc-gapbox' + (st > 0 ? ' mc-up' : ''); gap.style.left = (Math.min(cur, cos) / mx * 100) + '%'; gap.style.width = (Math.abs(st) / mx * 100) + '%'; gap.hidden = false; }
+    var big = document.getElementById('mc-s-big');
+    big.className = 'mc-display' + (side ? ' ' + side : '');
+    big.innerHTML = st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below');
+    document.getElementById('mc-s-ratio').textContent = mcRatioSentence(cur, cos);
+    // Numbers
+    set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M);
+    var nst = document.getElementById('mc-n-st'); nst.className = 'exs-rowval mc-big' + (side ? ' ' + side : ''); nst.innerHTML = mcStandWords(st) + M;
+    set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
+    set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
+    // Device: identity panel and standing content, moved in unchanged
     var idEl = document.getElementById('wallet-identity-panel');
     if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
-    // Render participation ratio
-    var ratioBar = document.getElementById('wallet-ratio-bar');
-    var ratioText = document.getElementById('wallet-ratio-text');
-    var total = actsP + actsR;
-    if (total > 0) {
-      var pPct = Math.round((actsP / total) * 100);
-      var rPct = 100 - pPct;
-      var ratioStr = actsR > 0 ? Math.round(actsP / actsR * 10) / 10 + ' : 1' : actsP + ' : 0';
-      if (ratioText) ratioText.textContent = ratioStr;
-      if (ratioBar) {
-        ratioBar.innerHTML = '<div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-faint); margin-bottom:4px;"><span>provided ' + actsP + '</span><span>received ' + actsR + '</span></div>' +
-          '<div style="height:14px; border-radius:7px; overflow:hidden; display:flex; background:var(--bg-input);">' +
-          (pPct > 0 ? '<div style="width:' + pPct + '%; background:var(--green); border-radius:7px 0 0 7px;"></div>' : '') +
-          (rPct > 0 ? '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 7px 7px 0;"></div>' : '') +
-          '</div>';
-      }
-    } else {
-      if (ratioText) ratioText.textContent = '\u2014';
-      if (ratioBar) ratioBar.innerHTML = '';
-    }
-
-    // Standing content (identity panel, POH verdict, categories, etc.)
-    // was moved from the removed Standing tab into this wallet modal
-    // in v2.58.0. Render it into the wallet-standing-content div
-    // appended to the wallet body.
     try { renderStandingTab(); } catch(e) { console.log('[wallet] Standing render failed:', e.message); }
-
     showModal('wallet');
   }
 
@@ -1227,26 +1711,38 @@ const PAIR_CODE_LENGTH = 4;
     renderBrowserStorageBanner();
   }
 
-  // iOS-only: when the app is running in a Safari tab (not installed to
-  // the home screen), the chain lives only in this browser's storage and
-  // will not carry over on install. Show a persistent, dismissible-by-
-  // installing reminder with a one-tap export. Non-iOS and installed
-  // contexts render nothing.
+  // iOS-only: in a Safari tab (not installed) the chain lives only in this
+  // browser's storage. v2.92.0 (Michael, Oct 3): the reminder shows only
+  // when there are exchanges on the chain that no backup has captured,
+  // and says how many. Saving a backup (or restoring one) records the act
+  // count in SK_backup; the line returns when a new exchange lands.
+  function backupMarker() { try { return JSON.parse(localStorage.getItem(SK + '_backup') || 'null'); } catch(e) { return null; } }
+  function markBackedUp() { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, at: new Date().toISOString() })); } catch(e) {} }
   function renderBrowserStorageBanner() {
-    var host = document.getElementById('home');
-    if (!host) return;
     var existing = document.getElementById('browser-storage-banner');
-    var isiOS = detectInstallPlatform() === 'ios';
-    if (!isiOS) { if (existing) existing.remove(); return; }
-    if (existing) return;
+    if (existing) existing.remove();
+    // v2.96.0 (Michael, Oct 3): every device, installed or not. The amber icon and its
+    // Safari sheet stay iPhone-browser only, since that sheet is about Safari.
+    var iosBrowser = detectInstallPlatform() === 'ios';
+    var acts = state.chain.filter(HCP.isAct).length;
+    var m = backupMarker();
+    var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
+    if (unbacked <= 0) return;
+    var hero = document.querySelector('#tab-home-content .home-hero');
+    if (!hero) return;
     var b = document.createElement('div');
     b.id = 'browser-storage-banner';
-    b.style.cssText = 'background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:var(--radius); padding:12px 14px; margin:12px 0; font-size:13px; color:var(--text-dim); line-height:1.5;';
-    b.innerHTML = 'You are using HEP in the browser. On iPhone your records live here, not on your phone, and will not carry over when you install. ' +
-      '<button style="display:block; margin-top:8px; background:var(--accent); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:600;" onclick="App.exportBackup()">Save a backup now</button>';
-    host.insertBefore(b, host.firstChild);
+    b.className = 'home-backup';
+    b.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') +
+      '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div></div>' +
+      '<button class="exs-save" onclick="App.exportBackup()">Back up now</button>';
+    hero.appendChild(b);
   }
 
+
+  // v2.93.0: the warning sheet behind the amber icon (Michael, Oct 3).
+  function openBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) { el.hidden = false; el.scrollTop = 0; } }
+  function closeBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) el.hidden = true; }
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -1280,6 +1776,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function formatDuration(mins) {
+    if (mins >= 1440 && mins % 1440 === 0) { var dd = mins / 1440; return dd + (dd === 1 ? ' day' : ' days'); }
     if (mins < 60) return mins + 'm';
     const h = Math.floor(mins / 60), m = mins % 60;
     return m > 0 ? h + 'h ' + m + 'm' : h + 'h';
@@ -1302,6 +1799,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Exchange (Initiator Side) ---
   function showExStep(step) {
+    var _xb = document.getElementById('exchange-close'); if (_xb) _xb.style.visibility = '';
     document.querySelectorAll('#exchange-body .hs-step').forEach(s => s.classList.remove('active'));
     document.getElementById('ex-step-' + step).classList.add('active');
     // Sync 3-step indicator (role-aware).
@@ -1379,6 +1877,7 @@ const PAIR_CODE_LENGTH = 4;
       html += '<p>As you cooperate with people, your acts will appear here. Each one can be reused with a single tap.</p>';
       html += '<button class="btn btn-primary" onclick="App.coopNewAct()">Start your first act</button>';
       html += '<button class="coop-receive-btn" style="margin-top:12px;" onclick="App.coopReceiveProposal()">Receive a proposal</button>';
+      html += '<button class="coop-receive-btn" style="margin-top:8px;" onclick="App.closeModal(\'cooperate\'); App.openInvite()">Invite someone new</button>';
       html += '</div>';
       body.innerHTML = html;
       showModal('cooperate');
@@ -1446,6 +1945,14 @@ const PAIR_CODE_LENGTH = 4;
     receiveBtn.addEventListener('click', () => coopReceiveProposal());
     body.appendChild(receiveBtn);
 
+    // Invite someone new (invite pipeline slice 1)
+    const inviteBtn = document.createElement('button');
+    inviteBtn.className = 'coop-receive-btn';
+    inviteBtn.style.marginTop = '8px';
+    inviteBtn.textContent = 'Invite someone new';
+    inviteBtn.addEventListener('click', () => { closeModal('cooperate'); openInvite(); });
+    body.appendChild(inviteBtn);
+
     // Reusable acts below
     const hdr = document.createElement('div');
     hdr.className = 'coop-section-hdr';
@@ -1484,38 +1991,20 @@ const PAIR_CODE_LENGTH = 4;
   function coopNewAct() {
     closeModal('cooperate');
     openExchange();
-    // Clear all fields for fresh entry
-    document.getElementById('ex-desc').value = '';
-    document.getElementById('ex-value').value = '';
-    document.getElementById('ex-category').value = '';
-    document.getElementById('ex-hours').value = '';
-    document.getElementById('ex-minutes').value = '';
-    document.getElementById('ex-city').value = '';
-    document.getElementById('ex-state').value = '';
   }
 
   function coopReuseAct(act) {
     closeModal('cooperate');
+    // The beats read the prefill the same way the FAB "Use previous" does.
+    window._fabPrefill = { description: act.description || '', value: act.value || '', category: act.category || '', duration: act.duration || 0, energyState: act.energyState || 'provided', city: act.city || '', state_field: act.state_field || '' };
     openExchange();
-    setDirection(act.energyState);
-    document.getElementById('ex-desc').value = act.description || '';
-    document.getElementById('ex-value').value = act.value || '';
-    document.getElementById('ex-category').value = act.category || '';
-    if (act.duration) {
-      const hrs = Math.floor(act.duration / 60);
-      const mins = act.duration % 60;
-      document.getElementById('ex-hours').value = hrs || '';
-      document.getElementById('ex-minutes').value = mins || '';
-    }
-    if (act.city) document.getElementById('ex-city').value = act.city;
-    if (act.state_field) document.getElementById('ex-state').value = act.state_field;
-    showPrefillBar(act.description || act.category || 'Previous act');
   }
 
   function openExchange() {
     showModal('exchange');
     showExStep('form');
-    setDirection('provided');
+    exBeatsOpen();
+    setDirection(_exBeat.dir || 'provided');
     state.pendingProposal = null;
     state.proposalPath = 'inperson';
     prefillSource = null;
@@ -1523,10 +2012,31 @@ const PAIR_CODE_LENGTH = 4;
     renderSkillPicker();
   }
 
+  // Once the pipe exists (a partner is connected), nothing is recorded
+  // and nobody has ended it yet, every exit is a cancel and shows the
+  // end screen on both phones (ruled Oct 2, twelfth session). Before
+  // the pipe exists there is nothing to cancel and the exit just closes.
+  function exPipeOpen() {
+    return !!(sessionPartner && sessionCode && !_sessionWritten && !_exEndedBy);
+  }
   function closeExchange() {
+    if (exPipeOpen()) { exShowEndedLocal('cancelled'); return; }
     var wasDone = _sessionWritten || (state.doneSummary && state.doneSummary.length > 0);
+    // Invite pipeline: backing out of a pipe-born connection marks the
+    // redeemed record dismissed so foreground re-checks stop reopening
+    // it; the next full app open retries.
+    try {
+      if (!_sessionWritten && sessionCode) {
+        var _ri = JSON.parse(localStorage.getItem('hcp_dev_redeemed_invite') || 'null');
+        if (_ri && _ri.redeemer_code === sessionCode) {
+          _ri.dismissed = true;
+          localStorage.setItem('hcp_dev_redeemed_invite', JSON.stringify(_ri));
+        }
+      }
+    } catch(_) {}
     state.pendingProposal = null;
     localStorage.removeItem('hcp_dev_pending_proposal');
+    exNotifyCancel();
     exStopConnectPoll();
     exFlowActive = false;
     cleanupSession();
@@ -1545,6 +2055,12 @@ const PAIR_CODE_LENGTH = 4;
     if (wasDone) {
       try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
       toast('Exchange complete');
+    }
+    // Hooks the completion screen owed (see writeSessionRecord).
+    if (typeof _exRV !== 'undefined' && _exRV.finish) {
+      _exRV.finish = false;
+      try { roomExchangeCompleted(); } catch(_) {}
+      try { inviteRedeemedCompleted(); } catch(_) {}
     }
   }
 
@@ -1619,13 +2135,17 @@ const PAIR_CODE_LENGTH = 4;
   function exParseDuration(text) {
     if (!text || !text.trim()) return 0;
     text = text.trim().toLowerCase();
-    // Try patterns: "2 hours", "2h", "2.5 hours", "30 min", "30m", "1h 30m", "90"
-    var totalMins = 0;
-    var hMatch = text.match(/([\d.]+)\s*h/);
-    var mMatch = text.match(/([\d.]+)\s*m/);
-    if (hMatch) totalMins += Math.round(parseFloat(hMatch[1]) * 60);
-    if (mMatch) totalMins += Math.round(parseFloat(mMatch[1]));
-    if (!hMatch && !mMatch) {
+    // "2 hours", "2h", "2.5 hours", "30 min", "30m", "1h 30m", "3 days",
+    // "1 week", "2 months", "90". Days are calendar days (v2.69.0 fix:
+    // "3 days" used to read as 3 hours).
+    var totalMins = 0, hit = false;
+    var add = function(re, per) { var m = text.match(re); if (m) { totalMins += Math.round(parseFloat(m[1]) * per); hit = true; } };
+    add(/([\d.]+)\s*mo/, 30 * 1440);
+    add(/([\d.]+)\s*w/, 7 * 1440);
+    add(/([\d.]+)\s*d/, 1440);
+    add(/([\d.]+)\s*h/, 60);
+    add(/([\d.]+)\s*m(?!o)/, 1);
+    if (!hit) {
       // Plain number -- if > 10 assume minutes, otherwise hours
       var n = parseFloat(text);
       if (!isNaN(n)) totalMins = n > 10 ? Math.round(n) : Math.round(n * 60);
@@ -1706,6 +2226,15 @@ const PAIR_CODE_LENGTH = 4;
       // Send the proposal to the witness server and start the
       // confirmation poll (handled inside submitSessionProposal).
       sendSessionProposal();
+
+      // Screens 7 and 8 (ruled Oct 1): stay in the modal on the wait
+      // layout; the confirmation plays the arrow here. Not now on that
+      // screen closes the modal only (closeModal), as the closeModal
+      // call this replaced did, so the session and the poll stay alive.
+      showExStep('rv');
+      exRenderRV('wait');
+      refreshHome();
+      return;
 
       // Modal closes directly. We deliberately do NOT call
       // closeExchange() here -- that would clear state.pendingProposal
@@ -2042,6 +2571,14 @@ const PAIR_CODE_LENGTH = 4;
   // An ephemeral pipe between two phones, opened by pairing codes.
   // Carries: thread snapshots, proposals, confirmations.
   // The server is just a relay — it never interprets the data.
+  //
+  // Invite pipeline: a session introduced by a pipe lives on the pipe's
+  // host witness, which may differ from the device's default (the cargo
+  // names the host so both phones agree). sessionWitnessUrl overrides
+  // the default for the lifetime of one session; cleanupSession resets
+  // it. Manual-code sessions never set it, so nothing changes for them.
+  let sessionWitnessUrl = null;
+  function getSessionWitnessUrl() { return sessionWitnessUrl || getWitnessUrl(); }
 
   let sessionPollTimer = null;
   let sessionRole = null; // 'proposer' or 'confirmer'
@@ -2208,7 +2745,7 @@ const PAIR_CODE_LENGTH = 4;
   // Encrypt and send snapshot via POST /session/:code/thread
   async function sendEncryptedSnapshot(extras) {
     if (!sessionSharedKey || !sessionCode) return;
-    var url = getWitnessUrl();
+    var url = getSessionWitnessUrl();
     if (!url) return;
     var snap = buildSnapshotForSharing(extras);
     if (!snap) return;
@@ -2228,7 +2765,7 @@ const PAIR_CODE_LENGTH = 4;
   // Poll for partner's encrypted snapshot, decrypt when found
   function startSnapshotPoll(onReceived) {
     stopSnapshotPoll();
-    var url = getWitnessUrl();
+    var url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
     var attempts = 0;
     function doCheck() {
@@ -2317,6 +2854,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function generateSessionCode() {
+    sessionWitnessUrl = null; // manual-code sessions always use the default witness
     _sessionWritten = false; // reset for new session
     _pollBusy = false;
     const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -2350,7 +2888,7 @@ const PAIR_CODE_LENGTH = 4;
         return;
       }
 
-      const url = getWitnessUrl();
+      const url = getSessionWitnessUrl();
       if (!url) {
         toast('No server available');
         if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
@@ -2780,7 +3318,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function submitSessionProposal() {
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !state.pendingProposal) return;
 
     const pp = state.pendingProposal;
@@ -2871,8 +3409,9 @@ const PAIR_CODE_LENGTH = 4;
 
   function startSessionPoll() {
     stopSessionPoll();
+    exPresenceStart();
     _pollBusy = false;
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     let attempts = 0;
@@ -2901,7 +3440,7 @@ const PAIR_CODE_LENGTH = 4;
 
   async function checkSessionState() {
     if (_sessionWritten) return; // already wrote a record for this session
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     try {
@@ -2912,6 +3451,9 @@ const PAIR_CODE_LENGTH = 4;
       // Layer 2: Validate response size and state
       var data;
       try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
+      // Presence and cancel (v2.70.0): read before validation, because a
+      // cancelled session carries proposal status 'cancelled'.
+      if (exPresenceRead(data)) return;
       var validation = sessionValidateResponse(data, rawText.length);
       if (!validation.valid) { sessionViolation(validation.reason); return; }
 
@@ -2960,8 +3502,17 @@ const PAIR_CODE_LENGTH = 4;
       }
 
       // Check for rejection
-      if (data.proposal && data.proposal.status === 'rejected') {
+      if (sessionRole === 'proposer' && data.proposal && data.proposal.status === 'rejected') {
         stopSessionPoll();
+        // "This doesn't look right" (ruled Oct 2): the sender goes back to
+        // the screen they sent from, everything still filled in.
+        if (exRVIsShowing()) {
+          _sessionWritten = false;
+          showExStep('form');
+          exRenderBeat(_exBeat.view === 'item' && _exBeat.picked ? 'item' : 3);
+          toast(exPartnerName() + ' said this doesn\u2019t look right');
+          return;
+        }
         document.getElementById('session-status-line').textContent = 'Proposal rejected';
         const content = document.getElementById('session-content');
         const statusDiv = content.querySelector('.pair-status');
@@ -3093,7 +3644,7 @@ const PAIR_CODE_LENGTH = 4;
 
   async function sessionConfirm() {
     if (_sessionWritten) return; // prevent duplicate writes
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     // Disable button and show spinner
@@ -3134,7 +3685,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function sessionReject() {
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     try {
@@ -3406,7 +3957,20 @@ const PAIR_CODE_LENGTH = 4;
     // point). The legacy 'Exchange recorded' Done screen with its
     // 'Return to home' button is no longer shown -- the user lands
     // directly on Home with the new exchange visible.
-    closeExchange();
+    // Screens 8 and 9: the holder's number moves, then the check and
+    // the sentence stay until Done. Plays only if the layout is on
+    // screen; closeExchange then runs the invite pipeline hooks
+    // (_exRV.finish). Otherwise finish here as before.
+    var played = false;
+    try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    if (!played) {
+      closeExchange();
+      // Invite pipeline room sweep: return the inviter to the queue.
+      try { roomExchangeCompleted(); } catch(_) {}
+      // Invite pipeline redeemer side: clear the redeemed record and
+      // surface the install step for a fresh invitee.
+      try { inviteRedeemedCompleted(); } catch(_) {}
+    }
 
     // Schedule a follow-up refresh so the row exits the In flight
     // hold and drops to Recent at the right moment. Without this,
@@ -3420,8 +3984,117 @@ const PAIR_CODE_LENGTH = 4;
     }, 4100);
   }
 
-  function cleanupSession() {
+  // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
+  // A light heartbeat runs from connection to the end of the session,
+  // separate from the main poll (which stops at several points, e.g.
+  // while the receiver reads a proposal). It keeps this phone counted
+  // as present on the witness and listens for the other person ending
+  // the exchange. Needs witness v2.7.0; against an older witness the
+  // response carries no presence fields, _exPresenceLive stays false,
+  // and the interim behaviour stays (X on Wait, local-only cancel).
+  // Never awaited on the proposal/confirm path.
+  var _exPresenceTimer = null;
+  var _exPresenceLive = false;   // witness reports presence (v2.7.0+)
+  var _exEndedBy = null;         // set once the other person ended it
+  var _exEndedByMe = false;      // this phone is the one that ended it
+  function exPresenceStart() {
+    if (_exPresenceTimer) return;
+    _exPresenceTimer = setInterval(exPresenceTick, 8000);
+  }
+  function exPresenceStop() {
+    if (_exPresenceTimer) { clearInterval(_exPresenceTimer); _exPresenceTimer = null; }
+  }
+  function exPresenceTick() {
+    if (!sessionCode || _sessionWritten || _exEndedBy) return;
+    var url = getSessionWitnessUrl();
+    if (!url) return;
+    serverFetch(url + '/session/' + sessionCode).then(function(resp) {
+      if (!resp.ok) return null;
+      return resp.json();
+    }).then(function(data) {
+      if (data) exPresenceRead(data);
+    }).catch(function() {});
+  }
+  // Reads the additive v2.7.0 fields. Returns true if the session ended.
+  function exPresenceRead(data) {
+    if (!data || typeof data !== 'object') return false;
+    if (Object.prototype.hasOwnProperty.call(data, 'partner_present') && !_exPresenceLive) {
+      _exPresenceLive = true;
+      exFrameXRefresh();
+    }
+    if (data.cancelled && !data.cancelled.by_me && !_sessionWritten) {
+      exShowEnded(data.cancelled.reason === 'disconnected' ? 'disconnected' : 'cancelled');
+      return true;
+    }
+    return false;
+  }
+  // Tell the witness this phone is ending the exchange, so the other
+  // phone sees the end screen. Fire and forget.
+  function exNotifyCancel() {
+    try {
+      if (!sessionCode || !sessionPartner || _sessionWritten || _exEndedBy) return;
+      var url = getSessionWitnessUrl();
+      if (!url) return;
+      serverFetch(url + '/session/' + sessionCode + '/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'cancelled' })
+      }).catch(function() {});
+    } catch(_) {}
+  }
+  // The other person cancelled or disconnected (Oct 2 ruling 6).
+  function exShowEnded(reason) {
+    if (_exEndedBy) return;
+    _exEndedBy = reason;
+    _exRV.endedName = sessionPartner ? exPartnerName() : (_exRV.other || 'The other person');
     stopSessionPoll();
+    exPresenceStop();
+    try { stopSnapshotPoll(); } catch(_) {}
+    state.pendingProposal = null;
+    localStorage.removeItem('hcp_dev_pending_proposal');
+    // Even if they have stepped away to another screen, the end screen
+    // opens over it: once piped, both sides must know where they stand.
+    exEnsureOverlay();
+    showExStep('rv');
+    exRenderRV('ended');
+  }
+  function exEndedHTML() {
+    var n = esc(_exRV.endedName || 'The other person');
+    var line;
+    if (_exEndedByMe) line = 'You cancelled the exchange';
+    else line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
+    var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check exs-ended-x"><svg viewBox="0 0 24 24" width="48" height="48"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>';
+    h += '<div class="exs-t" style="margin-top:22px">' + line + '</div>';
+    h += '<div class="exs-body" style="margin-top:8px; color:var(--text-faint)">Nothing was recorded.</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div>';
+    h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button></div>';
+    h += '</div>';
+    return h;
+  }
+  // Corner X visibility for the current sheet. Hidden on Processing,
+  // Settled and the end screen; hidden on Wait once presence is live
+  // (DESIGN.md 2c: the sender waits).
+  function exFrameXRefresh() {
+    var xb = document.getElementById('exchange-close');
+    if (!xb) return;
+    var rv = document.getElementById('ex-step-rv');
+    var onRV = rv && rv.classList.contains('active');
+    var st = _exRV.state;
+    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || (st === 'wait' && _exPresenceLive));
+    xb.style.visibility = hide ? 'hidden' : '';
+  }
+
+  function cleanupSession() {
+    clearTimeout(_exJoinCheck); _exJoinCheck = null;
+    stopSessionPoll();
+    exPresenceStop();
+    _exPresenceLive = false;
+    _exEndedBy = null;
+    _exEndedByMe = false;
+    sessionWitnessUrl = null;
+    try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false }; } catch(_) {}
     stopSnapshotPoll();
     sessionCode = null;
     sessionTheirCode = null;
@@ -4864,48 +5537,105 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
-  // --- Declarations Edit ---
+  // --- Declarations Edit: "About you" (v2.81.0) ---
+  // Opens over My chain. Everything changed here (photo, name, about, skills) is a draft:
+  // Save commits it, X throws it away and returns exactly where you were (DESIGN.md, edit sheets).
+  var _declDraft = null;
+  function declPhotoDateText(iso) {
+    return iso ? 'Photo taken ' + new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No photo yet';
+  }
+  function renderDeclPhoto() {
+    var p = document.getElementById('edit-photo-preview');
+    var photo = _declDraft.photo || mcPhoto();
+    var name = (document.getElementById('edit-name').value || state.declarations.name || 'Anonymous').trim() || 'Anonymous';
+    p.innerHTML = photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase());
+    document.getElementById('edit-photo-date').textContent = declPhotoDateText(_declDraft.photoDate);
+  }
   function openDeclarationsEdit() {
-    showModal('declarations');
-    const p = document.getElementById('edit-photo-preview');
-    if (state.declarations.photo) { p.innerHTML = '<img src="' + state.declarations.photo + '">'; p.classList.add('has-photo'); }
-    else { p.innerHTML = '\u25ce'; p.classList.remove('has-photo'); }
-    document.getElementById('edit-name').value = state.declarations.name || '';
-    document.getElementById('edit-about').value = state.declarations.about || '';
-    const de = document.getElementById('edit-photo-date');
-    de.textContent = state.declarations.photoDate ? 'Photo: ' + new Date(state.declarations.photoDate).toLocaleDateString() : 'No photo yet';
+    var d = state.declarations;
+    _declDraft = { photo: d.photo || null, photoDate: d.photoDate || null, photoSource: d.photoSource, skills: (Array.isArray(d.skills) ? d.skills : []).slice(), education: (Array.isArray(d.education) ? d.education : []).slice() };
+    document.getElementById('edit-name').value = d.name || '';
+    document.getElementById('edit-about').value = d.about || '';
+    document.getElementById('edit-skill-input').value = '';
+    document.getElementById('edit-edu-input').value = '';
+    renderDeclPhoto();
     renderSkillsList('edit');
-    // Show scale exercise values if set
-    const rangeDisplay = document.getElementById('edit-range-display');
-    if (state.declarations.rangeSimpleVal && state.declarations.rangeComplexVal) {
-      const ratio = Math.round(state.declarations.rangeComplexVal / state.declarations.rangeSimpleVal);
-      let h = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">';
-      h += '<div><div style="font-size:13px; color:var(--text-faint);">A small favor</div><div style="font-size:18px; font-weight:500; color:var(--accent);">' + state.declarations.rangeSimpleVal + '</div></div>';
-      h += '<div style="font-size:14px; color:var(--text-faint);">1 : ' + ratio + '</div>';
-      h += '<div style="text-align:right;"><div style="font-size:13px; color:var(--text-faint);">Your best work</div><div style="font-size:18px; font-weight:500; color:var(--accent);">' + state.declarations.rangeComplexVal + '</div></div>';
-      h += '</div>';
-      if (state.declarations.rangeDailyVal) {
-        h += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size:14px; color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
-      }
-      document.getElementById('edit-range-summary').innerHTML = h;
-      rangeDisplay.style.display = 'block';
-    } else {
-      rangeDisplay.style.display = 'none';
+    renderEduList();
+    var body = document.querySelector('#declarations-overlay .modal-body'); if (body) body.scrollTop = 0;
+    dcCloseCV(); ['preview','pskills','pedu'].forEach(dcCloseSheet);
+    showModal('declarations');
+  }
+  // v2.86.0: "As others see it" on About you. The About a counterparty sees, drawn from the open draft.
+  // aboutSheetHTML / aboutListHTML take plain data so the real counterparty view (sharing, pinned) can reuse them.
+  function aboutSheetHTML(d, opts) {
+    var name = (d.name || '').trim() || 'Anonymous';
+    var photo = d.photo || '';
+    var skills = d.skills || [], edu = d.education || [], about = (d.about || '').trim();
+    var chev = '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg>';
+    var h = '<div class="mc-id" style="padding-top:0"><div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div><div class="mc-name">' + esc(name) + '</div><div class="exs-cap">In their own words</div></div>';
+    if (!about && !skills.length && !edu.length) {
+      return h + '<p class="exs-body">Nothing written yet. With nothing here, the people you exchange with see no about icon at all.</p>';
     }
+    if (about) h += '<p class="exs-body dc-about-text">' + esc(about) + '</p><div class="dc-p-gap"></div>';
+    if (skills.length) h += '<button class="exs-row" onclick="' + opts.skills + '"><div class="exs-rowmain"><div class="exs-body">Skills and qualifications</div><div class="exs-cap">' + skills.length + ' listed</div></div>' + chev + '</button>';
+    if (edu.length) h += '<button class="exs-row" onclick="' + opts.edu + '"><div class="exs-rowmain"><div class="exs-body">Education</div><div class="exs-cap">' + edu.length + ' listed</div></div>' + chev + '</button>';
+    h += '<p class="exs-cap" style="margin-top:22px">' + esc(name) + ' wrote this and chose to share it. HEP records exchanges between people; it does not check what anyone says about themselves. The chain shows what has been done.</p>';
+    return h;
+  }
+  function aboutListHTML(name, list) {
+    return '<div class="exs-cap" style="margin-bottom:4px">' + esc((name || '').trim() || 'Anonymous') + ', in their own words</div>' +
+      list.map(function(x) { return '<div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">' + esc(x) + '</div></div></div>'; }).join('');
+  }
+  function dcPreviewData() {
+    return {
+      name: document.getElementById('edit-name').value,
+      about: document.getElementById('edit-about').value,
+      photo: (_declDraft && _declDraft.photo) || mcPhoto(),
+      skills: _declDraft ? _declDraft.skills : [], education: _declDraft ? _declDraft.education : []
+    };
+  }
+  function dcOpenPreview() {
+    if (!_declDraft) return;
+    var d = dcPreviewData();
+    document.getElementById('dc-preview-body').innerHTML = aboutSheetHTML(d, { skills: "App.dcOpenPList('skills')", edu: "App.dcOpenPList('edu')" });
+    var el = document.getElementById('dc-sheet-preview'); el.hidden = false; el.scrollTop = 0;
+  }
+  function dcOpenPList(which) {
+    var d = dcPreviewData();
+    var key = which === 'edu' ? 'pedu' : 'pskills';
+    document.getElementById('dc-' + key + '-body').innerHTML = aboutListHTML(d.name, which === 'edu' ? d.education : d.skills);
+    var el = document.getElementById('dc-sheet-' + key); el.hidden = false; el.scrollTop = 0;
+  }
+  function dcCloseSheet(k) { var el = document.getElementById('dc-sheet-' + k); if (el) el.hidden = true; }
+  // v2.85.0: "How this is different from a CV", a reading sheet over About you (rules 2, 9). X returns to the edit sheet with the draft untouched.
+  function dcOpenCV() { var el = document.getElementById('dc-sheet-cv'); if (el) { el.hidden = false; el.scrollTop = 0; } }
+  function dcCloseCV() { var el = document.getElementById('dc-sheet-cv'); if (el) el.hidden = true; }
+  function closeDeclarationsEdit() {
+    _declDraft = null;
+    closeModal('declarations');
   }
   function editCapturePhoto() { document.getElementById('edit-photo-capture').click(); }
   function editUploadPhoto() { document.getElementById('edit-photo-file').click(); }
   function handleEditPhotoFile(event) {
-    const file = event.target.files[0]; if (!file) return;
+    const file = event.target.files[0]; if (!file || !_declDraft) return;
     const isCamera = event.target.hasAttribute('capture');
     const reader = new FileReader();
-    reader.onload = e => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); const max = 400; let w = img.width, h = img.height; if (w > h) { if (w > max) { h = h * max / w; w = max; } } else { if (h > max) { w = w * max / h; h = max; } } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); const du = c.toDataURL('image/jpeg', 0.8); state.declarations.photo = du; state.declarations.photoDate = new Date().toISOString(); state.declarations.photoSource = isCamera ? 'camera' : 'file'; const p = document.getElementById('edit-photo-preview'); p.innerHTML = '<img src="' + du + '">'; p.classList.add('has-photo'); document.getElementById('edit-photo-date').textContent = 'Photo: ' + new Date().toLocaleDateString(); }; img.src = e.target.result; };
+    reader.onload = e => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); const max = 400; let w = img.width, h = img.height; if (w > h) { if (w > max) { h = h * max / w; w = max; } } else { if (h > max) { w = w * max / h; h = max; } } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); const du = c.toDataURL('image/jpeg', 0.8); if (!_declDraft) return; _declDraft.photo = du; _declDraft.photoDate = new Date().toISOString(); _declDraft.photoSource = isCamera ? 'camera' : 'file'; renderDeclPhoto(); }; img.src = e.target.result; };
     reader.readAsDataURL(file); event.target.value = '';
   }
   function saveDeclarationsEdit() {
-    state.declarations.name = document.getElementById('edit-name').value.trim();
-    state.declarations.about = document.getElementById('edit-about').value.trim();
-    save(); closeModal('declarations'); refreshHome(); toast('Declarations updated');
+    if (!_declDraft) { closeModal('declarations'); return; }
+    var d = state.declarations;
+    d.name = document.getElementById('edit-name').value.trim();
+    d.about = document.getElementById('edit-about').value.trim();
+    if (_declDraft.photo !== (d.photo || null)) { d.photo = _declDraft.photo; d.photoDate = _declDraft.photoDate; d.photoSource = _declDraft.photoSource; }
+    d.skills = _declDraft.skills.slice();
+    d.education = _declDraft.education.slice();
+    _declDraft = null;
+    save(); closeModal('declarations'); refreshHome();
+    var w = document.getElementById('wallet-overlay');
+    if (w && w.classList.contains('active')) mcRenderPerson();
+    toast('Saved');
   }
 
   // --- Scale Exercise (standalone modal) ---
@@ -6180,21 +6910,60 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
+  // v2.94.0 (Michael, Oct 3): one tap does both. The share panel opens with
+  // the file (Mail, Messages, Files, any cloud: the person's own inbox
+  // becomes the central place for backups, no server), and a copy is saved
+  // to this phone. Share first, because it needs the tap; the local copy
+  // follows when the panel closes, whether they shared or cancelled.
   async function exportBackupAction() {
+    var bk, text, name;
     try {
-      const bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin);
+      bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin);
       bk.declarations = state.declarations;
       bk.settings = state.settings;
-      const blob = new Blob([JSON.stringify(bk, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      text = JSON.stringify(bk, null, 2);
       var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
-      var exportDate = new Date().toISOString().slice(0, 10);
-      a.download = 'HEP-Backup_' + exportName + '_' + exportDate + '.json';
-      a.click(); URL.revokeObjectURL(a.href); toast('Backup downloaded');
-    } catch(e) { toast('Backup failed'); }
+      name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
+    } catch(e) { toast('Backup failed'); return; }
+    function saveLocal() {
+      try {
+        var blob = new Blob([text], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
+        return true;
+      } catch(e) { return false; }
+    }
+    // Some browsers (Chrome on Android) refuse to share .json files, so fall back to a .txt copy of the same file.
+    var shareFile = null;
+    try {
+      if (navigator.share && navigator.canShare) {
+        var f1 = new File([text], name, { type: 'application/json' });
+        if (navigator.canShare({ files: [f1] })) shareFile = f1;
+        else { var f2 = new File([text], name + '.txt', { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) shareFile = f2; }
+      }
+    } catch(e) { shareFile = null; }
+    var shared = false;
+    if (shareFile) {
+      try { await navigator.share({ files: [shareFile], title: 'HEP backup' }); shared = true; } catch(e) { shared = false; }
+    }
+    var saved = saveLocal();
+    if (shared || saved) { markBackedUp(); renderBrowserStorageBanner(); }
+    toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
   }
 
-  function importBackupAction() { document.getElementById('import-file').click(); }
+  // v2.95.0 (Michael, Oct 3): import replaces this phone's chain (there is no
+  // merge yet), so if the phone already holds exchanges, say so first.
+  function importBackupAction() {
+    var acts = (state.chain || []).filter(HCP.isAct).length;
+    if (!acts) { document.getElementById('import-file').click(); return; }
+    var el = document.getElementById('import-sheet'); if (!el) { document.getElementById('import-file').click(); return; }
+    document.getElementById('import-sheet-count').textContent = 'This phone has ' + acts + (acts === 1 ? ' exchange' : ' exchanges') + '.';
+    el.hidden = false; el.scrollTop = 0;
+  }
+  function closeImportSheet() { var el = document.getElementById('import-sheet'); if (el) el.hidden = true; }
+  function importChooseFile() { closeImportSheet(); document.getElementById('import-file').click(); }
+  function importBackUpFirst() { closeImportSheet(); exportBackupAction(); }
 
   async function handleImportFile(event) {
     const file = event.target.files[0]; if (!file) return;
@@ -6210,9 +6979,9 @@ const PAIR_CODE_LENGTH = 4;
       if (bk.settings) state.settings = Object.assign(state.settings, bk.settings);
       // Witness URL is a device setting, not a chain property — never import it
       state.settings.witnessUrl = DEFAULT_WITNESS_URL;
-      state.pin = pin; await saveKeys(pin); save(); state.initialized = true; refreshHome();
+      state.pin = pin; await saveKeys(pin); save(); markBackedUp(); state.initialized = true; refreshHome();
       showScreen('home'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
-      handleIncomingPayload(); checkPingOnOpen(); checkPhotoNudge();
+      handleIncomingPayload(); checkPendingInvite(); checkPingOnOpen(); checkPhotoNudge();
     } catch(e) { console.error('Import error:', e); toast('Import failed: ' + e.message); }
     event.target.value = '';
   }
@@ -6369,6 +7138,570 @@ const PAIR_CODE_LENGTH = 4;
     } else { copyShareLink(); }
   }
 
+  // === INVITE PIPELINE SLICE 1 (June 2026) ===
+  // One QR does two jobs: front door for someone without the app, and an
+  // open exchange pipe so the invitation and the first cooperative act
+  // are the same gesture. The QR carries the pipe (a temporary rendezvous
+  // reference), never the exchange; the mint always requires the second
+  // leg after the invitee has keys. Design: writing/invite-pipeline.md in
+  // hep-project-state. Server half: witness-server v2.6.0 pipe endpoints.
+  //
+  // The pipe lives on exactly one witness server (wherever the inviter's
+  // app created it), so the QR cargo names that host explicitly (pw=).
+  // Without it, redemption breaks whenever the two phones have different
+  // witness settings -- and during the v2.6.0 rollout only part of the
+  // cohort speaks the pipe protocol at all.
+  //
+  // Cargo params: pi (10-char pipe code), pw (pipe host URL, base64url),
+  // pf (inviter fingerprint, for cross-checking the redeem response so a
+  // hostile pipe host cannot substitute a different inviter), pn (inviter
+  // display name). The existing ?hw= witness suggestions ride along
+  // unchanged (silent merge, registry pin 141).
+
+  var OPEN_PIPE_KEY = 'hcp_dev_open_pipe';
+  var PENDING_INVITE_KEY = 'hcp_dev_pending_invite';
+  var REDEEMED_INVITE_KEY = 'hcp_dev_redeemed_invite';
+  var PIPE_TTL_MS = 24 * 60 * 60 * 1000; // mirror of server-side retention
+
+  function hasPendingInvite() {
+    try {
+      var inv = JSON.parse(localStorage.getItem(PENDING_INVITE_KEY) || 'null');
+      return !!(inv && inv.pi && inv.pw && (!inv.ts || Date.now() - inv.ts < PIPE_TTL_MS));
+    } catch(_) { return false; }
+  }
+  // True only during onboarding of a person who arrived via an invite.
+  function inviteOnboardingActive() {
+    return !state.initialized && hasPendingInvite();
+  }
+
+  function generatePipeCode() {
+    // 10 chars from the language-proof charset; matches the server's
+    // validPipeCode. Longer than session codes because a pipe is
+    // semi-public (displayed in a room) and lives up to 24 hours.
+    var bytes = crypto.getRandomValues(new Uint8Array(10));
+    var out = '';
+    for (var i = 0; i < 10; i++) out += PAIR_CHARS[bytes[i] % PAIR_CHARS.length];
+    return out;
+  }
+
+  function buildInviteUrl(pipeCode, witnessUrl) {
+    var url = getAppBase() +
+      '?pi=' + pipeCode +
+      '&pw=' + b64Encode(witnessUrl) +
+      '&pf=' + encodeURIComponent(state.fingerprint || '');
+    var name = (state.declarations.name || '').trim().slice(0, 40);
+    if (name) url += '&pn=' + encodeURIComponent(name);
+    return appendWitnessSuggestionsToShareUrl(url);
+  }
+
+  // Attempt pipe creation on one witness. Returns 'created',
+  // 'not_supported' (server predates the pipe protocol), or 'error'.
+  async function tryCreatePipeOn(witnessUrl, pipeCode, cap) {
+    try {
+      var resp = await serverFetch(witnessUrl + '/pipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipe_code: pipeCode,
+          fingerprint: state.fingerprint,
+          public_key: state.publicKeyJwk,
+          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+          max_redemptions: (cap === undefined ? 1 : cap), // 1 = single invite, 0 = uncapped room
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.status === 404) return 'not_supported';
+      if (!resp.ok) return 'error';
+      var data = await resp.json();
+      return (data && data.created) ? 'created' : 'error';
+    } catch(e) {
+      console.log('[invite] ' + witnessUrl + ' unreachable:', e && e.message ? e.message : e);
+      return 'error';
+    }
+  }
+
+  function loadOpenPipe() {
+    try {
+      var p = JSON.parse(localStorage.getItem(OPEN_PIPE_KEY) || 'null');
+      if (p && p.code && p.witness && p.openedAt && (Date.now() - p.openedAt < PIPE_TTL_MS)) return p;
+    } catch(_) {}
+    return null;
+  }
+  function saveOpenPipe(p) {
+    try { localStorage.setItem(OPEN_PIPE_KEY, JSON.stringify(p)); } catch(_) {}
+  }
+
+  function inviteTimeAgo(ts) {
+    if (!ts) return '';
+    var delta = Math.max(0, Date.now() - ts);
+    var min = Math.floor(delta / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return min + ' min ago';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+    return Math.floor(hr / 24) + ' days ago';
+  }
+
+  // Start a fresh invite: close the open pipe and reopen the chooser.
+  function inviteStartFresh() {
+    stopInvitePoll();
+    var open = loadOpenPipe();
+    try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    _roomRedemptions = [];
+    _pipeRedemption = null;
+    _pipeHost = null;
+    if (open) {
+      serverFetch(open.witness + '/pipe/' + open.code + '/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint: state.fingerprint }),
+      }).catch(function(_) {});
+    }
+    openInvite();
+  }
+
+  function inviteResetSurfaces() {
+    document.getElementById('invite-qr-wrap').style.display = 'none';
+    document.getElementById('invite-url').style.display = 'none';
+    document.getElementById('invite-close-pipe').style.display = 'none';
+    document.getElementById('invite-queue').innerHTML = '';
+  }
+
+  function openInvite() {
+    showModal('invite');
+    inviteResetSurfaces();
+    var intro = document.getElementById('invite-intro');
+    var status = document.getElementById('invite-status');
+
+    // Resume an open pipe instead of orphaning it. A room must survive
+    // the inviter wandering off mid-evening; a single invite must
+    // survive a closed modal while the invited person installs.
+    var open = loadOpenPipe();
+    if (open) {
+      if (intro) intro.style.display = 'none';
+      resumeInvitePipe(open);
+      // Make the resumption visible. The user came in expecting either
+      // a fresh chooser or their active room; either way they deserve
+      // to know which pipe they are looking at.
+      var openedAgo = inviteTimeAgo(open.openedAt);
+      var resumeBanner = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px; font-size:13px; color:var(--text-dim); line-height:1.5;">You have an invite open from earlier (' + esc(openedAgo) + '). <span style="color:var(--accent); cursor:pointer;" onclick="App.inviteStartFresh()">Start a new invite instead</span></div>';
+      var statusEl = document.getElementById('invite-status');
+      statusEl.innerHTML = resumeBanner + statusEl.innerHTML;
+      return;
+    }
+
+    if (intro) intro.style.display = '';
+    status.innerHTML =
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">How many people are you inviting?</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<button class="btn btn-primary" onclick="App.createInvitePipe(\'single\')">One person</button>' +
+      '<button class="btn btn-secondary" onclick="App.createInvitePipe(\'room\')">Several people, same code</button>' +
+      '</div>';
+  }
+
+  async function createInvitePipe(mode) {
+    var status = document.getElementById('invite-status');
+    var intro = document.getElementById('invite-intro');
+    if (intro) intro.style.display = 'none';
+    inviteResetSurfaces();
+    status.textContent = 'Creating invite...';
+
+    var candidates = [];
+    var seen = {};
+    var primary = getWitnessUrl();
+    if (primary) { candidates.push(primary); seen[primary.toLowerCase()] = true; }
+    var trustSet = getEffectiveTrustSet();
+    for (var i = 0; i < trustSet.length; i++) {
+      var u = trustSet[i] && trustSet[i].url ? trustSet[i].url.trim().replace(/\/+$/, '') : null;
+      if (!u || seen[u.toLowerCase()]) continue;
+      seen[u.toLowerCase()] = true;
+      candidates.push(u);
+    }
+    if (candidates.length === 0) {
+      status.textContent = 'No server available. An invite needs a witness server to carry the introduction.';
+      return;
+    }
+
+    var pipeCode = generatePipeCode();
+    var cap = (mode === 'room') ? 0 : 1; // server: 0 = uncapped room
+    var host = null;
+    var sawNotSupported = false;
+    for (var c = 0; c < candidates.length; c++) {
+      var result = await tryCreatePipeOn(candidates[c], pipeCode, cap);
+      if (result === 'created') { host = candidates[c]; break; }
+      if (result === 'not_supported') sawNotSupported = true;
+      console.log('[invite] ' + candidates[c] + ': ' + result + ', trying next');
+    }
+
+    if (!host) {
+      status.textContent = sawNotSupported
+        ? 'None of your witness servers support invites yet. This feature needs an updated server.'
+        : 'Could not reach a witness server. Check your connection and try again.';
+      return;
+    }
+
+    var inviteUrl = buildInviteUrl(pipeCode, host);
+    var open = { code: pipeCode, witness: host, openedAt: Date.now(), mode: mode, inviteUrl: inviteUrl, done: {} };
+    saveOpenPipe(open);
+    console.log('[invite] Pipe opened: ' + pipeCode + ' on ' + host + ' (mode ' + mode + ')');
+    renderInviteLive(open);
+    startInvitePoll(open);
+  }
+
+  function renderInviteLive(open) {
+    inviteResetSurfaces();
+    var status = document.getElementById('invite-status');
+    var hint = (open.mode === 'room')
+      ? 'Anyone can scan it. People appear below as they come in.'
+      : "When they scan, they'll appear here";
+    status.innerHTML = '<div style="font-size:16px; font-weight:600; color:var(--text);">Have them scan this code</div>' +
+      '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">' + hint + '</div>';
+    document.getElementById('invite-qr-wrap').style.display = '';
+    var urlEl = document.getElementById('invite-url');
+    urlEl.style.display = '';
+    urlEl.textContent = open.inviteUrl;
+    try { QR.generate(open.inviteUrl, document.getElementById('invite-qr'), 280); } catch(e) {}
+    document.getElementById('invite-close-pipe').style.display = '';
+    if (open.mode === 'room') renderRoomQueue(open);
+  }
+
+  function resumeInvitePipe(open) {
+    renderInviteLive(open);
+    startInvitePoll(open);
+  }
+
+  function closeInvitePipe() {
+    stopInvitePoll();
+    var open = loadOpenPipe();
+    try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    _roomRedemptions = [];
+    _pipeRedemption = null;
+    _pipeHost = null;
+    _activeRedemption = null;
+    closeModal('invite');
+    if (!open) return;
+    // Fire and forget. Redemptions already made stay valid; the server
+    // TTL cleans up if this request never lands.
+    serverFetch(open.witness + '/pipe/' + open.code + '/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: state.fingerprint }),
+    }).catch(function(_) {});
+    toast('Invite closed');
+    console.log('[invite] Pipe closed: ' + open.code);
+  }
+
+  // --- Inviter side: poll the pipe for redemptions ---
+  var invitePollTimer = null;
+  var _pipeRedemption = null;  // single mode: held until direction chosen
+  var _pipeHost = null;
+  var _roomRedemptions = [];   // room mode: live list from the server
+  var _activeRedemption = null; // the redemption whose exchange is in progress
+
+  function stopInvitePoll() {
+    if (invitePollTimer) { clearInterval(invitePollTimer); invitePollTimer = null; }
+  }
+
+  function startInvitePoll(open) {
+    stopInvitePoll();
+    var attempts = 0;
+    invitePollTimer = setInterval(async function() {
+      attempts++;
+      if (attempts > 2400) { stopInvitePoll(); return; } // ~2h; server TTL is the real lifetime
+      try {
+        var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner?fingerprint=' + encodeURIComponent(state.fingerprint), { signal: AbortSignal.timeout(8000) });
+        if (!resp.ok) return;
+        var data = await resp.json();
+        if (!data || !data.found || !Array.isArray(data.redemptions)) return;
+        if (open.mode === 'room') {
+          _roomRedemptions = data.redemptions;
+          renderRoomQueue(open);
+        } else if (data.redemptions.length > 0) {
+          stopInvitePoll();
+          inviteRedemptionArrived(open, data.redemptions[0]);
+        }
+      } catch(e) {}
+    }, 3000);
+  }
+
+  // Room mode: the QR stays on the table; the queue grows beneath it.
+  function renderRoomQueue(open) {
+    var el = document.getElementById('invite-queue');
+    if (!el) return;
+    var current = loadOpenPipe();
+    var done = (current && current.done) || open.done || {};
+    if (_roomRedemptions.length === 0) { el.innerHTML = ''; return; }
+    var html = '<div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">';
+    for (var i = 0; i < _roomRedemptions.length; i++) {
+      var r = _roomRedemptions[i];
+      var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
+      var ago = inviteTimeAgo(r.created_at);
+      html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0;">';
+      html += '<div style="min-width:0; flex:1;"><div style="font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
+      html += '<div style="font-size:12px; color:var(--text-faint);">' + esc(ago) + '</div></div>';
+      if (done[r.redeemer_code]) {
+        html += '<div style="font-size:13px; color:var(--text-dim); flex-shrink:0;">Recorded</div>';
+      } else {
+        html += '<button class="btn btn-primary" style="flex-shrink:0; padding:8px 14px; font-size:14px;" onclick="App.roomStartExchange(\'' + esc(r.redeemer_code) + '\')">Start exchange</button>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  function roomStartExchange(redeemerCode) {
+    var open = loadOpenPipe();
+    if (!open) { toast('The invite is no longer open'); return; }
+    var r = null;
+    for (var i = 0; i < _roomRedemptions.length; i++) {
+      if (_roomRedemptions[i].redeemer_code === redeemerCode) { r = _roomRedemptions[i]; break; }
+    }
+    if (!r) return;
+    _pipeRedemption = r;
+    _pipeHost = open.witness;
+    var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
+    document.getElementById('invite-qr-wrap').style.display = 'none';
+    document.getElementById('invite-url').style.display = 'none';
+    document.getElementById('invite-queue').innerHTML = '';
+    document.getElementById('invite-close-pipe').style.display = 'none';
+    var status = document.getElementById('invite-status');
+    status.innerHTML =
+      '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + '</div>' +
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this exchange:</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
+      '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
+      '</div>' +
+      '<div style="text-align:center; margin-top:14px;"><span style="font-size:14px; color:var(--accent); cursor:pointer;" onclick="App.roomBackToQueue()">Back to the list</span></div>';
+  }
+
+  function roomBackToQueue() {
+    _pipeRedemption = null;
+    _pipeHost = null;
+    var open = loadOpenPipe();
+    if (open) renderInviteLive(open);
+  }
+
+  // Single mode: first redemption claims the pipe.
+  function inviteRedemptionArrived(open, r) {
+    _pipeRedemption = r;
+    _pipeHost = open.witness;
+    // The pipe is claimed (cap 1); its job is done.
+    try { localStorage.removeItem(OPEN_PIPE_KEY); } catch(_) {}
+    var overlay = document.getElementById('invite-overlay');
+    if (!overlay || !overlay.classList.contains('active')) showModal('invite');
+    var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
+    inviteResetSurfaces();
+    var intro2 = document.getElementById('invite-intro');
+    if (intro2) intro2.style.display = 'none';
+    var status = document.getElementById('invite-status');
+    status.innerHTML =
+      '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + ' is in</div>' +
+      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
+      '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
+      '</div>';
+  }
+
+  function invitePipeConnect(role) {
+    var r = _pipeRedemption;
+    var host = _pipeHost;
+    _pipeRedemption = null;
+    _pipeHost = null;
+    if (!r || !host) { toast('The connection details were lost. Open a new invite.'); closeModal('invite'); return; }
+    cleanupSession();
+    sessionWitnessUrl = host; // the session lives where the pipe lives
+    _activeRedemption = r;    // marked done on record write (room sweep)
+    exFlowActive = true;
+    exConnectMode = 'start';
+    exInitiatorRole = role;
+    sessionRole = 'proposer';
+    sessionCode = r.owner_code;       // server-allocated for this pairing
+    sessionTheirCode = r.redeemer_code;
+    closeModal('invite');
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'New exchange';
+    showExStep('connect');
+    var who = r.name ? esc(String(r.name).slice(0, 40)) : 'them';
+    document.getElementById('ex-connect-content').innerHTML =
+      '<div style="text-align:center; padding:24px 0;">' +
+      '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
+      '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
+      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '</div></div>';
+    exPostJoin(sessionCode, sessionTheirCode);
+  }
+
+  // Called from writeSessionRecord after a completed exchange. In room
+  // mode, mark this person recorded and return to the queue so the
+  // inviter can sweep to the next; in single mode, a no-op beyond
+  // clearing the active marker.
+  function roomExchangeCompleted() {
+    var r = _activeRedemption;
+    _activeRedemption = null;
+    if (!r) return;
+    var open = loadOpenPipe();
+    if (!open || open.mode !== 'room') return;
+    open.done = open.done || {};
+    open.done[r.redeemer_code] = true;
+    saveOpenPipe(open);
+    setTimeout(function() {
+      showModal('invite');
+      var intro = document.getElementById('invite-intro');
+      if (intro) intro.style.display = 'none';
+      renderInviteLive(open);
+      if (!invitePollTimer) startInvitePoll(open);
+    }, 800);
+  }
+
+  // --- Redeemer side: redeem a pending invite on app open ---
+  // Called after init/unlock alongside handleIncomingPayload. For an
+  // initialized person this is the fast path: scan, open, connected.
+  // For a brand-new person the invite waits here through onboarding
+  // (slice 1c). Timing discipline: this runs at app load, never inside
+  // the proposal/confirm path.
+  async function checkPendingInvite(fromForeground) {
+    if (!state.initialized) return;
+    if (exFlowActive) return; // never interrupt a live exchange
+
+    // A redemption that already happened resumes with its ORIGINAL
+    // code pair. The server is idempotent per person but returns the
+    // first owner_code; re-redeeming with a fresh code would pair the
+    // two phones on different codes and they would never connect.
+    var rec = null;
+    try { rec = JSON.parse(localStorage.getItem(REDEEMED_INVITE_KEY) || 'null'); } catch(_) {}
+    if (rec && rec.redeemer_code && rec.owner_code && rec.host) {
+      if (rec.ts && (Date.now() - rec.ts > PIPE_TTL_MS)) {
+        localStorage.removeItem(REDEEMED_INVITE_KEY);
+      } else if (rec.dismissed && fromForeground) {
+        return; // they backed out; only a full app open retries
+      } else {
+        enterRedeemedSession(rec);
+        return;
+      }
+    }
+
+    var inv = null;
+    try { inv = JSON.parse(localStorage.getItem(PENDING_INVITE_KEY) || 'null'); } catch(_) {}
+    if (!inv || !inv.pi || !inv.pw) return;
+
+    if (inv.ts && (Date.now() - inv.ts > PIPE_TTL_MS)) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      return;
+    }
+    // Self-scan guard: redeeming your own pipe would be a confusing
+    // self-exchange. The server would allow it; the app declines.
+    if (inv.pf && inv.pf === state.fingerprint) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      console.log('[invite] Self-scan discarded for pipe ' + inv.pi);
+      return;
+    }
+
+    var bytes = crypto.getRandomValues(new Uint8Array(4));
+    var redeemerCode = Array.from(bytes).map(function(b) { return PAIR_CHARS[b % PAIR_CHARS.length]; }).join('');
+
+    var data;
+    try {
+      var resp = await serverFetch(inv.pw + '/pipe/' + inv.pi + '/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redeemer_code: redeemerCode,
+          fingerprint: state.fingerprint,
+          public_key: state.publicKeyJwk,
+          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.status === 404) { localStorage.removeItem(PENDING_INVITE_KEY); toast('That invite is no longer available'); return; }
+      if (!resp.ok) { console.log('[invite] Redeem HTTP ' + resp.status + '; will retry next open'); return; }
+      data = await resp.json();
+    } catch(e) {
+      // Network trouble: keep the invite and retry on next open.
+      console.log('[invite] Redeem failed, keeping for retry:', e && e.message ? e.message : e);
+      return;
+    }
+
+    if (!data || !data.accepted) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      var reason = data && data.reason;
+      if (reason === 'claimed') toast('That invite was already used');
+      else if (reason === 'expired' || reason === 'closed') toast('That invite has expired or was closed');
+      else toast('That invite is no longer available');
+      return;
+    }
+
+    // Hostile-host guard: the redeem response must describe the same
+    // inviter the QR named. A pipe host cannot substitute a different
+    // owner without detection (the per-record signature downstream is
+    // still the real gate; this just fails fast and loud).
+    if (inv.pf && data.owner && data.owner.fingerprint && data.owner.fingerprint !== inv.pf) {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      console.warn('[invite] Owner fingerprint mismatch: cargo ' + inv.pf + ' vs server ' + data.owner.fingerprint);
+      toast('Invite could not be verified');
+      return;
+    }
+
+    localStorage.removeItem(PENDING_INVITE_KEY);
+    var rec2 = {
+      pi: inv.pi,
+      host: inv.pw,
+      redeemer_code: redeemerCode,
+      owner_code: data.owner_code,
+      owner_name: (data.owner && data.owner.name) ? data.owner.name : (inv.pn || ''),
+      ts: Date.now(),
+    };
+    try { localStorage.setItem(REDEEMED_INVITE_KEY, JSON.stringify(rec2)); } catch(_) {}
+    console.log('[invite] Redeemed pipe ' + inv.pi + '; joining session as ' + redeemerCode + ' -> ' + data.owner_code);
+    enterRedeemedSession(rec2);
+  }
+
+  function enterRedeemedSession(rec) {
+    cleanupSession();
+    sessionWitnessUrl = rec.host; // the session lives where the pipe lives
+    exFlowActive = true;
+    exConnectMode = 'join';
+    exInitiatorRole = null; // joiner; role announced by the inviter
+    sessionRole = 'confirmer';
+    sessionCode = rec.redeemer_code;
+    sessionTheirCode = rec.owner_code;
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'New exchange';
+    showExStep('connect');
+    var who = rec.owner_name ? esc(String(rec.owner_name).slice(0, 40)) : 'them';
+    document.getElementById('ex-connect-content').innerHTML =
+      '<div style="text-align:center; padding:24px 0;">' +
+      '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
+      '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
+      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '</div></div>';
+    exPostJoin(sessionCode, sessionTheirCode);
+  }
+
+  // Called on every session record write. Clears the redeemed-invite
+  // record and, for a fresh invitee still in the browser, surfaces the
+  // install step now that the exchange they came for is on their chain.
+  function inviteRedeemedCompleted() {
+    var rec = null;
+    try { rec = JSON.parse(localStorage.getItem(REDEEMED_INVITE_KEY) || 'null'); } catch(_) {}
+    if (!rec) return;
+    localStorage.removeItem(REDEEMED_INVITE_KEY);
+    try { localStorage.removeItem(PENDING_INVITE_KEY); } catch(_) {}
+    if (detectInstallPlatform() !== 'installed') {
+      setTimeout(function() {
+        if (deferredInstallPrompt) {
+          try { deferredInstallPrompt.prompt(); return; } catch(_) {}
+        }
+        var banner = document.getElementById('install-banner');
+        if (banner) banner.classList.add('show');
+        toast('Your exchange is recorded. Install HEP to keep your chain with you.');
+      }, 1500);
+    }
+  }
+
+
   // Canonical app URL — all share surfaces, QR codes, and clipboard links
   // resolve to this URL regardless of where the user is running from
   // (local dev, alternate domain, installed PWA). Sharing always points
@@ -6431,8 +7764,28 @@ const PAIR_CODE_LENGTH = 4;
     if (hw) {
       try { ingestWitnessSuggestionsFromShareParam(hw); } catch(e) {}
     }
+    // Invite pipeline (slice 1): a scanned invite QR carries a pipe
+    // reference. Persist it immediately -- the URL is stripped below,
+    // and for a brand-new person redemption happens minutes from now,
+    // at onboarding completion. One pending invite; a newer scan wins.
+    const pi = params.get('pi');
+    if (pi && /^[ACDEFGHJKMNPQRTUVWXYZ]{10}$/.test(pi)) {
+      try {
+        const pw = b64Decode(params.get('pw') || '');
+        if (/^https?:\/\//i.test(pw)) {
+          localStorage.setItem(PENDING_INVITE_KEY, JSON.stringify({
+            pi: pi,
+            pw: pw.trim().replace(/\/+$/, ''),
+            pf: (params.get('pf') || '').trim(),
+            pn: (params.get('pn') || '').trim().slice(0, 80),
+            ts: Date.now(),
+          }));
+          console.log('[invite] Pending invite stored for pipe ' + pi);
+        }
+      } catch(e) { console.log('[invite] Could not parse invite cargo:', e.message); }
+    }
     // Clean URL without reload
-    if (ref || hs || cf || cv || st || hw) {
+    if (ref || hs || cf || cv || st || hw || pi) {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }
@@ -6505,6 +7858,7 @@ const PAIR_CODE_LENGTH = 4;
   // the same data. Strip emojis at the data layer; renderers add no fallbacks.
   let LEARN_TOPICS = {};
   let LESSON_GROUPS = [];
+  let LEARN_DATA = null;
   let lessonsReady = false;
   let _lessonsLoadPromise = null;
 
@@ -6518,6 +7872,7 @@ const PAIR_CODE_LENGTH = 4;
       .then(function(data) {
         LEARN_TOPICS = data.topics || {};
         LESSON_GROUPS = data.groups || [];
+        LEARN_DATA = data;
         lessonsReady = true;
       })
       .catch(function(err) {
@@ -6649,6 +8004,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function openLessonTile(topicKey) {
+    // v2.99.0: the old tile lessons are replaced; old keys route to the new Learn.
+    if (topicKey === 'sovereignty') { lrOpenFromOutside('gs-web'); return; }
+    if (!lrLes(topicKey)) { lrOpenFromOutside(null); return; }
+    lrOpenFromOutside(topicKey); return;
     if (!lessonsReady) {
       loadLessons().then(function() { openLessonTile(topicKey); });
       return;
@@ -6771,10 +8130,7 @@ const PAIR_CODE_LENGTH = 4;
     renderLearnTab();
   }
 
-  function openLearn() {
-    showModal('learn');
-    learnShowMenu();
-  }
+  function openLearn() { lrOpenFromOutside(null); }
 
   function learnShowMenu() {
     currentLearnTopic = null;
@@ -6961,6 +8317,11 @@ const PAIR_CODE_LENGTH = 4;
 
   // Welcome screen Get Started routing: install-first if installable and not skipped, otherwise straight to PIN.
   function goToInstallOrPin() {
+    // Invite pipeline 1c: an invited new person stays in the browser.
+    // The pending invite lives in this tab's storage, and on iOS the
+    // installed app cannot see it. Install comes after the first
+    // exchange, not before.
+    if (inviteOnboardingActive()) { setupStep('pin'); return; }
     const platform = detectInstallPlatform();
     if (platform === 'installed' || localStorage.getItem('hcp_dev_skip_install')) {
       setupStep('pin');
@@ -7010,6 +8371,10 @@ function init() {
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible' && state.fingerprint) {
         checkForUpdates();
+        // Invite pipeline: an invite scanned in another tab lands in
+        // shared storage; pick it up when this tab comes forward
+        // instead of only at boot.
+        try { checkPendingInvite(true); } catch(_) {}
       }
     });
 
@@ -7081,6 +8446,45 @@ function init() {
     if (s && c) { s.classList.toggle('open'); c.classList.toggle('open'); }
   }
 
+  var _exJoinCheck = null;
+  var EX_JOIN_GRACE_MS = 4000;
+  function exJoinWrongCode() {
+    _exJoinCheck = null;
+    if (exConnectMode !== 'join' || sessionPartner) return;
+    exStopConnectPoll();
+    sessionCode = null; sessionTheirCode = null;
+    var st = document.getElementById('ex-join-status'); if (st) { st.style.display = 'none'; st.innerHTML = ''; }
+    var inp = document.getElementById('ex-join-code');
+    var cells = document.getElementById('ex-join-cells');
+    if (cells) { cells.classList.remove('shake'); void cells.offsetWidth; cells.classList.add('shake'); }
+    setTimeout(function() {
+      if (cells) cells.classList.remove('shake');
+      if (inp) { inp.value = ''; inp._exConnecting = false; exCodeInput(inp); inp.focus(); }
+    }, 450);
+  }
+  function exVerifyWords(name) {
+    var t = document.getElementById('ex-verify-title'), l = document.getElementById('ex-verify-line');
+    if (t) t.textContent = name ? 'Confirm ' + name + ' has this mark' : 'Confirm they have this mark';
+    if (l) l.textContent = name ? 'Ask ' + name + ' if this mark is on their screen.' : 'Ask them if this mark is on their screen.';
+  }
+  // Start screen invite buttons. Interim: they open the existing invite
+  // pipe, which carries its own code; unifying it with the Start code is
+  // an open question for Michael.
+  function exInviteQR() {
+    closeExchange();
+    setTimeout(function() { openInvite(); }, 150);
+  }
+  async function exSendInvite() {
+    closeExchange();
+    openInvite();
+    try { await createInvitePipe('single'); } catch(_) {}
+    var open = loadOpenPipe();
+    if (!open || !open.inviteUrl) return;
+    var msg = 'Join me on the Human Exchange Protocol: ' + open.inviteUrl;
+    if (navigator.share) { navigator.share({ title: 'Human Exchange Protocol', text: msg }).catch(function() {}); }
+    else if (navigator.clipboard) { navigator.clipboard.writeText(open.inviteUrl).then(function() { toast('Invite link copied'); }).catch(function() {}); }
+  }
+
   function exStartProviding() {
     exInitiatorRole = 'provider';
     exBeginStart();
@@ -7113,21 +8517,17 @@ function init() {
     sessionCode = Array.from(bytes).map(b => PAIR_CHARS[b % PAIR_CHARS.length]).join('');
     sessionTheirCode = deriveJoinCode(sessionCode);
 
-    var html = '<div style="text-align:center; margin-bottom:16px;">';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text);">Your code</div>';
-    html += '</div>';
-    html += '<div class="pair-code-display">';
-    html += '<div class="pair-code-chars">' + esc(sessionCode) + '</div>';
-    html += '<div class="pair-code-hint">Read this to the other person</div>';
-    html += '</div>';
-    html += '<div style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:20px;">';
-    html += '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>';
-    html += '<span style="font-size:13px; color:var(--accent);">Waiting for them to join...</span>';
-    html += '</div>';
-    html += '<div style="text-align:center; margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">';
-    html += '<span style="font-size:14px; color:var(--text-faint);">Have their code? </span>';
-    html += '<span style="font-size:14px; color:var(--accent); font-weight:500; cursor:pointer;" onclick="App.exSwitchToJoin()">Enter it here</span>';
-    html += '</div>';
+    // Start (ruled Oct 2, tenth session): centered, "Your code", the
+    // code at display size, the pulsing wait, and two invite buttons for
+    // someone not in the room. X top right leaves (first screen).
+    var html = '<div class="exs-h" style="text-align:center;">Your code</div>';
+    html += '<div style="height:40px"></div>';
+    html += '<div class="exs-code">' + esc(sessionCode) + '</div>';
+    html += '<div style="height:30px"></div>';
+    html += '<div class="exs-wait"><i></i><span>Waiting for them to join</span></div>';
+    html += '<div class="exs-grow"></div>';
+    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.exInviteQR()">Invite QR</button>';
+    html += '<button class="btn btn-secondary" style="width:100%; margin-top:8px;" onclick="App.exSendInvite()">Send invite</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
 
     // Post to server immediately
@@ -7166,15 +8566,21 @@ function init() {
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
-    var html = '<div style="text-align:center; margin-bottom:16px;">';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text);">Enter their code</div>';
+    // Screen 2, joiner side (ruled Oct 1): four cells. The real input
+    // sits invisibly over the cells so the keyboard opens on tap; the
+    // fourth character connects by itself, no Connect button. "Scan
+    // their code instead" is ruled but needs a camera scanner the app
+    // does not have yet; it lands in its own build cycle.
+    var html = '<div class="exs-h" style="text-align:center;">Join</div>';
+    html += '<div class="exs-m" style="text-align:center;">The four characters on their screen.</div>';
+    html += '<div style="height:30px"></div>';
+    html += '<div class="exs-cells" id="ex-join-cells">';
+    for (var ci = 0; ci < 4; ci++) html += '<div class="exs-cell empty" id="ex-join-cell-' + ci + '">&middot;</div>';
+    html += '<input type="text" id="ex-join-code" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" oninput="App.exCodeInput(this)" aria-label="Their code">';
     html += '</div>';
-    html += '<div class="pair-input-section" style="margin-top:20px;">';
-    html += '<label>Code from the other person</label>';
-    html += '<input type="text" id="ex-join-code" maxlength="4" placeholder="4 letters" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="App.exCodeInput(this)" style="font-size:24px; text-align:center; letter-spacing:8px; font-family:var(--font-mono);">';
-    html += '</div>';
-    html += '<button class="btn btn-primary" style="margin-top:20px;" id="ex-join-btn" onclick="App.exConnect()">Connect</button>';
-    html += '<div id="ex-join-status" style="display:none; margin-top:16px;"></div>';
+    html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
+    html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
+    html += '<div class="exs-grow"></div>';
     document.getElementById('ex-connect-content').innerHTML = html;
     setTimeout(function() {
       var inp = document.getElementById('ex-join-code');
@@ -7184,6 +8590,19 @@ function init() {
 
   function exCodeInput(el) {
     el.value = el.value.toUpperCase().replace(/[^ACDEFGHJKMNPQRTUVWXYZ]/g, '').substring(0, 4);
+    // Paint the four cells; the fourth character connects by itself.
+    for (var i = 0; i < 4; i++) {
+      var cell = document.getElementById('ex-join-cell-' + i);
+      if (!cell) continue;
+      var ch = el.value.charAt(i);
+      cell.textContent = ch || '\u00b7';
+      cell.classList.toggle('empty', !ch);
+      cell.classList.toggle('on', i === el.value.length || (i === 3 && el.value.length === 4));
+    }
+    if (el.value.length === 4 && !el._exConnecting) {
+      el._exConnecting = true;
+      exConnect().finally(function() { el._exConnecting = false; });
+    }
   }
 
   async function exConnect() {
@@ -7208,7 +8627,7 @@ function init() {
 
   async function exPostJoin(myCode, theirCode) {
     try {
-      var url = getWitnessUrl();
+      var url = getSessionWitnessUrl();
       if (!url) { toast('No server available'); return; }
 
       var joinPayload = {
@@ -7254,13 +8673,20 @@ function init() {
           var statusEl = document.getElementById('ex-join-status');
           if (statusEl) {
             statusEl.style.display = 'block';
-            statusEl.innerHTML = '<div class="pair-status resolving"><div class="ps-icon"><svg class="icon icon-md"><use href="#icon-hourglass"/></svg></div><div class="ps-text">Waiting for connection...</div></div>';
+            statusEl.innerHTML = '<div class="exs-wait"><i></i><span>Connecting</span></div>';
           }
           var btn = document.getElementById('ex-join-btn');
           if (btn) btn.style.display = 'none';
         }
         exStartConnectPoll();
         sessionSetState('awaiting_connection');
+        // A wrong Join code (ruled Oct 2): the starter registers before
+        // anyone can read the code, so a code that finds no one within a
+        // short grace is wrong. Shake, clear, stay on Join.
+        if (exConnectMode === 'join') {
+          clearTimeout(_exJoinCheck);
+          _exJoinCheck = setTimeout(exJoinWrongCode, EX_JOIN_GRACE_MS);
+        }
       }
     } catch(e) {
       console.error('[ex-flow] Connect error:', e);
@@ -7276,7 +8702,7 @@ function init() {
 
   function exStartConnectPoll() {
     exStopConnectPoll();
-    const url = getWitnessUrl();
+    const url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
 
     let attempts = 0;
@@ -7323,8 +8749,12 @@ function init() {
   }
 
   async function exOnConnected() {
+    clearTimeout(_exJoinCheck); _exJoinCheck = null;
     if (!sessionPartner) return;
     sessionSetState('connected');
+    // The pipe exists from here, so listen for the other side ending it
+    // from here too, not only once Verify is confirmed (ruled Oct 2).
+    try { exPresenceStart(); } catch(_) {}
 
     // Derive ECDH shared key for encrypted relay
     try {
@@ -7394,6 +8824,23 @@ function init() {
         });
         extras._services = services;
       }
+      // Screen 4 overlap (ruled Oct 1, count only, never names). We send
+      // how many distinct people this chain has exchanged with, and a
+      // list of their fingerprints hashed with a salt derived from both
+      // session fingerprints. The other phone can only match an entry
+      // against fingerprints it already holds (its own counterparties),
+      // and the hashes mean nothing outside this one session. The app
+      // shows the size of the match, never which people matched.
+      try {
+        var _ppl = exDistinctPeople(state.chain);
+        extras._people = _ppl.length;
+        var _salt = exOverlapSalt();
+        var _hashes = [];
+        for (var _pi = 0; _pi < _ppl.length && _pi < 2000; _pi++) {
+          _hashes.push((await sensorSha256(_salt + ':' + _ppl[_pi])).substring(0, 16));
+        }
+        extras._ppl = _hashes;
+      } catch(ope) { console.log('[ex-flow] overlap extras failed:', ope.message); }
       sendEncryptedSnapshot(extras);
     }
 
@@ -7437,6 +8884,7 @@ function init() {
     // Show verify step: name + 2-char SAS code
     document.getElementById('ex-verify-avatar').textContent = partnerInitial;
     document.getElementById('ex-verify-name').textContent = partnerName;
+    exVerifyWords(partnerName === 'Connected' ? '' : partnerName);
     document.getElementById('ex-sas-code').textContent = sasResult.code;
     showExStep('verify');
 
@@ -7448,6 +8896,7 @@ function init() {
           var nameEl = document.getElementById('ex-verify-name');
           var avatarEl = document.getElementById('ex-verify-avatar');
           if (nameEl) nameEl.textContent = decrypted._name;
+          exVerifyWords(decrypted._name);
           if (avatarEl) avatarEl.textContent = decrypted._name.charAt(0).toUpperCase();
         }
         // If the user already confirmed SAS and the Review screen is
@@ -7456,9 +8905,10 @@ function init() {
         // data. Re-invoke exConfirmSAS now so the context cards fill
         // in from the newly arrived snapshot. Same for the receiver-
         // wait screen if we're past Review.
-        var reviewContainer = document.getElementById('ex-review-container');
-        if (reviewContainer && reviewContainer.style.display !== 'none' && reviewContainer.innerHTML.length > 0) {
-          try { exConfirmSAS(); } catch(e) { console.log('[ex-flow] Re-render after snapshot failed:', e.message); }
+        var textureStep = document.getElementById('ex-step-texture');
+        if (textureStep && textureStep.classList.contains('active')) {
+          _textureTs = decrypted || _textureTs;
+          try { exRenderChainRead(); } catch(e) { console.log('[ex-flow] Re-render after snapshot failed:', e.message); }
         }
         var rwTiles = document.getElementById('ex-rw-tiles');
         if (rwTiles) {
@@ -7486,6 +8936,21 @@ function init() {
   }
 
   function exConfirmSAS() {
+    // "It matches" (screen 3) leads to the chain read (screen 4, ruled
+    // Oct 1). The legacy review builder below is kept as
+    // exConfirmSAS_legacyReview and is no longer called.
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
+    _textureTs = ts;
+    if (sessionRole === 'proposer') exBeatsReset();
+    showExStep('texture');
+    exRenderChainRead();
+    if (typeof startSessionPoll === 'function') {
+      try { startSessionPoll(); } catch(spe) { console.log('[ex-flow] Session poll start failed:', spe.message); }
+    }
+  }
+
+  function exConfirmSAS_legacyReview() {
     // SAS confirmed — render the Review screen. Partner identity block
     // at top, then counterparty context (chain shape + POH verdict),
     // then the primary Confirm action. All the legacy assessment logic
@@ -7587,10 +9052,7 @@ function init() {
   }
 
   function exRejectSAS() {
-    toast('Connection failed verification — closing');
-    cleanupSession();
-    exFlowActive = false;
-    closeModal('exchange');
+    closeExchange();   // piped: shows the end screen and tells the other phone
   }
 
   // =====================================================
@@ -8141,6 +9603,193 @@ function init() {
   // MAIN TEXTURE RENDER — Four states
   // =====================================================
 
+  // ===== Screen 4: the chain read (ruled Oct 1) =====
+  // The overlap drawing: you on the left, them on the right, dots are
+  // people each has exchanged with, the middle is people you both know,
+  // labelled by count only. One line about the two of you. Two bare
+  // icons: the shield reads the device, the thread reads the chain.
+  function exDistinctPeople(chain) {
+    var seen = {};
+    (chain || []).forEach(function(r) {
+      if (!HCP.isAct(r)) return;
+      var k = r.counterparty || '';
+      if (k) seen[k] = 1;
+    });
+    return Object.keys(seen);
+  }
+  function exOverlapSalt() {
+    var a = state.fingerprint || '', b = (sessionPartner && sessionPartner.fingerprint) || '';
+    return a < b ? a + '|' + b : b + '|' + a;
+  }
+  var _exOverlapCache = { salt: null, shared: null };
+  async function exComputeShared(theirHashes) {
+    var salt = exOverlapSalt();
+    if (_exOverlapCache.salt === salt && _exOverlapCache.shared !== null) return _exOverlapCache.shared;
+    var set = {};
+    (theirHashes || []).forEach(function(h) { set[h] = 1; });
+    var mine = exDistinctPeople(state.chain);
+    var n = 0;
+    for (var i = 0; i < mine.length; i++) {
+      var h = (await sensorSha256(salt + ':' + mine[i])).substring(0, 16);
+      if (set[h]) n++;
+    }
+    _exOverlapCache = { salt: salt, shared: n };
+    return n;
+  }
+  function exOverlapSVG(mine, theirs, shared, seed) {
+    var s = seed || 7; function rnd() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
+    var W = 264, H = 150, r = 62, cx1 = 92, cx2 = 172, cy = 75;
+    // Past a few hundred the dots become a tone and the figure carries it.
+    var cap = 300, dr = 2.2;
+    function scaleN(n) { if (n <= 60) return n; if (n <= cap) return Math.round(60 + (n - 60) * 0.5); return cap; }
+    var dots = '';
+    function inC(x, y, cx) { return (x - cx) * (x - cx) + (y - cy) * (y - cy) < r * r; }
+    function place(n, want) {
+      var k = 0, tries = 0;
+      while (k < n && tries < 6000) {
+        tries++;
+        var x = 20 + rnd() * (W - 40), y = 10 + rnd() * (H - 20);
+        var a = inC(x, y, cx1), b = inC(x, y, cx2);
+        var ok = want === 'B' ? (a && b) : want === 'L' ? (a && !b) : (!a && b);
+        if (ok) { dots += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + dr + '" fill="var(--text-dim)"/>'; k++; }
+      }
+    }
+    place(scaleN(Math.max(0, mine - shared)), 'L');
+    place(scaleN(Math.max(0, theirs - shared)), 'R');
+    place(scaleN(shared), 'B');
+    var mid = shared > 0 ? shared + ' ' + (shared === 1 ? 'person' : 'people') + ' you both know' : 'no one in common yet';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; max-width:300px; display:block; margin:0 auto;">'
+      + '<circle cx="' + cx1 + '" cy="' + cy + '" r="' + r + '" fill="var(--accent-light)" stroke="var(--border)"/>'
+      + '<circle cx="' + cx2 + '" cy="' + cy + '" r="' + r + '" fill="var(--accent-light)" stroke="var(--border)"/>'
+      + dots
+      + '<text x="' + ((cx1 + cx2) / 2) + '" y="' + (cy + r + 12) + '" text-anchor="middle" font-size="11" fill="var(--text-dim)">' + mid + '</text>'
+      + '<text x="' + (cx1 - r) + '" y="' + (cy + r + 12) + '" font-size="11" fill="var(--text-faint)">you</text>'
+      + '<text x="' + (cx2 + r) + '" y="' + (cy + r + 12) + '" text-anchor="end" font-size="11" fill="var(--text-faint)">them</text>'
+      + '</svg>';
+  }
+  function exShieldSVG(color, size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><path d="M12 2 4 5.5v6c0 5 3.4 8.6 8 10.5 4.6-1.9 8-5.5 8-10.5v-6L12 2z" fill="' + color + '"/></svg>';
+  }
+  function exThreadSVG(size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M3 12c3-6 6-6 9 0s6 6 9 0"/><path d="M3 17c3-6 6-6 9 0s6 6 9 0" opacity=".45"/></svg>';
+  }
+  // The shield reads the device: green when the phone behaves like a
+  // phone, red when the signals alarm, gray when there is not enough to
+  // tell. It says nothing about the person.
+  function exShieldRead(ts) {
+    var v = ts && ts.pohVerdict;
+    if (!v) return { color: '#9B948C', title: 'Not enough history to tell yet.', body: 'This phone is new to HEP. Nothing is wrong; there is just not much to read.' };
+    if (v.tone === 'alarming') return { color: 'var(--red)', title: 'This phone does not behave like a phone.', body: 'Its signals over the last weeks look unlike a person carrying it. That is all this says. It is worth asking about before you continue.' };
+    if (v.tone === 'strong') return { color: 'var(--green)', title: 'This phone behaves like a phone.', body: 'Its movement, timing and sensors over the last weeks look like a person carrying it. That is all this says. It says nothing about the person.' };
+    return { color: '#9B948C', title: 'Not enough history to tell yet.', body: 'This phone has not given HEP much to read. Nothing is wrong; there is just not much there.' };
+  }
+  function exMonthYear(ts) {
+    if (!ts) return '';
+    var d = new Date(ts); if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  function exAgo(ts) {
+    if (!ts) return '';
+    var d = new Date(ts); if (isNaN(d)) return '';
+    var days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return 'today'; if (days === 1) return 'yesterday';
+    if (days < 30) return days + ' days ago';
+    var months = Math.floor(days / 30); if (months < 12) return months + (months === 1 ? ' month ago' : ' months ago');
+    var years = Math.floor(days / 365); return years + (years === 1 ? ' year ago' : ' years ago');
+  }
+  var _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false };
+  function exRenderChainRead() {
+    var container = document.getElementById('ex-texture-content');
+    if (!container) return;
+    var ts = _textureTs;
+    if (!ts && sessionPartner && sessionPartner.thread_snapshot) {
+      ts = sessionPartner.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
+    }
+    var name = (ts && ts._name) || 'The other person';
+    var mine = exDistinctPeople(state.chain).length;
+    var theirs = (ts && typeof ts._people === 'number') ? ts._people : null;
+    var st = _exChainReadState;
+    st.mine = mine; st.theirs = theirs === null ? 0 : theirs;
+    var shared = st.shared;
+    var theirN = (ts && ts.n) || 0;
+
+    // One line about the two of you
+    var line;
+    if (!ts) line = 'Reading their chain';
+    else if (theirs === null) line = 'Their app is an older version, so their reach cannot be drawn yet.';
+    else if (theirN === 0) line = name + '\'s chain is new. No one in common yet; this is new ground.';
+    else {
+      var union = mine + st.theirs - shared;
+      line = 'Your networks hold ' + union + ' ' + (union === 1 ? 'person' : 'people') + ' between them';
+      line += shared > 0 ? '; ' + shared + ' ' + (shared === 1 ? 'is the same person.' : 'are the same people.') : '.';
+    }
+
+    var sh = exShieldRead(ts);
+    var html = '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
+    html += '<div style="height:8px"></div>';
+    if (sessionRole !== 'proposer') html += exOverlapSVG(mine, st.theirs, shared, 11);
+    html += '<div style="height:10px"></div><div class="exs-m" style="text-align:center;">' + esc(line) + '</div>';
+    html += '<div style="height:16px"></div>';
+    html += '<div class="exs-icons">';
+    html += '<button class="exs-icon" onclick="App.exToggleShieldPop()">' + exShieldSVG(sh.color, 34) + '<div class="exs-f">device</div></button>';
+    html += '<button class="exs-icon" onclick="App.exToggleThreadPanel()">' + exThreadSVG(34) + '<div class="exs-f">chain</div></button>';
+    html += '</div>';
+    html += '<div class="exs-grow"></div>';
+    html += '<div id="ex-cr-action">' + exCRActionHTML() + '</div>';
+    html += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
+    if (st.shieldOpen) html += exShieldSheetHTML(ts, 'App.exToggleShieldPop()');
+    if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
+    container.innerHTML = html;
+
+    exChainReadXRefresh();
+
+    // The shared count needs hashing, so it lands a moment after the
+    // first paint. Not on the proposal/confirm path.
+    if (ts && ts._ppl && _exOverlapCache.salt !== exOverlapSalt()) {
+      exComputeShared(ts._ppl).then(function(n) {
+        if (n !== st.shared) { st.shared = n; var t = document.getElementById('ex-step-texture'); if (t && t.classList.contains('active')) exRenderChainRead(); }
+      }).catch(function(e) { console.log('[ex-flow] overlap compute failed:', e.message); });
+    }
+  }
+  // The six-line summary behind the thread icon. The productive pattern
+  // texture replaces most of this when it is built; this is the slot.
+  // The one surface for anything that opens over an exchange screen
+  // (Michael, Oct 2): a full sheet, title at the top, X top right,
+  // content below. Nothing else closes it.
+  function exSheetHTML(title, body, closeFn) {
+    return '<div class="exs-sheet"><div class="exs-sheet-head"><div class="exs-h">' + title + '</div><button class="exs-x" aria-label="Close" onclick="' + closeFn + '">&#215;</button></div>' + body + '</div>';
+  }
+  function exShieldSheetHTML(ts, closeFn) {
+    var sh = exShieldRead(ts);
+    var body = '<div style="display:flex; justify-content:center; margin:10px 0 18px">' + exShieldSVG(sh.color, 56) + '</div>';
+    body += '<div class="exs-h" style="text-align:center; font-size:17px">' + esc(sh.title) + '</div>';
+    body += '<div class="exs-m" style="text-align:center; margin-top:10px">' + esc(sh.body) + '</div>';
+    body += '<div class="exs-f" style="text-align:center; margin-top:18px">The shield reads the phone. It never reads the person.</div>';
+    return exSheetHTML('Device', body, closeFn);
+  }
+  function exThreadPanelHTML(ts, name, shared, extra, closeFn) {
+    var lines = [];
+    if (ts) {
+      if (ts.t0) lines.push('Chain started <b>' + esc(exMonthYear(ts.t0)) + '</b>');
+      lines.push('<b>' + (ts.n || 0) + '</b> ' + ((ts.n || 0) === 1 ? 'exchange' : 'exchanges'));
+      if (typeof ts._people === 'number') lines.push('with <b>' + ts._people + '</b> ' + (ts._people === 1 ? 'person' : 'people'));
+      var cats = ts.cats ? Object.keys(ts.cats).filter(function(k) { return k !== 'uncategorized' && k !== 'other'; }).sort(function(a, b) { return ts.cats[b].n - ts.cats[a].n; }).slice(0, 2) : [];
+      if (cats.length) lines.push('mostly ' + cats.map(function(c) { return '<b>' + esc(c.toLowerCase()) + '</b>'; }).join(' and '));
+      lines.push('<b>' + shared + '</b> ' + (shared === 1 ? 'person' : 'people') + ' you both know');
+      if (ts.t1) lines.push('last exchange <b>' + esc(exAgo(ts.t1)) + '</b>');
+    } else {
+      lines.push('Still reading their chain');
+    }
+    // "See the whole chain" (walkthrough) has nothing behind it yet: the
+    // snapshot carries a summary, not records. Added when the productive
+    // pattern texture lands here.
+    var h = '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>' + (extra || '');
+    return exSheetHTML('Chain', h, closeFn || 'App.exToggleThreadPanel()');
+  }
+  function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; exRenderChainRead(); }
+  function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; exRenderChainRead(); }
+
   function exRenderTexture() {
     var container = document.getElementById('ex-texture-content');
     if (!sessionPartner) {
@@ -8317,80 +9966,774 @@ function init() {
 
   function exContinueFromTexture() {
     if (sessionRole === 'proposer') {
+      // Screen 6, the three beats (ruled Oct 1). The old form setup that
+      // lived here was removed in v2.66.2 (see git history).
       showExStep('form');
-      document.getElementById('exchange-header').textContent = 'Set up the exchange';
-      // Reset form fields
-      document.getElementById('ex-desc').value = '';
-      document.getElementById('ex-value').value = '';
-      document.getElementById('ex-category').value = '';
-      var durEl = document.getElementById('ex-duration');
-      if (durEl) durEl.value = '';
-      document.getElementById('ex-hours').value = '';
-      document.getElementById('ex-minutes').value = '';
-      document.getElementById('ex-city').value = '';
-      document.getElementById('ex-state').value = '';
-      // Render category pills
-      exRenderCategoryPills('');
-      // Clear pricing context
-      var ctx = document.getElementById('ex-pricing-context');
-      if (ctx) ctx.innerHTML = '';
-      // Set partner label
-      var partnerSnap = null;
-      if (sessionPartner && sessionPartner.thread_snapshot) {
-        partnerSnap = typeof sessionPartner.thread_snapshot === 'string' ? JSON.parse(sessionPartner.thread_snapshot) : sessionPartner.thread_snapshot;
-      }
-      var partnerName = (partnerSnap && partnerSnap._name) || 'the other person';
-      var labelEl = document.getElementById('ex-form-partner-label');
-      if (labelEl) labelEl.innerHTML = 'Describe the exchange with <strong style="color:var(--text);">' + esc(partnerName) + '</strong>';
-      // Apply prefill from "Use previous" if available
-      if (window._fabPrefill) {
-        var pf = window._fabPrefill;
-        if (pf.description) document.getElementById('ex-desc').value = pf.description;
-        if (pf.value) document.getElementById('ex-value').value = pf.value;
-        if (pf.category) {
-          document.getElementById('ex-category').value = pf.category;
-          exRenderCategoryPills(pf.category);
-          exRenderPricingContext(pf.category);
-        }
-        if (pf.duration && durEl) {
-          var pfHrs = Math.floor(pf.duration / 60);
-          var pfMins = pf.duration % 60;
-          var durText = '';
-          if (pfHrs) durText += pfHrs + ' hour' + (pfHrs > 1 ? 's' : '');
-          if (pfMins) durText += (durText ? ' ' : '') + pfMins + ' min';
-          durEl.value = durText;
-        }
-        setDirection(pf.energyState || 'provided');
-        showPrefillBar(pf.description || pf.category || 'Previous exchange');
-        window._fabPrefill = null;
-      }
-      // Inject back link above the form
-      var formStep = document.getElementById('ex-step-form');
-      var oldBack = document.getElementById('ex-form-back');
-      if (oldBack) oldBack.remove();
-      var oldReuse = document.getElementById('ex-reusable-acts');
-      if (oldReuse) oldReuse.remove();
-      var backLink = document.createElement('div');
-      backLink.id = 'ex-form-back';
-      backLink.style.cssText = 'font-size:13px; color:var(--text-faint); cursor:pointer; margin-bottom:12px;';
-      backLink.textContent = '\u2190 Review their chain';
-      backLink.addEventListener('click', function() { App.exBackToTexture(); });
-      if (formStep) formStep.insertBefore(backLink, formStep.firstChild);
-      exRenderReusableActs();
+      document.getElementById('exchange-header').textContent = 'New exchange';
+      exBeatsOpen();
+    } else if (sessionProposal) {
+      showExStep('rv');
+      exRenderRV('review');
     } else {
-      showExStep('receiver-wait');
-      exRenderReceiverWait();
-      sessionSetState('awaiting_proposal');
+      // Receiver, nothing yet: stay on the chain read (no wait screen).
+      exBackToTexture();
       startSessionPoll();
     }
   }
 
   function exBackToTexture() {
-    exRenderTexture();
     showExStep('texture');
+    exRenderChainRead();
+  }
+  // Once a proposal is waiting, the receiver's chain read is the floor
+  // (ruled Oct 2, twelfth session): Review proposal or Cancel exchange,
+  // no X, no way back to Verify.
+  // The bottom of the chain read (ruled Oct 2, tenth session). The
+  // receiver stays here while waiting: a pulsing line where the button
+  // will be, then "<name> sent a proposal." and Review proposal. Only
+  // this slot changes, so the screen never moves under the person and
+  // an open reading sheet is left alone. The separate receiver-wait
+  // screen is gone. The proposer keeps Continue until the merged
+  // proposer chain read lands.
+  function exCRActionHTML() {
+    if (sessionRole === 'proposer') return exCRProposerHTML();
+    var named = exPartnerName() !== 'The other person';
+    var n = esc(exPartnerName());
+    if (typeof sessionProposal !== 'undefined' && sessionProposal) {
+      return '<div class="exs-m" style="text-align:center; margin-bottom:12px;">' + (named ? n : 'They') + ' sent a proposal.</div>' +
+        '<button class="btn btn-primary" id="ex-cr-continue" style="width:100%;" onclick="App.exReviewConfirm()">Review proposal</button>';
+    }
+    return '<div class="exs-wait" id="ex-cr-wait" style="padding:15px 0;"><i></i>Waiting for ' + (named ? n + '\u2019s' : 'their') + ' proposal</div>';
+  }
+  // The proposer's decision happens on the chain read (ruled Oct 2,
+  // tenth session): below a thin line, Who is providing? with the two
+  // boxes, which collapses after choosing into one sentence with a
+  // small Switch; then the three rows. No Continue. This replaces the
+  // separate who and doors screens.
+  function exCRProposerHTML() {
+    var other = exPartnerName(), d = _exBeat.dir;
+    var h = '<div style="border-top:1px solid var(--border); margin:4px 0 16px;"></div>';
+    if (!d) {
+      h += '<div class="exs-t" style="text-align:center;">Who is providing?</div><div style="height:14px"></div>';
+      h += '<div class="exs-boxes">' + exBoxHTML('You', false, "App.exCRPick('provided')") + exBoxHTML(other, false, "App.exCRPick('received')") + '</div>';
+      return h;
+    }
+    var line = d === 'provided' ? 'You are providing to ' + esc(other) : esc(other) + ' is providing to you';
+    h += '<div class="exs-caprow" style="justify-content:space-between; text-align:left;"><span class="exs-body">' + line + '</span><button class="exs-switch" onclick="App.exCRSwitch()">Switch</button></div>';
+    h += '<div style="height:10px"></div>';
+    var svcN = d === 'provided' ? exServices().length : 0;
+    var pastN = exOwnActs(d).length;
+    var door = function(t, sub, fn) {
+      var live = !!fn;
+      return '<button class="exs-row' + (live ? '' : ' off') + '" style="text-align:left;"' + (live ? ' onclick="' + fn + '"' : ' tabindex="-1"') + '><div class="exs-rowmain"><div class="exs-body">' + t + '</div><div class="exs-cap">' + sub + '</div></div>' + (live ? '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg>' : '') + '</button>';
+    };
+    if (d === 'provided') h += door('Services you offer', svcN ? svcN + ' listed' : 'None yet', svcN ? "App.exCRDoor('services')" : null);
+    h += door('Past exchanges', pastN ? pastN + ' on your chain' : 'None yet', pastN ? "App.exCRDoor('past')" : null);
+    h += door('Something new', 'Describe it', 'App.exCRNew()');
+    return h;
+  }
+  function exCRPick(dir) { _exBeat.dir = dir; setDirection(dir); exCRActionRefresh(); }
+  function exCRSwitch() { exCRPick(_exBeat.dir === 'provided' ? 'received' : 'provided'); }
+  function exCRDoor(kind) { _exBeat.q = ''; showExStep('form'); exRenderBeat(2, kind); }
+  function exCRNew() { showExStep('form'); exBeatNew(); }
+  function exCRActionRefresh() {
+    var slot = document.getElementById('ex-cr-action');
+    if (slot) slot.innerHTML = exCRActionHTML();
+  }
+  function exChainReadIsFloor() {
+    return typeof sessionProposal !== 'undefined' && !!sessionProposal;
+  }
+  function exChainReadXRefresh() {
+    var tx = document.getElementById('ex-step-texture');
+    var xb = document.getElementById('exchange-close');
+    if (tx && xb && tx.classList.contains('active') && exChainReadIsFloor()) xb.style.visibility = 'hidden';
   }
 
-  // === REUSABLE ACTS IN FORM STEP ===
+  // ===== Screens 7 to 9: review, wait, the flowing number, completion =====
+  // One layout, centered (Michael, Oct 2). The statement block says in
+  // words who provides and who gives what; the holder's own number sits
+  // under it and is the thing that moves on confirm. The other person's
+  // device and chain readings are two small icons that open the one
+  // sheet. Everything the completion needs is captured at render time
+  // (_exRV.p, _exRV.other, _exRV.before), because the record write
+  // clears the session before the completion plays.
+  var _exRV = { state: null, before: 0, p: null, other: '', ts: null, shieldOpen: false, threadOpen: false, similarOpen: false, finish: false };
+  function exStandingParts(st) {
+    st = Math.round(st || 0);
+    if (st >= 0) return { lab: 'Currency', num: st.toLocaleString(), amb: false };
+    return { lab: 'Cosmic share', num: Math.abs(st).toLocaleString(), amb: true };
+  }
+  // What is being proposed, from whichever side holds it.
+  function exRVProposalLive() {
+    if (sessionRole === 'confirmer' && sessionProposal) {
+      return { value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
+    }
+    var pp = state.pendingProposal && state.pendingProposal.details;
+    if (pp) return { value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
+    return null;
+  }
+  function exRVProposal() { return _exRV.p || exRVProposalLive(); }
+  function exRVTs() {
+    var ts = _textureTs;
+    if (!ts && sessionPartner && sessionPartner.thread_snapshot) {
+      ts = sessionPartner.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
+    }
+    return ts || _exRV.ts || null;
+  }
+  function exRenderRV(st, opts) {
+    opts = opts || {};
+    var host = document.getElementById('ex-rv');
+    if (!host) return;
+    if (st) _exRV.state = st;
+    st = _exRV.state;
+    if (st === 'review' || st === 'wait') {
+      // Capture for the completion.
+      _exRV.p = exRVProposalLive() || _exRV.p;
+      _exRV.other = sessionPartner ? exPartnerName() : (_exRV.other || 'The other person');
+      _exRV.ts = exRVTs();
+      _exRV.before = HCP.walletBalance(state.chain);
+      _exRV.finish = false;
+    }
+    if (st === 'ended') { exFrameXRefresh(); host.innerHTML = exEndedHTML(); return; }
+    var p = exRVProposal();
+    if (!p) return;
+    // Processing and Settled (ruled Oct 2, eleventh session) have their
+    // own layout: no description header, nothing but the moment.
+    exFrameXRefresh();
+    if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
+    if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
+    // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
+    // item's layout, left-aligned. Review has Confirm, This doesn't look
+    // right, and Cancel exchange; Wait has only the pulsing line.
+    if (st === 'review' || st === 'wait') {
+      exFrameHeader();
+      var o = _exRV.other || exPartnerName();
+      var iProvide = p.myDirection === 'provided';
+      var cap = st === 'wait' ? 'Sent to ' + esc(o) : (iProvide ? 'You are providing to ' + esc(o) : esc(o) + ' is providing to you');
+      var giver = iProvide ? esc(o) + ' gives' : 'You give';
+      var kd = exKindDur(p.category, p.duration ? formatDuration(p.duration) : '');
+      var h = '<div class="exs-cap">' + cap + '</div>';
+      h += '<div class="exs-t" style="margin-top:2px">' + esc(p.task) + '</div>';
+      if (kd) h += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+      h += '<div style="height:24px"></div>';
+      h += '<div class="exs-lab">' + giver + '</div>';
+      h += '<div class="exs-disp">' + (Number(p.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
+      h += '<div style="height:28px"></div>';
+      if (st === 'review') {
+        h += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%;" onclick="App.sessionConfirm()">Confirm</button>';
+        h += '<button class="exs-quiet" onclick="App.exRVDecline()">This doesn\'t look right</button>';
+        h += exCancelHTML();
+      } else {
+        h += '<div class="exs-wait" style="justify-content:flex-start"><i></i><span>Waiting for ' + esc(o) + ' to confirm</span></div>';
+        h += '<div class="exs-grow"></div>';
+      }
+      host.innerHTML = h;
+      return;
+    }
+    var other = _exRV.other || exPartnerName();
+    var ts = exRVTs();
+    var sh = exShieldRead(ts);
+    var meta = exMetaLine(p.category, p.duration);
+    var standing = (typeof opts.standing === 'number') ? opts.standing : HCP.walletBalance(state.chain);
+    var sp = exStandingParts(standing);
+    var html = '';
+    var head = st === 'review' ? esc(other) + ' proposes' : st === 'wait' ? 'Your proposal' : st === 'declined' ? esc(other) + ' did not confirm' : st === 'done' ? 'Exchange complete' : 'Recording';
+    html += '<div class="exs-m" style="margin:0; text-align:center">' + head + '</div>';
+    html += '<div style="height:6px"></div>';
+    html += '<div class="exs-h" style="font-size:22px; text-align:center">' + esc(p.task) + '</div>';
+    if (meta) html += '<div class="exs-f" style="margin-top:4px; text-align:center">' + esc(meta) + '</div>';
+    html += '<div style="height:18px"></div>';
+    if (st === 'flow' || st === 'done') {
+      // Completion (Michael, Oct 2): the other person's circle, the
+      // arrow carrying the amount from them to you (or from you to
+      // them), your number winding, then the check and the sentence.
+      var down = p.myDirection === 'provided';
+      var av = function(ch, lift) { return '<div class="exs-av" style="width:56px; height:56px; font-size:22px;' + (lift ? ' background:var(--accent); color:#fff; border-color:var(--accent);' : '') + '">' + esc(exInitial(ch)) + '</div>'; };
+      html += '<div class="exs-flow' + (st === 'done' ? ' done' : '') + '">';
+      html += '<div class="exs-person">' + av(other, false) + '<div class="exs-n">' + esc(other) + '</div></div>';
+      html += '<div class="exs-arrowrow"><svg class="exs-varrow' + (down ? '' : ' up') + '" width="24" height="62" viewBox="0 0 24 62"><path class="shaft" d="' + (down ? 'M12 4v50' : 'M12 58V8') + '"/><polygon class="head" points="' + (down ? '5,48 12,58 19,48' : '5,14 12,4 19,14') + '"/></svg><div class="exs-ride">' + p.value.toLocaleString() + '</div></div>';
+      html += '<div class="exs-person">' + av(state.declarations.name || 'You', true) + '<div class="exs-own"><div class="lab" id="ex-rv-lab">Your ' + sp.lab.toLowerCase() + '</div><div class="num big' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div><div class="exs-f" id="ex-rv-from">' + (st === 'done' && _exRV.fromLine ? esc(_exRV.fromLine) : '&nbsp;') + '</div></div></div>';
+      html += '</div>';
+    } else {
+      html += exSayHTML(p.myDirection, other, p.value, 'ex-rv-say');
+      html += '<div style="height:18px"></div>';
+      // the holder's own number, the thing that moves
+      html += '<div class="exs-own"><div class="lab" id="ex-rv-lab">Your ' + sp.lab.toLowerCase() + '</div><div class="num' + (sp.amb ? ' amb' : '') + '" id="ex-rv-num">' + sp.num + '</div></div>';
+      if (st === 'review') {
+        // The receiver reads the proposal and the chain together. The
+        // provider already read the chain before the beats, so the wait
+        // screen carries no icons (Michael, Oct 2).
+        html += '<div style="height:16px"></div>';
+        html += '<div class="exs-icons" style="gap:28px"><button class="exs-icon" onclick="App.exRVToggle(\'shield\')">' + exShieldSVG(sh.color, 26) + '<div class="exs-f">' + esc(other) + '\'s device</div></button><button class="exs-icon" onclick="App.exRVToggle(\'thread\')">' + exThreadSVG(26) + '<div class="exs-f">' + esc(other) + '\'s chain</div></button></div>';
+      }
+    }
+    html += '<div class="exs-grow"></div>';
+    if (st === 'review') {
+      html += '<button class="btn btn-primary" id="btn-session-accept" style="width:100%;" onclick="App.sessionConfirm()">Confirm exchange</button>';
+      html += '<button class="exs-quiet" onclick="App.exRVDecline()">This doesn\'t look right</button>';
+    } else if (st === 'wait') {
+      html += '<div class="exs-wait"><i></i><span>Waiting for ' + esc(other) + ' to confirm</span></div>';
+      html += '<div style="height:10px"></div>';
+      html += '<button class="exs-quiet" onclick="App.exRVLeaveWait()">Not now</button>';
+    } else if (st === 'flow') {
+      html += '<div class="exs-check" style="visibility:hidden"></div><div class="exs-m" style="margin-top:12px">&nbsp;</div><div style="height:18px"></div><div class="btn btn-primary" style="width:100%; visibility:hidden">Done</div>';
+    } else if (st === 'done') {
+      html += '<div class="exs-check exs-in"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+      html += '<div class="exs-m exs-in" style="text-align:center; margin-top:12px; font-size:14px">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
+      html += '<div style="height:18px"></div>';
+      html += '<button class="btn btn-primary exs-in" style="width:100%;" onclick="App.exRVDone()">Done</button>';
+    } else if (st === 'declined') {
+      html += '<div class="exs-m" style="text-align:center">Nothing was recorded. You can talk it over and try again.</div>';
+      html += '<div style="height:10px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exRVRetry()">Change the proposal</button>';
+      html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+    }
+    if (_exRV.shieldOpen) html += exShieldSheetHTML(ts, "App.exRVToggle('shield')");
+    if (_exRV.threadOpen) html += exRVThreadPanel(ts, other, p);
+    if (_exRV.similarOpen) html += exRVSimilarPanel(p);
+    host.innerHTML = html;
+  }
+  // The chain sheet here carries the six lines plus "See similar
+  // exchanges", which reads the holder's OWN history for this kind of
+  // work. Own history only, never a going rate (Sept 18 rail).
+  function exRVThreadPanel(ts, other, p) {
+    var shared = _exChainReadState.shared || 0;
+    var btn = '<div class="exs-grow"></div><button class="btn btn-secondary" style="width:100%" onclick="App.exRVToggle(\'similar\')">See similar exchanges</button>';
+    return exThreadPanelHTML(ts, other, shared, btn, "App.exRVToggle('thread')");
+  }
+  function exRVSimilarPanel(p) {
+    var cat = (p.category || '').trim().toLowerCase();
+    var mine = state.chain.filter(function(r) { return HCP.isAct(r) && (r.category || '').trim().toLowerCase() === cat && cat; });
+    var h = '<div class="exs-f" style="margin:0 0 12px">Your own history only. This is reading, not a going rate.</div>';
+    if (!cat) h += '<div class="exs-m">No kind of work is named on this proposal, so there is nothing to match.</div>';
+    else if (!mine.length) h += '<div class="exs-m">Nothing on your chain yet for this kind of work.</div>';
+    else {
+      mine.slice(-12).reverse().forEach(function(r) {
+        h += '<div class="exs-item" style="cursor:default"><div><div class="t">' + esc(r.description || '') + (r.counterpartyName ? ', ' + esc(r.counterpartyName) : '') + '</div></div><div class="v">' + Number(r.value).toLocaleString() + '</div></div>';
+      });
+      var vals = mine.map(function(r) { return r.value; });
+      h += '<div class="exs-m" style="margin-top:12px">You have agreed to ' + Math.min.apply(null, vals).toLocaleString() + ' to ' + Math.max.apply(null, vals).toLocaleString() + ' for ' + esc(p.category) + ' across ' + mine.length + ' ' + (mine.length === 1 ? 'exchange' : 'exchanges') + '.</div>';
+    }
+    return exSheetHTML('Your ' + esc(p.category || 'similar') + ' exchanges', h, "App.exRVToggle('similar')");
+  }
+  function exRVToggle(which) {
+    if (which === 'shield') { _exRV.shieldOpen = !_exRV.shieldOpen; _exRV.threadOpen = false; _exRV.similarOpen = false; }
+    else if (which === 'thread') { _exRV.threadOpen = !_exRV.threadOpen; _exRV.shieldOpen = false; _exRV.similarOpen = false; }
+    else { _exRV.similarOpen = !_exRV.similarOpen; _exRV.threadOpen = false; _exRV.shieldOpen = false; }
+    exRenderRV();
+  }
+  // Backing out to Home during the wait leaves the pending row as today
+  // (the session stays alive in the background). Not closeExchange.
+  function exRVLeaveWait() {
+    closeModal('exchange');
+    refreshHome();
+    try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
+  }
+  // "This doesn't look right" creates no record. The confirmer goes back
+  // to the quiet wait and keeps listening, because the server accepts a
+  // re-proposal on the same session; the proposer sees the decline and
+  // can change the proposal or leave.
+  function exRVDecline() {
+    var back = function() {
+      sessionProposal = null;
+      _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
+      exBackToTexture();
+      try { sessionSetState('awaiting_proposal'); } catch(_) {}
+      startSessionPoll();
+    };
+    sessionReject().then(back).catch(back);
+  }
+  function exRVRetry() {
+    // A decline is a record of nothing. Reopen the beats with the
+    // declined proposal as the starting point so it can be changed.
+    var pp = state.pendingProposal && state.pendingProposal.details;
+    window._fabPrefill = pp ? { description: pp.description || '', value: pp.value || '', category: pp.category || '', duration: pp.duration || 0, energyState: pp.energyState || 'provided' } : null;
+    _sessionWritten = false;
+    showExStep('form');
+    exBeatsOpen();
+  }
+  // Done on the completion screen. closeExchange runs the invite
+  // pipeline hooks the write owed (see _exRV.finish in closeExchange).
+  function exRVDone() { closeExchange(); }
+  function exRVIsShowing() {
+    var step = document.getElementById('ex-step-rv');
+    var ov = document.getElementById('exchange-overlay');
+    return !!(step && step.classList.contains('active') && ov && ov.classList.contains('active'));
+  }
+  // After the record is written: the holder's own number moves by the
+  // agreed amount over about two seconds, then the check and one
+  // sentence stay until Done is tapped. Returns false if the layout is
+  // not on screen, so the caller finishes without the animation.
+  // Processing, then Settled (ruled Oct 2, eleventh session; see
+  // registry Component 2, surface rulings items 8 and 9). Horizontal on
+  // both phones: the receiver on the left, the provider on the right. A
+  // wave runs from receiver to provider carrying the amount, which
+  // counts down to 0 as it crosses (the transaction clearing; value
+  // transfers from consumer to producer, a wave carries energy without
+  // carrying the water). Both circles show only what this exchange
+  // added: Currency +N under the provider (blue), Cosmic share +N under
+  // the receiver (amber), on both phones (vocabulary ruled Oct 2:
+  // currency is the running total of production, cosmic share of
+  // consumption). Then the Settled screen until Done. The record is
+  // already written when this plays (writeSessionRecord calls it).
+  function exSettleCircle(cx, name, photo, isYou, idp) {
+    var fill = isYou ? 'var(--accent-light)' : 'var(--bg-input)';
+    var col = isYou ? 'var(--accent)' : 'var(--text-dim)';
+    var g = '<g id="' + idp + '" opacity="0">';
+    if (photo) {
+      g += '<clipPath id="' + idp + '-c"><circle cx="' + cx + '" cy="70" r="34"/></clipPath>'
+        + '<circle cx="' + cx + '" cy="70" r="34" fill="' + fill + '"/>'
+        + '<image href="' + esc(photo) + '" x="' + (cx - 34) + '" y="36" width="68" height="68" preserveAspectRatio="xMidYMid slice" clip-path="url(#' + idp + '-c)"/>';
+    } else {
+      g += '<circle cx="' + cx + '" cy="70" r="34" fill="' + fill + '"/>'
+        + '<text x="' + cx + '" y="79" text-anchor="middle" font-size="24" font-weight="600" fill="' + col + '">' + esc(exInitial(name)) + '</text>';
+    }
+    g += '<text x="' + cx + '" y="126" text-anchor="middle" font-size="13" fill="var(--text-dim)">' + esc(isYou ? 'You' : name) + '</text></g>';
+    return g;
+  }
+  function exSettleFlowHTML(p) {
+    var other = _exRV.other || exPartnerName();
+    var ts = exRVTs();
+    var otherPhoto = (ts && ts._genesisPhoto) || '';
+    var myPhoto = (state.declarations && state.declarations.photo) || '';
+    var myName = (state.declarations && state.declarations.name) || 'You';
+    var iProvide = p.myDirection === 'provided';
+    var left = iProvide ? exSettleCircle(52, other, otherPhoto, false, 'exs-gl') : exSettleCircle(52, myName, myPhoto, true, 'exs-gl');
+    var right = iProvide ? exSettleCircle(252, myName, myPhoto, true, 'exs-gr') : exSettleCircle(252, other, otherPhoto, false, 'exs-gr');
+    var h = '<div class="exs-settle">';
+    h += '<div style="height:40px"></div>';
+    h += '<div class="exs-h" id="exs-st" style="text-align:center">Processing transaction</div>';
+    h += '<svg width="304" height="176" viewBox="0 0 304 176" style="margin:36px auto 0; display:block; max-width:100%">';
+    h += '<circle id="exs-ring" cx="252" cy="70" r="34" fill="none" stroke="var(--accent)" stroke-width="3" opacity="0"/>';
+    h += left + right;
+    h += '<path id="exs-wave" d="" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" opacity="0"/>';
+    h += '<path id="exs-head" d="M202 61 L212 70 L202 79" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>';
+    h += '<text id="exs-amt" x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text)" opacity="0">' + p.value.toLocaleString() + '</text>';
+    h += '<g id="exs-tots" opacity="0">'
+      + '<text x="52" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Cosmic share</text>'
+      + '<text id="exs-nl" x="52" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--amber)">+0</text>'
+      + '<text x="252" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Currency</text>'
+      + '<text id="exs-nr" x="252" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--accent)">+0</text></g>';
+    h += '</svg>';
+    var l1 = iProvide ? esc(other) + ' confirmed ' + p.value.toLocaleString() + ' for your work' : 'You confirmed ' + p.value.toLocaleString() + ' for ' + esc(other) + '\'s work';
+    h += '<div class="exs-grow"></div>';
+    h += '<div id="exs-l1" class="exs-fade" style="text-align:center; font-size:15px">' + l1 + '</div>';
+    h += '<div id="exs-l2" class="exs-fade exs-f" style="text-align:center; margin-top:4px">Recorded on both chains</div>';
+    h += '<div style="height:24px"></div>';
+    h += '</div>';
+    return h;
+  }
+  function exSettleDoneHTML() {
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="56" height="56"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+    h += '<div class="exs-settle-t1">Transaction</div>';
+    h += '<div class="exs-settle-t2">Settled</div>';
+    h += '<div class="exs-settle-t3">Final on both chains. Nothing is pending.</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div>';
+    h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button>'
+      + '<button class="exs-quiet" onclick="App.exRVWallet()">See your wallet</button></div>';
+    h += '</div>';
+    return h;
+  }
+  function exRVWallet() { closeExchange(); setTimeout(function() { try { openWallet(); } catch(_) {} }, 340); }
+  function exPlayCompletion() {
+    if (!exRVIsShowing()) return false;
+    var p = _exRV.p || exRVProposalLive();
+    if (!p) return false;
+    _exRV.finish = true;
+    _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
+    exRenderRV('flow');
+    var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
+    var $ = function(id) { return document.getElementById(id); };
+    var V = Number(p.value) || 0;
+    var pop = function(id, t, start, cx) {
+      var el = $(id); if (!el) return;
+      var k = Math.max(0, Math.min(1, (t - start) / 0.35));
+      var sc = k < 1 ? 0.6 + 0.55 * k - 0.15 * Math.max(0, (k - 0.7) / 0.3) : 1;
+      el.setAttribute('opacity', k);
+      el.setAttribute('transform', 'translate(' + cx + ' 70) scale(' + sc + ') translate(' + (-cx) + ' -70)');
+    };
+    var wavePath = function(t, a) {
+      var d = '';
+      for (var x = 96; x <= 206; x += 2) {
+        var env = Math.sin(Math.PI * (x - 96) / 110);
+        var y = 70 + a * env * 9 * Math.sin((x - 96) / 9 - t * 7);
+        d += (x === 96 ? 'M' : 'L') + x + ' ' + y.toFixed(1) + ' ';
+      }
+      return d;
+    };
+    var finish = function() {
+      var st = $('exs-st'); if (st) st.textContent = 'Transaction recorded and confirmed';
+      ['exs-l1', 'exs-l2'].forEach(function(id) { var el = $(id); if (el) el.classList.add('in'); });
+      setTimeout(function() { if (exRVIsShowing()) exRenderRV('done'); }, reduce ? 1500 : 1600);
+    };
+    if (reduce) {
+      ['exs-gl', 'exs-gr', 'exs-tots'].forEach(function(id) { var el = $(id); if (el) el.setAttribute('opacity', 1); });
+      if ($('exs-nl')) $('exs-nl').textContent = '+' + V.toLocaleString();
+      if ($('exs-nr')) $('exs-nr').textContent = '+' + V.toLocaleString();
+      finish();
+      return true;
+    }
+    var t0 = performance.now(), ended = false;
+    function frame(now) {
+      if (!$('exs-wave')) return; // layout replaced (Done tapped or sheet closed)
+      var t = (now - t0) / 1000;
+      pop('exs-gl', t, 0.6, 52); pop('exs-gr', t, 1.2, 252);
+      var a = t < 1.8 ? 0 : t < 2.2 ? (t - 1.8) / 0.4 : t < 5.2 ? 1 : t < 5.6 ? 1 - (t - 5.2) / 0.4 : 0;
+      $('exs-wave').setAttribute('opacity', a > 0 ? 1 : 0);
+      $('exs-head').setAttribute('opacity', a);
+      $('exs-wave').setAttribute('d', wavePath(t, a));
+      var k = Math.max(0, Math.min(1, (t - 2.2) / 3));
+      var e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      var amt = $('exs-amt');
+      if (t > 1.8) amt.setAttribute('opacity', t < 5.4 ? 1 : Math.max(0, 1 - (t - 5.4) / 0.4));
+      amt.textContent = Math.round(V * (1 - e)).toLocaleString();
+      amt.setAttribute('x', (100 + 104 * e).toFixed(1));
+      if (t > 2.0) {
+        $('exs-tots').setAttribute('opacity', 1);
+        var added = '+' + Math.round(V * e).toLocaleString();
+        $('exs-nl').textContent = added; $('exs-nr').textContent = added;
+      }
+      if (t > 5.2 && t < 6.2) { var r = t - 5.2; $('exs-ring').setAttribute('opacity', Math.max(0, 1 - r)); $('exs-ring').setAttribute('r', 34 + r * 14); }
+      if (t > 5.8 && !ended) { ended = true; finish(); }
+      if (t < 6.4) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    return true;
+  }
+
+  // ===== Screen 6: the proposal, three beats (ruled Oct 1) =====
+  var _exBeat = { dir: null, task: '', kind: '', dur: '', value: '', list: null, view: 'who', from: 'doors', q: '' };
+  function exPartnerName() {
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) { ts = null; } }
+    return (ts && ts._name) || 'The other person';
+  }
+  function exBeatsReset() {
+    _exBeat = { dir: null, task: '', kind: '', dur: '', value: '', list: null, view: 'who', from: 'doors', q: '' };
+  }
+  function exBeatsOpen() {
+    exBeatsReset();
+    ['ex-category','ex-duration','ex-hours','ex-minutes','ex-city','ex-state'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+    // "Use previous" from the FAB lands on beat 3 with the fields live.
+    if (window._fabPrefill) {
+      var pf = window._fabPrefill; window._fabPrefill = null;
+      _exBeat.dir = pf.energyState === 'received' ? 'received' : 'provided';
+      _exBeat.task = pf.description || '';
+      _exBeat.kind = pf.category || '';
+      _exBeat.dur = pf.duration ? formatDuration(pf.duration) : '';
+      _exBeat.value = pf.value || '';
+      _exBeat.from = 'doors';
+      setDirection(_exBeat.dir);
+      exRenderBeat(3);
+      return;
+    }
+    exRenderBeat(1);
+  }
+  function exMetaLine(category, durationMins) {
+    var parts = [];
+    if (category) parts.push(category);
+    if (durationMins) parts.push(formatDuration(durationMins));
+    return parts.join(', ');
+  }
+  function exInitial(name) { return (name || '?').trim().charAt(0).toUpperCase() || '?'; }
+  function exBoxHTML(name, sel, tap) {
+    return '<button class="exs-box' + (sel ? ' sel' : '') + '"' + (tap ? ' onclick="' + tap + '"' : ' style="cursor:default"') + '><div class="exs-av">' + esc(exInitial(name)) + '</div><div class="exs-n">' + esc(name) + '</div></button>';
+  }
+  // The arrow points toward the provider. You are always on the left.
+  function exArrowHTML(dir) {
+    if (!dir) return '<div class="exs-arr">?</div>';
+    var r = dir === 'provided';
+    var path = r ? 'M42 12 H14' : 'M2 12 H30';
+    var head = r ? '14,6 2,12 14,18' : '30,6 42,12 30,18';
+    return '<div class="exs-arr"><svg viewBox="0 0 44 24"><path class="shaft" d="' + path + '"/><polygon class="head" points="' + head + '"/></svg></div>';
+  }
+  function exOwnActs(dir) {
+    var map = {};
+    state.chain.forEach(function(r) {
+      if (!HCP.isAct(r)) return;
+      if (dir && r.energyState !== dir) return;
+      var key = (r.description || '').trim().toLowerCase();
+      if (!key) return;
+      if (!map[key] || r.timestamp > map[key].timestamp) map[key] = r;
+    });
+    return Object.values(map).sort(function(a, b) { return (b.timestamp > a.timestamp) ? 1 : -1; });
+  }
+  function exServices() {
+    if (!state.declarations) return [];
+    if (!Array.isArray(state.declarations.services)) state.declarations.services = [];
+    return state.declarations.services;
+  }
+  // "X provides. Y gives N currency." The direction in words.
+  function exSayHTML(dir, other, value, id) {
+    var provider = dir === 'provided' ? 'You' : esc(other);
+    var receiver = dir === 'provided' ? esc(other) : 'You';
+    var v = Number(value) || 0;
+    return '<div class="exs-say" id="' + (id || '') + '">'
+      + '<div class="who">' + provider + '</div><div class="does">' + (provider === 'You' ? 'provide' : 'provides') + '</div>'
+      + '<div style="height:12px"></div>'
+      + '<div class="who">' + receiver + '</div><div class="does">' + (receiver === 'You' ? 'give' : 'gives') + '</div>'
+      + '<div class="amt"><span data-say-amt>' + v.toLocaleString() + '</span><small>currency</small></div>'
+      + '</div>';
+  }
+  // ===== Batch 1 (Oct 2 surface rulings, built v2.69.0) =====
+  // Views inside the proposal sheet: who -> doors -> list -> item -> form.
+  // X goes back one step (DESIGN 2a). Cancel exchange sits bottom left
+  // on every flow sheet (DESIGN 2b). The HEP mark beside every number is
+  // a stand-in (two circles) until the glyph is drawn.
+  function exMarkSVG(px) {
+    px = px || 14;
+    // v2.79.0: references the one HEP mark symbol in index.html's sprite (#icon-hep-mark).
+    return '<svg class="exs-mark" width="' + px + '" height="' + px + '" role="img" aria-label="HEP"><use href="#icon-hep-mark"/></svg>';
+  }
+  function exCancelHTML() {
+    return '<div class="exs-grow"></div><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
+  }
+  function exCancelExchange() {
+    // If there is a live partner and nothing is recorded, the canceller
+    // sees the same end screen as the other person (ruled Oct 2,
+    // twelfth session: both sides match), worded "You cancelled". The
+    // notify to the witness still fires from closeExchange on Done.
+    closeExchange();
+  }
+  // The end screen for the person who ends it (their own cancel or a
+  // disconnect of their own). Mirrors exShowEnded but keeps the session
+  // alive until Done; the witness is told at once.
+  function exShowEndedLocal(reason) {
+    if (_exEndedBy) return;
+    exNotifyCancel();   // tell the other phone now, before the flag blocks it
+    _exEndedByMe = true;
+    _exEndedBy = reason;
+    stopSessionPoll();
+    exPresenceStop();
+    try { stopSnapshotPoll(); } catch(_) {}
+    state.pendingProposal = null;
+    localStorage.removeItem('hcp_dev_pending_proposal');
+    exEnsureOverlay();
+    showExStep('rv');
+    exRenderRV('ended');
+  }
+  function exEnsureOverlay() {
+    var ov = document.getElementById('exchange-overlay');
+    if (ov && !ov.classList.contains('active')) { exFlowActive = true; showModal('exchange'); }
+  }
+  function exFrameHeader() {
+    var h = document.getElementById('exchange-header'); if (h) h.textContent = '';
+  }
+  function exBeatBottom() { return exCancelHTML(); }
+  function exDirCaption(other) {
+    return _exBeat.dir === 'provided' ? 'You are providing to ' + esc(other) : esc(other) + ' is providing';
+  }
+  function exGiverLabel(other) {
+    return _exBeat.dir === 'provided' ? esc(other) + ' gives' : 'You give';
+  }
+  // A service entry or a past act, read the same way.
+  function exItemParts(kind, it) {
+    if (kind === 'services') {
+      var sm = (it.category !== undefined || it.dur !== undefined) ? { category: it.category || '', duration: it.dur || '' } : exSplitMeta(it.meta || '');
+      return { task: it.description || '', kind: sm.category, dur: sm.duration, value: it.value, ts: null };
+    }
+    return { task: it.description || '', kind: it.category || '', dur: it.duration ? formatDuration(it.duration) : '', value: it.value, ts: it.timestamp || null };
+  }
+  function exKindDur(kind, dur) { var a = []; if (kind) a.push(kind); if (dur) a.push(dur); return a.join(', '); }
+  function exFmtDate(ts) {
+    try { var d = new Date(ts); if (isNaN(d)) return ''; return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch(e) { return ''; }
+  }
+  function exRenderBeat(n, listKind) {
+    var host = document.getElementById('ex-beats');
+    if (!host) return;
+    exFrameHeader();
+    var other = exPartnerName();
+    var html = '';
+    if (n === 1) {
+      _exBeat.view = 'who';
+      html += '<div class="exs-h" style="text-align:center">Who is providing?</div><div class="exs-m" style="text-align:center">The other person is receiving.</div>';
+      html += '<div style="height:40px"></div>';
+      var d = _exBeat.dir;
+      html += '<div class="exs-boxes">'
+        + exBoxHTML('You', d === 'provided', "App.exBeatPick('provided')").replace('class="exs-box', 'class="exs-box' + (d && d !== 'provided' ? ' mute' : ''))
+        + exBoxHTML(other, d === 'received', "App.exBeatPick('received')").replace('class="exs-box', 'class="exs-box' + (d && d !== 'received' ? ' mute' : ''))
+        + '</div>';
+      html += '<div class="exs-f" style="text-align:center; margin-top:12px;">' + (d ? (d === 'provided' ? 'You are providing.' : esc(other) + ' is providing.') : 'Tap the one who is providing.') + '</div>';
+      html += '<div style="height:32px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;' + (d ? '' : ' opacity:.45') + '"' + (d ? '' : ' disabled') + ' onclick="App.exRenderBeat(2)">Continue</button>';
+      html += exCancelHTML();
+    } else if (n === 2 && !listKind) {
+      _exBeat.view = 'doors';
+      var svcN = _exBeat.dir === 'provided' ? exServices().length : 0;
+      var pastN = exOwnActs(_exBeat.dir).length;
+      var door = function(t, sub, fn) {
+        var live = !!fn;
+        return '<button class="exs-row' + (live ? '' : ' off') + '"' + (live ? ' onclick="' + fn + '"' : ' tabindex="-1"') + '><div class="exs-rowmain"><div class="exs-body">' + t + '</div><div class="exs-cap">' + sub + '</div></div>' + (live ? '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg>' : '') + '</button>';
+      };
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div><div class="exs-t">What was provided?</div>';
+      html += '<div style="height:14px"></div>';
+      if (_exBeat.dir === 'provided') html += door('Services you offer', svcN ? svcN + ' listed' : 'None yet', svcN ? "App.exBeatDoor('services')" : null);
+      html += door('Past exchanges', pastN ? pastN + ' on your chain' : 'None yet', pastN ? "App.exBeatDoor('past')" : null);
+      html += door('Something new', 'Describe it', 'App.exBeatNew()');
+      html += exCancelHTML();
+    } else if (n === 2 && listKind) {
+      _exBeat.view = 'list'; _exBeat.listKind = listKind;
+      var items = listKind === 'services' ? exServices() : exOwnActs(_exBeat.dir);
+      _exBeat.list = items;
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div><div class="exs-t">' + (listKind === 'services' ? 'Services you offer' : 'Past exchanges') + '</div>';
+      html += '<div style="height:12px"></div>';
+      if (items.length >= 8) html += '<div class="exs-fl" style="margin-bottom:10px"><input class="exs-box-in" id="ex-list-q" placeholder="Search" value="' + esc(_exBeat.q || '') + '" oninput="App.exListFilter(this.value)"></div>';
+      html += '<div id="ex-list-rows">' + exListRowsHTML(listKind, items, _exBeat.q || '') + '</div>';
+      html += exCancelHTML();
+    } else if (n === 'item') {
+      _exBeat.view = 'item';
+      var dateLine = (_exBeat.picked && _exBeat.picked.kindOf === 'past' && _exBeat.picked.ts) ? exFmtDate(_exBeat.picked.ts) : '';
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div>';
+      html += '<div class="exs-t" style="margin-top:2px">' + esc(_exBeat.task) + '</div>';
+      var kd = exKindDur(_exBeat.kind, _exBeat.dur);
+      if (kd) html += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+      if (dateLine) html += '<div class="exs-cap" style="margin-top:2px">Last done ' + esc(dateLine) + '</div>';
+      html += '<div style="height:24px"></div>';
+      html += '<div class="exs-lab">' + exGiverLabel(other) + '</div>';
+      html += '<div class="exs-disp">' + (Number(_exBeat.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
+      html += '<input type="hidden" id="ex-desc" value="' + esc(_exBeat.task) + '"><input type="hidden" id="ex-value" value="' + esc(String(Number(_exBeat.value) || 0)) + '">';
+      html += '<div style="height:28px"></div>';
+      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
+      html += '<button class="exs-quiet" onclick="App.exBeatEdit()">Edit</button>';
+      html += exCancelHTML();
+    } else {
+      _exBeat.view = 'form';
+      // Option A (ruled): no live sentence; left-aligned; caption with a
+      // small Switch; kind and duration as two boxes.
+      html += '<div class="exs-caprow"><span class="exs-cap">' + exDirCaption(other) + '</span><button class="exs-switch" onclick="App.exBeatSwitch()">Switch</button></div>';
+      html += '<div class="exs-t">What was provided?</div>';
+      html += '<div style="height:14px"></div>';
+      html += '<div class="exs-fl"><label for="ex-desc">Description</label><input class="exs-box-in" id="ex-desc" value="' + esc(_exBeat.task) + '" oninput="App.exBeatField(\'task\', this.value)"></div>';
+      html += '<div class="exs-fl2"><div class="exs-fl"><label for="ex-kind">Kind of work</label><input class="exs-box-in" id="ex-kind" value="' + esc(_exBeat.kind) + '" oninput="App.exBeatField(\'kind\', this.value)"></div>'
+        + '<div class="exs-fl"><label for="ex-dur">How long</label><input class="exs-box-in" id="ex-dur" placeholder="2 hours" value="' + esc(_exBeat.dur) + '" oninput="App.exBeatField(\'dur\', this.value)"></div></div>';
+      html += '<div class="exs-fl"><label for="ex-value">' + exGiverLabel(other) + '</label><div class="exs-bigrow"><input class="exs-box-in big" type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="0" value="' + esc(String(_exBeat.value)) + '" style="width:calc(' + Math.max(2, String(_exBeat.value).length + 1) + 'ch + 26px)" oninput="App.exBeatField(\'value\', this.value); this.style.width = \'calc(\' + Math.max(2, this.value.length + 1) + \'ch + 26px)\';">' + exMarkSVG(18) + '</div></div>';
+      // Reserved: "From your declaration" (chevron, opens a picker). Built
+      // switched off until the attached-declarations walk and the
+      // Component 1 fingerprint spec.
+      var EX_DECL_ROW = false;
+      if (EX_DECL_ROW) html += '<button class="exs-row"><div class="exs-rowmain"><div class="exs-body">From your declaration</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+      html += '<div style="min-height:40px"><button class="exs-save" id="ex-beat-save" style="display:' + (exBeatChanged() ? 'inline-flex' : 'none') + '" onclick="App.exBeatSaveService()" aria-label="Save change to your service"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Save change to your service</button></div>';
+      html += '<div style="height:8px"></div>';
+      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
+      html += exCancelHTML();
+    }
+    host.innerHTML = html;
+    if (_exBeat.view === 'form' && !_exBeat.task) { var dd = document.getElementById('ex-desc'); if (dd) setTimeout(function() { dd.focus(); }, 50); }
+  }
+  function exListRowsHTML(listKind, items, q) {
+    q = (q || '').trim().toLowerCase();
+    var h = '';
+    var shown = 0;
+    items.forEach(function(it, i) {
+      if (q && (it.description || '').toLowerCase().indexOf(q) < 0) return;
+      if (shown >= 60) return; shown++;
+      var p = exItemParts(listKind, it);
+      var kd = exKindDur(p.kind, p.dur);
+      h += '<button class="exs-row" onclick="App.exBeatPickItem(\'' + listKind + '\',' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(p.task) + '</div>' + (kd ? '<div class="exs-cap">' + esc(kd) + '</div>' : '') + '</div><div class="exs-rowval">' + (Number(p.value) || 0).toLocaleString() + exMarkSVG(12) + '</div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    if (!shown) h += '<div class="exs-cap" style="padding:8px 2px">Nothing matches.</div>';
+    return h;
+  }
+  function exListFilter(q) {
+    _exBeat.q = q;
+    var el = document.getElementById('ex-list-rows');
+    if (el) el.innerHTML = exListRowsHTML(_exBeat.listKind, _exBeat.list || [], q);
+  }
+  // X: back one step, everything entered kept (DESIGN 2a).
+  function exBeatBack() {
+    var v = _exBeat.view;
+    if (v === 'form') { if (_exBeat.from === 'item' && _exBeat.picked) exRenderBeat('item'); else exBackToTexture(); }
+    else if (v === 'item') exRenderBeat(2, _exBeat.listKind || (_exBeat.picked && _exBeat.picked.kindOf === 'past' ? 'past' : 'services'));
+    else if (v === 'list') { _exBeat.q = ''; exBackToTexture(); }
+    else exBackToTexture();
+  }
+  // The header X routes here: back one step, never ending the exchange
+  // except on the first screens (Start, Join, Verify), where there is
+  // no step behind. Ending is Cancel exchange (exCancelExchange).
+  function exX() {
+    var form = document.getElementById('ex-step-form');
+    if (form && form.classList.contains('active')) { exBeatBack(); return; }
+    var rv = document.getElementById('ex-step-rv');
+    if (rv && rv.classList.contains('active')) {
+      // Wait: no exit once the witness reports presence (DESIGN.md 2c);
+      // against an older witness, the interim leave-to-Home stays.
+      if (_exRV.state === 'wait') { if (!_exPresenceLive) exRVLeaveWait(); return; }
+      // Review: back to the chain read with the proposal still waiting.
+      if (_exRV.state === 'review') { exBackToTexture(); return; }
+      if (_exRV.state === 'flow' || _exRV.state === 'done' || _exRV.state === 'ended') return;
+    }
+    // Chain read: back to Verify (ruled). Receiver wait: back to the chain read.
+    var tx = document.getElementById('ex-step-texture');
+    if (tx && tx.classList.contains('active')) { if (exChainReadIsFloor()) return; showExStep('verify'); return; }
+    var rw = document.getElementById('ex-step-receiver-wait');
+    if (rw && rw.classList.contains('active')) { exBackToTexture(); return; }
+    closeExchange();
+  }
+  function exBeatPick(dir) {
+    _exBeat.dir = dir;
+    setDirection(dir);
+    exRenderBeat(1);
+  }
+  function exBeatDoor(kind) { _exBeat.q = ''; exRenderBeat(2, kind); }
+  function exBeatNew() { _exBeat.task = ''; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = ''; _exBeat.picked = null; _exBeat.from = 'doors'; exRenderBeat(3); }
+  function exBeatPickItem(kind, i) {
+    var it = _exBeat.list && _exBeat.list[i]; if (!it) return;
+    var p = exItemParts(kind, it);
+    _exBeat.task = p.task; _exBeat.kind = p.kind; _exBeat.dur = p.dur; _exBeat.value = p.value || '';
+    _exBeat.picked = { kind: kind, kindOf: kind === 'past' ? 'past' : 'services', ts: p.ts, description: p.task, category: p.kind, dur: p.dur, value: _exBeat.value };
+    exRenderBeat('item');
+  }
+  function exBeatEdit() { _exBeat.from = 'item'; exRenderBeat(3); }
+  function exBeatSwitch() {
+    _exBeat.dir = _exBeat.dir === 'provided' ? 'received' : 'provided';
+    setDirection(_exBeat.dir);
+    exRenderBeat(3);
+  }
+  function exBeatChanged() {
+    var pk = _exBeat.picked;
+    if (!pk || pk.kindOf !== 'services' || _exBeat.dir !== 'provided') return false;
+    return (_exBeat.task || '').trim() !== (pk.description || '').trim() || (_exBeat.kind || '').trim() !== (pk.category || '').trim() || (_exBeat.dur || '').trim() !== (pk.dur || '').trim() || String(_exBeat.value || '') !== String(pk.value || '');
+  }
+  function exBeatField(k, v) {
+    _exBeat[k] = v;
+    var sv = document.getElementById('ex-beat-save'); if (sv) sv.style.display = exBeatChanged() ? 'inline-flex' : 'none';
+  }
+  // Legacy one-line meta (services saved before v2.69.0), split at the
+  // first comma.
+  function exSplitMeta(meta) {
+    meta = (meta || '').trim();
+    if (!meta) return { category: '', duration: '' };
+    var i = meta.indexOf(',');
+    if (i >= 0) return { category: meta.slice(0, i).trim(), duration: meta.slice(i + 1).trim() };
+    return (exParseDuration(meta) > 0 && /\d/.test(meta)) ? { category: '', duration: meta } : { category: meta, duration: '' };
+  }
+  function exBeatSend() {
+    if (!_exBeat.dir) { toast('Tap who is providing'); exBackToTexture(); return; }
+    var c = document.getElementById('ex-category'); if (c) c.value = (_exBeat.kind || '').trim();
+    var du = document.getElementById('ex-duration'); if (du) du.value = (_exBeat.dur || '').trim();
+    var ve = document.getElementById('ex-value'); if (ve && String(ve.value).trim() === '') ve.value = '0';
+    setDirection(_exBeat.dir);
+    var btn = document.getElementById('ex-beat-send'); if (btn) { btn.disabled = true; btn.textContent = 'Sending'; }
+    generateProposal().catch(function(e) { toast('Could not send: ' + e.message); }).finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Send proposal'; } });
+  }
+  function exBeatSaveService() {
+    if (!_exBeat.task) { toast('Describe the service first'); return; }
+    var list = exServices();
+    var key = (_exBeat.picked && _exBeat.picked.description ? _exBeat.picked.description : _exBeat.task).trim().toLowerCase();
+    var existing = list.find(function(x) { return (x.description || '').trim().toLowerCase() === key; });
+    var kind = (_exBeat.kind || '').trim(), dur = (_exBeat.dur || '').trim();
+    var entry = { description: _exBeat.task.trim(), category: kind, dur: dur, meta: exKindDur(kind, dur), value: parseFloat(_exBeat.value) || 0 };
+    if (existing) Object.assign(existing, entry); else list.push(entry);
+    save();
+    _exBeat.picked = { kind: 'services', kindOf: 'services', description: entry.description, category: kind, dur: dur, value: entry.value };
+    var sv = document.getElementById('ex-beat-save'); if (sv) sv.style.display = 'none';
+    toast(existing ? 'Service updated' : 'Saved to services you offer');
+  }
+
+  // === REUSABLE ACTS IN FORM STEP (legacy, no longer called from the relay flow) ===
   function exRenderReusableActs() {
     var target = document.getElementById('ex-prefill-bar');
     if (!target) return;
@@ -8484,6 +10827,8 @@ function init() {
     if (role === 'provider') {
       sessionRole = 'proposer';
       showExStep('form');
+      exBeatsOpen();
+      return;
       document.getElementById('exchange-header').textContent = 'Set up the exchange';
       document.getElementById('ex-desc').value = '';
       document.getElementById('ex-value').value = '';
@@ -8497,8 +10842,7 @@ function init() {
       exRenderCategoryPills('');
     } else {
       sessionRole = 'confirmer';
-      showExStep('receiver-wait');
-      exRenderReceiverWait();
+      exBackToTexture();
       startSessionPoll();
     }
   }
@@ -8508,6 +10852,24 @@ function init() {
   }
 
   function exRenderReceiverWait() {
+    // The other phone while the proposer writes (ruled Oct 1): one
+    // quiet line and Not now. The counterparty context tiles that used
+    // to render here are off the face of the screen; the chain read
+    // (screen 4) carries that reading now.
+    var proposalEl = document.getElementById('ex-rw-proposal');
+    if (proposalEl) { proposalEl.style.display = 'none'; proposalEl.innerHTML = ''; }
+    var spinnerEl = document.getElementById('ex-rw-spinner');
+    if (spinnerEl) spinnerEl.style.display = 'flex';
+    var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
+    if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
+    var name = (ts && ts._name) || 'The other person';
+    var spinLabel = document.getElementById('ex-rw-spinner-label');
+    if (spinLabel) spinLabel.textContent = name + ' is writing the proposal';
+    var tilesEl = document.getElementById('ex-rw-tiles');
+    if (tilesEl) { tilesEl.innerHTML = ''; tilesEl.style.display = 'none'; }
+  }
+
+  function exRenderReceiverWait_legacy() {
     // Reset proposal area
     var proposalEl = document.getElementById('ex-rw-proposal');
     if (proposalEl) { proposalEl.style.display = 'none'; proposalEl.innerHTML = ''; }
@@ -8605,6 +10967,19 @@ function init() {
       var reviewBtn = reviewContainer.querySelector('button[onclick*="exReviewConfirm"]');
       if (reviewBtn) reviewBtn.textContent = 'Review proposal';
     }
+    exCRActionRefresh();
+    exChainReadXRefresh();
+
+    // Screen 7 (ruled Oct 1): if the confirmer is already past the
+    // chain read, show the review now; if they are still on it, the
+    // relabelled Continue brings them here through exContinueFromTexture.
+    var rwStep = document.getElementById('ex-step-receiver-wait');
+    var rvStep = document.getElementById('ex-step-rv');
+    if ((rwStep && rwStep.classList.contains('active')) || (rvStep && rvStep.classList.contains('active'))) {
+      showExStep('rv');
+      exRenderRV('review');
+    }
+    return;
 
     // Build proposal card
     var html = '';
@@ -8993,6 +11368,184 @@ function init() {
   // it inline, same pattern as History. Anything deeper — identity
   // panel, POH verdict, categories — lives behind the wallet icon at
   // the top of the device.
+  // ===== Texture: the pair (own phone only) =====
+  var _pairPanelOpen = false;
+  function exPairSentence(p, r) {
+    var fmt = function(n) { return Math.round(n).toLocaleString(); };
+    if (!p && !r) return 'You have not exchanged yet.';
+    if (!r) return 'You have produced ' + fmt(p) + ' and not received yet.';
+    if (!p) return 'You have received ' + fmt(r) + ' and not produced yet.';
+    if (p === r) return 'You have produced as much as you have received.';
+    var best = null;
+    for (var b = 1; b <= 9; b++) {
+      var a = Math.round(p / r * b);
+      if (a < 1 || a > 9) continue;
+      var err = Math.abs(p / r - a / b);
+      if (!best || err < best.err - 1e-9) best = { a: a, b: b, err: err };
+    }
+    if (best) return 'For every ' + best.b + ' you have received, you have produced ' + best.a + '.';
+    return p > r ? 'You have produced many times what you have received.' : 'You have received many times what you have produced.';
+  }
+  function exRenderPairTexture(totalP, totalR) {
+    var mx = Math.max(totalP, totalR, 1);
+    var fmt = function(n) { return Math.round(n).toLocaleString(); };
+    var bar = function(label, v, color) {
+      var pct = Math.max(v > 0 ? 1 : 0, Math.round(v / mx * 100));
+      return '<div style="margin-bottom:12px;">'
+        + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;"><span style="font-size:var(--fs-sm); color:var(--text-dim);">' + label + '</span><span style="font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--text);">' + fmt(v) + '</span></div>'
+        + '<div style="height:14px; border-radius:4px; background:var(--bg-input); overflow:hidden;"><div style="height:100%; width:' + pct + '%; background:' + color + '; border-radius:4px;"></div></div>'
+        + '</div>';
+    };
+    var h = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:14px;">What you have produced and received</div>';
+    h += bar('Produced', totalP, 'var(--accent)');
+    h += bar('Received', totalR, 'var(--amber)');
+    h += '<div style="font-size:var(--fs-md); color:var(--text); margin-top:14px; line-height:1.5;">' + esc(exPairSentence(totalP, totalR)) + '</div>';
+    if (!totalP && !totalR) h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:6px;">Tap Start below to begin one.</div>';
+    h += '<button style="background:none; border:none; padding:10px 0 0; color:var(--accent); font-size:var(--fs-sm); cursor:pointer; font-family:inherit;" onclick="App.togglePairPanel()">How this is drawn' + (_pairPanelOpen ? ' \u2212' : ' +') + '</button>';
+    if (_pairPanelOpen) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:8px; border-top:1px solid var(--border); padding-top:10px;">';
+      h += '<p style="margin:0 0 8px;">Everything you have ever done for someone else, and everything anyone has ever done for you, is on your chain. This picture adds each side up.</p>';
+      h += '<p style="margin:0 0 8px;">Every unit here was written in one exchange, on two chains at once: produced on one, received on the other, both signed by both people. A unit cannot exist on your chain without its match on someone else\'s. That is the only way it can happen, and it is why, across everyone, produced and received are always equal.</p>';
+      h += '<p style="margin:0 0 8px;">Both totals only ever grow. Nothing on your chain is ever taken back, paid off or written down. Your wave shows the difference between the two over time; this shows the two things it is the difference of.</p>';
+      h += '<p style="margin:0 0 8px;"><b style="color:var(--text);">Produced</b> adds up the credit on every exchange where you did the work. <b style="color:var(--text);">Received</b> adds up the credit on every exchange where someone did the work for you. The two bars share one scale: the larger total fills the width, the other is drawn against it. The sentence says the same thing in the smallest whole numbers that fit.</p>';
+      h += '<p style="margin:0 0 8px;"><b style="color:var(--text);">Where this comes from.</b> The two-column ledger (economic model, double-entry bookkeeping, Pacioli 1494): every entry is written twice, once on each side, and the books are right only when the two sides add up to the same total. Here that rule is kept and moved out of the book: the two sides of each entry sit on two different chains, so the balance is across everyone, never inside one chain. What is removed is the netting of your own two totals into a debt: nothing is owed, nothing falls due, nothing carries interest. The sentence uses a ratio in lowest terms (mathematical model): a description, not a rate.</p>';
+      h += '<p style="margin:0;">Nobody else sees this. The totals and the bars stay on your phone.</p>';
+      h += '</div>';
+    }
+    h += '</div>';
+    return h;
+  }
+  function togglePairPanel() { _pairPanelOpen = !_pairPanelOpen; renderHomeTab(); }
+
+  // ===== Texture: the wave (own phone only; cycle 7, ruled Oct 1) =====
+  // Standing over time as one line against the zero line, blue above
+  // (currency), amber below (cosmic share). Actual / Typical (per-kind MAD
+  // modified z-score, 3.5, flagged exchanges replaced by the median of
+  // their kind; the chain is never altered), Each / Week / Month / Year
+  // blocks drawn at each block's closing value, the how-often strip
+  // beneath, one line saying what is shown, and the method panel.
+  var _wave = { mode: 'a', iv: null, panel: false };
+  function waveMedian(a) { var s = a.slice().sort(function(x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
+  function waveData() {
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && r.timestamp && (r.energyState === 'provided' || r.energyState === 'received'); })
+      .map(function(r) { return { t: new Date(r.timestamp).getTime(), v: r.energyState === 'provided' ? +r.value : -r.value }; })
+      .filter(function(q) { return !isNaN(q.t); })
+      .sort(function(a, b) { return a.t - b.t; });
+    if (!ex.length) return null;
+    var t0 = ex[0].t, now = Date.now();
+    var span = Math.max(1, (now - t0) / 86400000);
+    var raw = ex.map(function(q) { return [(q.t - t0) / 86400000, q.v]; });
+    // Typical: per kind, modified z-score with MAD, threshold 3.5, min 20 per kind
+    var typ = raw.map(function(q) { return [q[0], q[1]]; }), nfl = 0, eligible = false;
+    [raw.map(function(q, i) { return q[1] > 0 ? i : -1; }).filter(function(i) { return i >= 0; }),
+     raw.map(function(q, i) { return q[1] <= 0 ? i : -1; }).filter(function(i) { return i >= 0; })].forEach(function(g) {
+      if (g.length < 20) return;
+      eligible = true;
+      var v = g.map(function(i) { return raw[i][1]; }), m = waveMedian(v), mad = waveMedian(v.map(function(x) { return Math.abs(x - m); })) || 1;
+      g.forEach(function(i) { if (0.6745 * Math.abs(raw[i][1] - m) / mad > 3.5) { typ[i][1] = m; nfl++; } });
+    });
+    return { raw: raw, typ: typ, nfl: nfl, eligible: eligible, span: span, n: raw.length };
+  }
+  function exRenderWaveTexture() {
+    var d = waveData();
+    var h = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
+    h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:4px;">How you exchange over time</div>';
+    if (!d) {
+      h += '<div style="font-size:var(--fs-sm); color:var(--text-faint); padding:14px 0 4px;">Your wave starts with your first exchange.</div></div>';
+      return h;
+    }
+    var mode = (_wave.mode === 't' && d.eligible) ? 't' : 'a';
+    var ivs = [['each', 'Each'], ['7', 'Week'], ['30.44', 'Month'], ['365.25', 'Year']];
+    var iv = _wave.iv || (d.n < 60 || d.span < 60 ? 'each' : '30.44');
+    var D = mode === 't' ? d.typ : d.raw, SPAN = d.span;
+    var pts = [[0, 0]], s = 0;
+    if (iv === 'each') { D.forEach(function(q) { s += q[1]; pts.push([q[0], s]); }); }
+    else { var P = +iv, nb = Math.ceil(SPAN / P), j = 0; for (var b = 1; b <= nb; b++) { var end = Math.min(b * P, SPAN); while (j < D.length && D[j][0] < end) { s += D[j][1]; j++; } pts.push([end, s]); } }
+    var X0 = 14, X1 = 306, Z = 85, W = 320, HT = 170;
+    var mx = Math.max.apply(null, [1].concat(pts.map(function(q) { return Math.abs(q[1]); }))), sc = 60 / mx;
+    var X = function(t) { return (X0 + (X1 - X0) * t / SPAN).toFixed(1); }, Y = function(v) { return (Z - v * sc).toFixed(1); };
+    var line = [];
+    if (iv === 'each') { pts.forEach(function(q, i) { if (i) line.push(X(q[0]) + ',' + Y(pts[i - 1][1])); line.push(X(q[0]) + ',' + Y(q[1])); }); }
+    else { line.push(X(0) + ',' + Y(0)); for (var i = 1; i < pts.length; i++) { line.push(X(pts[i - 1][0]) + ',' + Y(pts[i][1])); line.push(X(pts[i][0]) + ',' + Y(pts[i][1])); } }
+    var L = line.join(' '), Pg = X0 + ',' + Z + ' ' + L + ' ' + X(pts[pts.length - 1][0]) + ',' + Z;
+    var last = pts[pts.length - 1], lx = +X(last[0]), ly = +Y(last[1]);
+    var endWord = last[1] > 0 ? 'currency' : (last[1] < 0 ? 'cosmic share' : 'even');
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + HT + '" style="width:100%; display:block;">';
+    svg += '<defs><clipPath id="wave-cu"><rect width="' + W + '" height="' + Z + '"/></clipPath><clipPath id="wave-cd"><rect y="' + Z + '" width="' + W + '" height="' + (HT - Z) + '"/></clipPath></defs>';
+    svg += '<polygon points="' + Pg + '" fill="var(--accent)" fill-opacity=".14" clip-path="url(#wave-cu)"/>';
+    svg += '<polygon points="' + Pg + '" fill="var(--amber)" fill-opacity=".22" clip-path="url(#wave-cd)"/>';
+    svg += '<line x1="' + X0 + '" y1="' + Z + '" x2="' + X1 + '" y2="' + Z + '" stroke="var(--text-faint)" stroke-width=".8"/>';
+    svg += '<polyline points="' + L + '" fill="none" stroke="var(--text)" stroke-width="1.6" stroke-linejoin="round"/>';
+    svg += '<circle cx="' + lx + '" cy="' + ly + '" r="2.6" fill="var(--text)"/>';
+    var tx = lx + 7 > 262 ? lx - 7 : lx + 7, anchor = lx + 7 > 262 ? 'end' : 'start';
+    svg += '<text x="' + tx + '" y="' + (ly + 1) + '" text-anchor="' + anchor + '" font-size="12.5" font-weight="600" fill="var(--text)">' + Math.abs(Math.round(last[1])).toLocaleString() + '</text>';
+    svg += '<text x="' + tx + '" y="' + (ly + 13) + '" text-anchor="' + anchor + '" font-size="10" fill="var(--text-faint)">' + endWord + '</text>';
+    svg += '<text x="' + X0 + '" y="168" font-size="11" fill="var(--text-faint)">first exchange</text><text x="' + X1 + '" y="168" text-anchor="end" font-size="11" fill="var(--text-faint)">today</text>';
+    svg += '</svg>';
+    // the how-often strip: counts provided above the hairline, received below
+    var P2 = iv === 'each' ? SPAN / 104 : +iv, nb2 = Math.ceil(SPAN / P2), up = [], dn = [];
+    for (var k = 0; k < nb2; k++) { up.push(0); dn.push(0); }
+    D.forEach(function(q) { var kk = Math.min(nb2 - 1, Math.floor(q[0] / P2)); if (q[1] > 0) up[kk]++; else dn[kk]++; });
+    var mc = Math.max.apply(null, [1].concat(up, dn)), bw = (X1 - X0) / nb2, gp = Math.min(1.2, bw * 0.25);
+    var strip = '<svg viewBox="0 0 ' + W + ' 42" style="width:100%; display:block;"><line x1="' + X0 + '" y1="20.5" x2="' + X1 + '" y2="20.5" stroke="var(--border)"/>';
+    for (var k2 = 0; k2 < nb2; k2++) {
+      var x = X0 + k2 * bw + gp / 2, ww = Math.max(0.4, bw - gp);
+      if (up[k2]) strip += '<rect x="' + x.toFixed(1) + '" y="' + (20 - up[k2] / mc * 17).toFixed(1) + '" width="' + ww.toFixed(1) + '" height="' + (up[k2] / mc * 17).toFixed(1) + '" fill="var(--text-dim)"/>';
+      if (dn[k2]) strip += '<rect x="' + x.toFixed(1) + '" y="21" width="' + ww.toFixed(1) + '" height="' + (dn[k2] / mc * 17).toFixed(1) + '" fill="var(--text-dim)" fill-opacity=".55"/>';
+    }
+    strip += '</svg>';
+    var pu = D.filter(function(q) { return q[1] > 0; }).length;
+    var notes = { each: 'Every exchange, one by one, ', '7': 'Each step is where you stood at the end of a week, ', '30.44': 'Each step is where you stood at the end of a month, ', '365.25': 'Each step is where you stood at the end of a year, ' };
+    var note = notes[iv] + (mode === 't' ? 'with the few exchanges far bigger than your usual evened out.' : 'counting every exchange as it happened.');
+    var seg = function(items, cur, fn) {
+      return '<div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">' + items.map(function(it) {
+        var on = it[0] === cur, dis = it[2];
+        return '<button ' + (dis ? 'disabled ' : '') + 'style="border:none; padding:6px 10px; font-size:12px; font-family:inherit; cursor:pointer; background:' + (on ? 'var(--accent)' : 'var(--bg-raised)') + '; color:' + (on ? '#fff' : (dis ? 'var(--text-faint)' : 'var(--text-dim)')) + ';" onclick="' + fn + '(\'' + it[0] + '\')">' + it[1] + '</button>';
+      }).join('') + '</div>';
+    };
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:10px;">Provided above, received below</div>';
+    h += '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px;">' + seg([['a', 'Actual'], ['t', 'Typical', !d.eligible]], mode, 'App.waveMode') + seg(ivs, iv, 'App.waveInterval') + '</div>';
+    h += svg;
+    h += '<div style="height:4px"></div>' + strip;
+    h += '<div style="font-size:var(--fs-sm); color:var(--text); margin-top:8px;">Provided ' + pu + ' times, received ' + (D.length - pu) + ' times.</div>';
+    h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:4px; line-height:1.5;">' + esc(note) + (!d.eligible ? ' Typical opens once you have twenty exchanges of each kind.' : '') + '</div>';
+    if (mode === 't') {
+      h += '<button style="background:none; border:none; padding:10px 0 0; color:var(--accent); font-size:var(--fs-sm); cursor:pointer; font-family:inherit;" onclick="App.toggleWavePanel()">How Typical is worked out' + (_wave.panel ? ' \u2212' : ' +') + '</button>';
+      if (_wave.panel) {
+        h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:8px; border-top:1px solid var(--border); padding-top:10px;">';
+        h += '<p style="margin:0 0 8px; color:var(--text);">Most exchanges in a life are ordinary. Now and then a few are extraordinary: a windfall, a big job, a medical bill, a loss. Those few can take over the whole picture.</p>';
+        h += '<p style="margin:0 0 10px; color:var(--text);">Typical evens out those few, the very good and the very hard alike, so you can see your everyday pattern. Nothing on your chain changes.</p>';
+        h += '<p style="margin:0 0 8px;"><b style="color:var(--text);">' + d.nfl + ' of your ' + d.n + ' exchanges evened out.</b></p>';
+        h += '<p style="margin:0 0 6px;">1. Exchanges are sorted into two kinds: what you provided and what you received.</p>';
+        h += '<p style="margin:0 0 6px;">2. For each kind, the app finds the middle-sized exchange (the median) and how far exchanges of that kind usually sit from it.</p>';
+        h += '<p style="margin:0 0 6px;">3. Any exchange more than 3.5 times that usual distance away is counted as a middle-sized exchange of its kind instead.</p>';
+        h += '<p style="margin:0 0 10px;">4. Every other exchange stays exactly as it was. The line and the blocks are redrawn from these.</p>';
+        h += '<p style="margin:0;">Method: modified z-score with median absolute deviation, threshold 3.5 (Iglewicz and Hoaglin, 1993), applied separately to provided and received exchanges. Flagged exchanges are replaced with the median of their kind. The chain itself is never altered; Typical is a view of it. Nobody else sees this.</p>';
+        h += '</div>';
+      }
+    }
+    h += '</div>';
+    return h;
+  }
+  function waveMode(m) { _wave.mode = m; renderHomeTab(); }
+  function waveInterval(iv) { _wave.iv = iv; renderHomeTab(); }
+  function toggleWavePanel() { _wave.panel = !_wave.panel; renderHomeTab(); }
+
+  // v2.91.0: the Home hero is the photo and the standing number only (Michael, Oct 3: no word, no sentence;
+  // the number is the standing). Colour still follows the side (rule 16). "See your full standing" opens Account.
+  function homeHeroHTML(cur, cos, n) {
+    var name = state.declarations.name || 'Anonymous', photo = mcPhoto();
+    var st = cur - cos, side = st > 0 ? 'mc-blue' : (st < 0 ? 'mc-amber' : '');
+    var h = '<div class="home-hero">';
+    h += '<div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div>';
+    h += '<div class="exs-cap" style="margin-top:28px">Your standing</div>';
+    h += '<div class="mc-display ' + side + '">' + Math.abs(st).toLocaleString() + ' ' + exMarkSVG(20) + '</div>';
+    if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openWallet();return false">See your full standing</a></p>';
+    return h + '</div>';
+  }
+  function openLearnFromAccount() { lrRenderHome(); mcOpen('learn'); }
+
   function renderHomeTab() {
     var el = document.getElementById('tab-home-content');
     if (!el) return;
@@ -9013,32 +11566,14 @@ function init() {
 
     var html = '';
 
-    // Totals card -- Bite 3 verdict-pin alignment (April 30, 2026): the
-    // previous side-by-side amount totals (+totalP / -totalR) were a
-    // balance presentation by implication -- the user's eye computed the
-    // net even without an explicit balance number. Replaced with act
-    // counts (Provided 12 / Received 10) which preserve the activity
-    // sense without the implicit subtraction. Value-totals still live
-    // in the chain modal breakdown card.
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:14px;">';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Provided</div><div style="font-size:24px; font-weight:600; color:var(--green);">' + actsP + '</div></div>';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;">Received</div><div style="font-size:24px; font-weight:600; color:var(--blue);">' + actsR + '</div></div>';
-    html += '</div>';
-
-    // Participation ratio bar -- same visual as the wallet's ratio bar so
-    // the two read consistently. v2.61.18: provided half now uses --green
-    // (was --accent, which equals --blue, so the bar rendered all-blue).
-    if (totalActs > 0) {
-      html += '<div style="display:flex; justify-content:space-between; font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:4px;"><span>participation ratio</span><span style="color:var(--text-dim); font-weight:500;">' + ratioStr + '</span></div>';
-      html += '<div style="height:10px; border-radius:5px; overflow:hidden; display:flex; background:var(--bg-input);">';
-      if (pPct > 0) html += '<div style="width:' + pPct + '%; background:var(--green); border-radius:5px 0 0 5px;"></div>';
-      if (rPct > 0) html += '<div style="width:' + rPct + '%; background:var(--blue); border-radius:0 5px 5px 0;"></div>';
-      html += '</div>';
-    } else {
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-align:center; padding:4px 0;">No exchanges yet. Tap the + button below to start one.</div>';
-    }
-    html += '</div>';
+    // The pair (texture cycle 1, ruled Oct 1; built v2.67.0): the two
+    // raw totals as two bars on one scale, each total beside its bar,
+    // one sentence in lowest terms, and a "How this is drawn" panel.
+    // Own phone only; never in the snapshot. Replaces the act-count
+    // card and the participation ratio bar (v2.61.18 and earlier).
+    // v2.90.0 (clean Home, ruled Oct 3): photo, standing, one sentence. The pair bars and the wave
+    // now live only in Account (My chain); the recent list lives in History. In flight stays below.
+    html += homeHeroHTML(totalP, totalR, totalActs);
 
     // === IN FLIGHT ===
     // Holds anything still in motion -- before it settles into the
@@ -9177,94 +11712,6 @@ function init() {
       // possible) read like the recent list -- thin border between rows.
       html += ifRows.join('<div style="height:1px; background:var(--border);"></div>');
 
-      html += '</div>';
-    }
-
-    // === RECENT (settled only) ===
-    if (settledRecords.length > 0) {
-      var recent = settledRecords.slice().reverse().slice(0, 8);
-
-      html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">';
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent exchanges</div>';
-      if (ex.length > 8) {
-        html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.switchTab(\'history\')">View all</span>';
-      }
-      html += '</div>';
-
-      // Filter pills — same data-attribute pattern as History so the filter
-      // handler can stay the same. Uses home-specific class so the two
-      // filters don't collide visually.
-      html += '<div style="display:flex; gap:8px; margin-bottom:12px;">';
-      html += '<button class="home-pill hist-pill active" data-home-filter="all" onclick="App.homeFilter(\'all\')">All</button>';
-      html += '<button class="home-pill hist-pill" data-home-filter="provided" onclick="App.homeFilter(\'provided\')">Provided</button>';
-      html += '<button class="home-pill hist-pill" data-home-filter="received" onclick="App.homeFilter(\'received\')">Received</button>';
-      html += '</div>';
-
-      html += '<div id="home-list" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow);">';
-      recent.forEach(function(r, idx) {
-        var desc = r.description || r.category || 'Exchange';
-        var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
-        var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-        var isProv = r.energyState === 'provided';
-        // Pending = record exists in chain but witness attestation has not
-        // arrived yet. submitWitness sets r.witnessAttestation on success
-        // and triggers a re-render. Until then, this record reads as
-        // pending on Home -- a small pill next to the title plus a
-        // 'pending witness' status line below.
-        var isPending = !r.witnessAttestation;
-        // Fresh = timestamp is recent enough to mean "this exchange just
-        // happened during this session of the app". Triggers a brief
-        // background-fade animation on the row so the user's eye finds
-        // it after the modal closes. 8s window covers normal cases
-        // including the witness round-trip.
-        var isFresh = recordAgeMs(r) < 8000;
-        // Bite 2 of language audit: row valence neutralized. Received is not
-        // bad in HEP; provided and received are two roles in a cooperative
-        // act, both honest. Green for provided, blue for received -- both
-        // pleasant, neither valence-laden -- matches the Home totals pattern.
-        // Direction is still carried by the arrow icon and the +/- sign.
-        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
-        var valSign = isProv ? '+' : '\u2212';
-        var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
-        var arrowIcon = isProv
-          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
-          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
-        var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
-        var border = idx < recent.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
-        var freshClass = isFresh ? ' fresh' : '';
-        html += '<div class="home-row' + freshClass + '" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-        html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
-        html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
-        html += '<div style="flex:1; min-width:0;">';
-        var pendingPill = isPending
-          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span>'
-          : '';
-        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + pendingPill + '</div>';
-        var subtitleText = isPending
-          ? (name ? esc(name) + ' \u00b7 ' : '') + 'Pending witness attestation'
-          : (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts;
-        var subtitleColor = isPending ? 'var(--accent)' : 'var(--text-faint)';
-        html += '<div style="font-size:var(--fs-sm); color:' + subtitleColor + ';">' + subtitleText + '</div>';
-        html += '</div>';
-        html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
-        html += '</div>';
-        // Expandable detail
-        html += '<div class="home-detail" style="display:none; padding:0 0 14px 56px; font-size:var(--fs-sm); color:var(--text-dim); line-height:1.8;">';
-        if (r.category) html += '<div><span style="color:var(--text-faint);">Category:</span> ' + esc(r.category) + '</div>';
-        if (r.duration) html += '<div><span style="color:var(--text-faint);">Duration:</span> ' + formatDuration(r.duration) + '</div>';
-        var fullName = r.counterpartyName || '';
-        var fpShort = (r.counterparty || '').substring(0, 16);
-        if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
-        html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
-        if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
-        html += '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    } else if (!hasInFlight) {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:30px 20px; text-align:center; box-shadow:var(--shadow);">';
-      html += '<div style="font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">When you record your first cooperative exchange, it will appear here.</div>';
       html += '</div>';
     }
 
@@ -11163,27 +13610,21 @@ function init() {
     document.getElementById('exchange-header').textContent = 'New exchange';
     showExStep('connect');
 
-    var html = '<div style="text-align:center; margin-bottom:24px; padding-top:8px;">';
-    html += '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:6px;">How are you connecting?</div>';
-    html += '<div style="font-size:14px; color:var(--text-dim);">Both people need to start an exchange</div>';
-    html += '</div>';
-
-    // Two equal buttons
-    html += '<div style="display:flex; flex-direction:column; gap:12px;">';
-
-    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--accent); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.exStartProviding()">';
-    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>';
-    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Start</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim);">Generate a code for the other person to enter</div></div>';
-    html += '</button>';
-
-    html += '<button style="width:100%; padding:20px 16px; background:var(--bg-raised); border:1.5px solid var(--border); border-radius:var(--radius); cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px;" onclick="App.exJoinExchange()">';
-    html += '<div style="width:44px; height:44px; border-radius:50%; background:var(--bg-input); border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>';
-    html += '<div><div style="font-size:16px; font-weight:600; color:var(--text);">Join</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim);">Enter the code the other person gave you</div></div>';
-    html += '</button>';
-
-    html += '</div>';
+    // Screen 1 of the relay flow (ruled Sept 30 / Oct 1): three doors,
+    // one line under each, Not now at the bottom. Start and Join are
+    // about who shows the code; who provides is chosen later, on the
+    // proposer's phone (beat 1). Invite is the pipeline for someone
+    // not in the room.
+    var html = '<div class="exs-h">Who are you exchanging with?</div>';
+    html += '<div style="height:18px"></div>';
+    html += '<button class="exs-door p" onclick="App.exStartProviding()">Start</button>';
+    html += '<div class="exs-door-sub">You show a code, they enter it.</div>';
+    html += '<button class="exs-door" onclick="App.exJoinExchange()">Join</button>';
+    html += '<div class="exs-door-sub">They show a code, you enter it.</div>';
+    html += '<button class="exs-door" onclick="App.closeModal(\'exchange\'); App.openInvite()">Invite</button>';
+    html += '<div class="exs-door-sub">Send a link to someone who is not here.</div>';
+    html += '<div class="exs-grow"></div>';
+    html += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
   }
 
@@ -11257,10 +13698,10 @@ function init() {
     switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
-    addSkill, removeSkill, toggleSkillPicker,
+    addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
@@ -11275,20 +13716,20 @@ function init() {
     showTextureDetail, closeTextureDetail, toggleServiceCat,
     openChainViewer, chainTab, chainDirFilter, openMyTexture, openMyPricing,
     openMyTextureFromWallet, openMyPricingFromWallet, openChainViewerFromWallet, showMyPhotos,
-    openWallet, openRecentActs, filterRecentActs,
+    openWallet, mcOpen, mcClose, mcWaveMode, mcWaveIv, mcPeopleIv, openRecentActs, filterRecentActs,
     openPending, deletePendingItem, deleteAllPending, resumePending, clearPrefill,
     togglePasteMode, inviteViaText, inviteViaQR,
-    openShare, copyShareLink, copyShareLinkRef, shareViaSystem,
+    openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
+    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };

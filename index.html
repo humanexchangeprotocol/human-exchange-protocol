@@ -36,6 +36,8 @@
   --green-light: rgba(43, 140, 62, 0.08);
   --red: #CC4444;
   --red-light: rgba(204, 68, 68, 0.08);
+  --amber: #B5742A;  /* received, cosmic share, the below side of standing (DESIGN.md 8a, 16) */
+  --amber-light: rgba(181, 116, 42, 0.10);
   --blue: #2A5A8F;
   --blue-light: rgba(42, 90, 143, 0.08);
   /* Structure */
@@ -46,6 +48,8 @@
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   /* Typography */
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
+  /* DESIGN.md rule 5: the five sizes. New and converted surfaces use only these. */
+  --fs-caption: 12px; --fs-label: 13px; --fs-body: 15px; --fs-title: 18px; --fs-display: 32px;
   /* Radius + fonts */
   --radius: 10px;
   --radius-sm: 6px;
@@ -86,7 +90,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .tab-bar-item .tab-label { font-size: 11px; font-weight: 500; letter-spacing: 0.2px; }
 .tab-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; }
 .tab-content.active { display: block; }
-.tab-content-inner { padding: 0 20px 80px; }
+.tab-content-inner { padding: 0 20px 150px; }
 
 /* === FAB (Floating Action Button) === */
 .fab-bar { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; z-index: 99; display: flex; gap: 12px; align-items: center; }
@@ -279,12 +283,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === HOME === */
 #home { padding: 0; flex-direction: column; overflow: hidden; }
 .home-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 8px; padding-top: calc(16px + var(--safe-top)); flex-shrink: 0; background: var(--bg); position: relative; z-index: 10; }
-.home-identity { flex: 1; min-width: 0; }
+.home-identity { flex: 1; min-width: 0; text-align: center; } /* v2.91.1: Home is a moment screen, so the greeting centres with the hero (DESIGN.md rule 7) */
 .home-identity .greeting { font-size: 17px; color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home-identity .fp { font-family: var(--font-mono); font-size: 13px; color: var(--text-faint); }
 .home-top-icons { display: flex; gap: 8px; flex-shrink: 0; }
-.top-icon-btn { width: 44px; height: 44px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; color: var(--text-dim); display: flex; align-items: center; justify-content: center; }
-.top-icon-btn:active { border-color: var(--accent); color: var(--accent); }
+.top-icon-btn { width: 44px; height: 44px; background: none; border: none; padding: 0; color: var(--text-faint); display: flex; align-items: center; justify-content: center; cursor: pointer; } /* v2.78.0: no circle; the icon alone, in the bottom bar's faint tone (DESIGN.md rule 14) */
+.top-icon-btn:active { color: var(--accent); }
 .home-stats { display: flex; justify-content: center; gap: 32px; padding: 12px 20px 16px; flex-shrink: 0; }
 .home-stat { text-align: center; }
 .home-stat .val { font-size: 22px; font-weight: 500; color: var(--text); }
@@ -444,8 +448,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === MODAL === */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0); z-index: 100; display: none; align-items: flex-end; justify-content: center; transition: background 0.3s; overflow: hidden; }
 .modal-overlay.active { background: rgba(0,0,0,0.5); }
-.modal { background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: 100dvh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
+.modal { position: relative; background: var(--bg); width: 100%; max-width: 480px; height: 100vh; height: 100dvh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s ease-out; overflow: hidden; }
 .modal-overlay.active .modal { transform: translateY(0); }
+/* v2.76.0: nothing slides (Michael, Oct 2). Every sheet appears and disappears in place, like the exchange flow's own sheets. */
+.modal { transform: none !important; transition: none !important; }
+.modal-overlay { transition: none !important; }
+.modal-overlay:not(.active) { visibility: hidden; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; padding-top: calc(16px + var(--safe-top)); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .modal-header h2 { font-size: 20px; font-weight: 600; }
 .modal-close { width: 44px; height: 44px; background: var(--bg-input); border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -459,6 +467,102 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* Wallet modal: fills the viewport like tab screens (Settings, Learn, History),
    rather than capping at the default 480px modal width. Other modals keep the cap. */
 #wallet-overlay .modal { max-width: none; }
+/* My chain (v2.77.0): the list and its sheets share the exchange flow's sheet, row, caption and X. Reading screen: everything left-aligned (rule 7). */
+#wallet-overlay .modal.mc { max-width: 480px; } /* v2.77.2: same width as the exchange sheet, so no gutter on phones */
+/* v2.81.0: "About you" (declarations edit), built on My chain's frame and the exchange field style (rule 12). */
+#declarations-overlay .modal.mc { max-width: 480px; }
+.dc-id { padding-bottom: 20px; }
+.dc-photo { width: 96px; height: 96px; font-size: 40px; }
+.dc-date { margin-top: 8px; }
+.dc-photo-ctl { display: flex; gap: 4px; justify-content: center; }
+.dc-photo-ctl .mc-edit { margin-top: 4px; }
+.dc-area { resize: none; line-height: 1.4; }
+.dc-addrow { display: flex; gap: 8px; margin-top: 12px; }
+.dc-add { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 16px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.dc-rm { background: none; border: none; font-family: inherit; font-size: 12px; color: var(--text-faint); cursor: pointer; padding: 6px 0 6px 10px; flex-shrink: 0; }
+.dc-grip { display: flex; align-items: center; background: none; border: none; padding: 8px 6px 8px 0; margin-left: -4px; color: var(--text-faint); cursor: grab; touch-action: none; flex-shrink: 0; }
+.dc-dragging { background: var(--bg-raised); box-shadow: var(--shadow-lg); border-radius: var(--radius-sm); position: relative; z-index: 2; }
+body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+/* v2.90.0: clean Home. Photo, standing, one sentence; everything else lives in Account and History. */
+.home-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 9vh 16px 24px; }
+.home-hero .mc-photo { width: 120px; height: 120px; font-size: 52px; }
+.home-hero .mc-display { justify-content: center; margin-top: 2px; }
+.home-hero-link { margin-top: 12px; }
+.home-backup { margin-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 8px; } /* v2.92.0: unbacked-exchanges line, iPhone browser only */
+.home-backup-row { display: flex; align-items: center; gap: 2px; }
+.home-backup-warn { width: 44px; height: 44px; margin: -12px 0 -12px -10px; background: none; border: none; padding: 0; color: var(--red); display: flex; align-items: center; justify-content: center; cursor: pointer; } /* v2.98.0: red warning icon (DESIGN.md rule 8a) opens #backup-sheet */
+#import-sheet { position: fixed; top: 0; bottom: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; z-index: 300; }
+#import-sheet .exs-body + .exs-body { margin-top: 10px; }
+#backup-sheet { position: fixed; top: 0; bottom: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; z-index: 300; }
+#backup-sheet .exs-body + .exs-body { margin-top: 10px; }
+#backup-sheet .backup-steps { margin: 10px 0 0; padding-left: 22px; font-size: 15px; color: var(--text); line-height: 1.4; }
+#backup-sheet .backup-steps li + li { margin-top: 6px; }
+.dc-note { margin-top: 20px; }
+.dc-cvlink { margin: 18px 0 0; }
+.dc-prevlink { margin: 8px 0 0; }
+.dc-about-text { margin: 0; line-height: 1.5; white-space: pre-wrap; }
+.dc-p-gap { height: 14px; }
+.dc-help { margin: 4px 0 6px; }
+/* v2.89.0: Save is pinned to the bottom of the edit sheet (rule 3a); the content scrolls behind it. */
+.dc-foot { flex-shrink: 0; padding: 12px 20px calc(12px + var(--safe-bottom)); background: var(--bg); border-top: 1px solid var(--border); }
+.mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
+.mc-sheet { padding-top: var(--safe-top); }
+.mc-sheet[hidden] { display: none; }
+/* v2.77.1: .exs-sheet is a flex column of fixed height, so its children shrank to fit and the charts collapsed under the text. Nothing in a My chain sheet shrinks; the sheet scrolls instead. */
+.mc-sheet > * { flex-shrink: 0; }
+/* v2.80.0: the person block is centred above the list (rule 7a); the standing is a raised panel; rows sit under three group captions. */
+.mc-id { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 12px 0 24px; }
+.mc-edit { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; background: none; border: none; padding: 6px 10px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; }
+.mc-group { margin: 26px 0 2px; }
+.mc-name { font-size: 18px; font-weight: 600; color: var(--text); margin-top: 12px; }
+.mc-photo { width: 72px; height: 72px; border-radius: 50%; background: var(--accent-light); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent); }
+.mc-photo img { width: 100%; height: 100%; object-fit: cover; }
+.mc-standing { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 18px; margin-bottom: 4px; }
+.mc-standing > .exs-cap:first-child { margin-bottom: 12px; }
+.mc-vrow { cursor: default; }
+.mc-gap { margin-top: 24px; }
+.mc-big { font-size: 18px; }
+.mc-blue, .exs-rowval.mc-blue, .mc-display.mc-blue { color: var(--accent); }
+.mc-amber, .exs-rowval.mc-amber, .exs-cap.mc-amber, .mc-display.mc-amber { color: var(--amber); }
+.mc-blue-fill { background: var(--accent); }
+.mc-amber-fill { background: var(--amber); }
+.mc-link { margin: 10px 0 0; }
+.mc-link[hidden] { display: none; }
+.mc-link a { font-size: 13px; color: var(--accent); text-decoration: underline; }
+.mc-display { display: flex; align-items: center; gap: 8px; font-size: 32px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.mc-tbar { margin-top: 16px; }
+.mc-standing .exs-cap + .mc-tbar { margin-top: 0; }
+.mc-tbar-top { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px; }
+.mc-track { position: relative; height: 14px; border-radius: var(--radius-sm); background: var(--bg-input); }
+.mc-fill { height: 14px; border-radius: var(--radius-sm); }
+.mc-gapbox { position: absolute; top: 0; height: 14px; border: 1.5px dashed var(--amber); border-radius: var(--radius-sm); background: rgba(181,116,42,0.10); }
+.mc-gapbox.mc-up { border-color: var(--accent); background: var(--accent-light); }
+.mc-gapbox[hidden] { display: none; }
+.mc-how { margin-top: 28px; }
+.mc-how .exs-cap { margin: 8px 0 0; }
+.mc-how b { font-weight: 600; color: var(--text-dim); }
+.mc-sheet .exs-body + .exs-body { margin-top: 10px; }
+.mc-ol { padding-left: 20px; margin: 8px 0; line-height: 1.5; }
+.mc-chart { display: block; width: 100%; height: auto; margin-top: 6px; }
+.mc-seg { display: flex; gap: 2px; padding: 3px; background: var(--bg-input); border-radius: var(--radius-sm); }
+.mc-seg button { flex: 1; min-height: 36px; border: none; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; background: transparent; color: var(--text-dim); cursor: pointer; }
+.mc-seg button[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+
+/* Learn (v2.99.0): the lesson player is a flow sheet; its content scrolls and Continue stays pinned (rule 3a). */
+.lr-sheet { overflow: hidden; padding-bottom: 0; }
+.lr-sheet > .lr-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 16px; }
+.lr-prog { display: flex; gap: 4px; margin: 2px 0 18px; }
+.lr-prog i { flex: 1; height: 3px; border-radius: 2px; background: var(--border); }
+.lr-prog i.on { background: var(--accent); }
+.lr-prog[hidden] { display: none; }
+.lr-step-t { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.3; margin: 0 0 10px; }
+.lr-step-b { font-size: 15px; color: var(--text); line-height: 1.55; margin: 0; }
+.lr-fig { margin: 22px 0 4px; }
+.lr-fig svg { display: block; width: 100%; height: auto; }
+.lr-foot { flex-shrink: 0; margin: 0 -20px; padding: 12px 20px calc(12px + var(--safe-bottom)); background: var(--bg); border-top: 1px solid var(--border); }
+.lr-foot .exs-quiet { margin-top: 4px; }
+.lr-done { display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 100%; }
+.mc-seg button:disabled { opacity: .4; cursor: default; }
 
 /* === TABS === */
 .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -604,6 +708,163 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 /* === HANDSHAKE FLOW === */
 .hs-step { display: none; }
 .hs-step.active { display: block; }
+/* v2.66.0: the ruled relay flow carries its own question and its own
+   Not now on every screen, so the Connect / Read / Compose indicator is
+   hidden. Code (renderIndicator, the markup) stays intact; delete this
+   rule to bring it back if phone testing says the flow needs it. */
+.ex4-indicator { display: none !important; }
+/* New exchange screens (relay flow, Sept 30 / Oct 1 rulings). Each is a
+   full-height column: heading at top, content, a growing spacer, then a
+   fixed bottom row. */
+.hs-step.exs.active { display: flex; flex-direction: column; min-height: 100%; }
+.exs-h { font-size: 20px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.exs-m { font-size: 14px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+.exs-f { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+.exs-grow { flex: 1; min-height: 16px; }
+.exs-bottom { display: flex; justify-content: space-between; gap: 12px; padding-top: 12px; }
+.exs-bottom button, .exs-quiet { background: none; border: none; color: var(--text-faint); font-size: 15px; padding: 10px 4px; cursor: pointer; font-family: inherit; }
+.exs-quiet { width: 100%; text-align: center; }
+.exs-door { width: 100%; text-align: left; background: var(--bg-raised); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 17px; font-weight: 600; color: var(--text); cursor: pointer; font-family: inherit; }
+.exs-door.p { border-color: var(--accent); background: var(--accent); color: #fff; }
+.exs-door-sub { font-size: 13px; color: var(--text-faint); margin: 4px 0 12px 2px; line-height: 1.4; }
+.exs-code { font-family: var(--font-mono); font-size: 44px; font-weight: 600; letter-spacing: 12px; color: var(--accent); text-align: center; padding-left: 12px; }
+.exs-cells { position: relative; display: flex; justify-content: center; gap: 10px; }
+.exs-cell { width: 54px; height: 64px; border: 2px solid var(--border); border-radius: 10px; background: var(--bg-raised); font-family: var(--font-mono); font-size: 30px; font-weight: 600; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.exs-cell.on { border-color: var(--accent); }
+.exs-cell.empty { color: var(--text-faint); }
+/* Anchored to the screen bottom and extended behind the tab bar by its measured height (--tabbar-h, set below), so no page shows through or between the two. */
+.doors-strip { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; display: flex; gap: 10px; padding: 10px 16px calc(10px + var(--tabbar-h, 64px)); background: var(--bg-raised); border-top: 1px solid var(--border); }
+.doors-strip .btn { flex: 1; width: auto; padding: 13px; font-size: 17px; margin: 0; }
+.doors-strip .btn + .btn { margin-top: 0; }
+@keyframes exsShake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-9px); } 40%,80% { transform: translateX(9px); } }
+.exs-cells.shake { animation: exsShake .4s ease; }
+.exs-cells.shake .exs-cell { border-color: var(--amber, #c8862a); }
+div.exs-mark, div.exs-mark span { display: inline-flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 600; color: var(--accent) !important; letter-spacing: 2px; }
+div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
+.exs-cells input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; font-size: 30px; border: none; background: none; }
+.exs-wait { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--text-faint); }
+.exs-wait i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+.exs-center { align-items: center; text-align: center; }
+.exs-icons { display: flex; justify-content: center; gap: 34px; align-items: flex-end; }
+.exs-icon { text-align: center; cursor: pointer; background: none; border: none; padding: 4px; font-family: inherit; }
+.exs-icon .exs-f { margin-top: 2px; }
+.exs-sheet { position: absolute; inset: 0; background: var(--bg); padding: 0 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; overflow-y: auto; }
+.exs-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 10px; }
+.exs-sheet-head .exs-h { font-size: 18px; }
+.exs-x { background: none; border: none; width: 40px; height: 40px; margin-right: -8px; border-radius: 50%; color: var(--text-dim); font-size: 22px; line-height: 1; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; }
+.exs-lines { font-size: 15px; color: var(--text-dim); line-height: 1.9; }
+.exs-lines b { color: var(--text); font-weight: 600; }
+.exs-boxes { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.exs-box.mute { opacity: 0.4; }
+.exs-say { text-align: center; line-height: 1.5; }
+.exs-say .who { font-size: 16px; font-weight: 600; color: var(--text); }
+.exs-say .does { font-size: 13px; color: var(--text-dim); }
+.exs-say .what { font-size: 19px; font-weight: 600; color: var(--text); margin: 2px 0 10px; }
+.exs-say .amt { font-size: 30px; font-weight: 600; color: var(--accent); }
+.exs-say .amt small { font-family: inherit; font-size: 13px; font-weight: 400; color: var(--text-faint); margin-left: 6px; }
+.exs-own { text-align: center; }
+.exs-own .lab { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; }
+.exs-own .num { font-size: 22px; font-weight: 600; color: var(--text); }
+.exs-own .num.amb { color: var(--amber); }
+.exs-valc { display: flex; justify-content: center; align-items: baseline; gap: 6px; }
+.exs-valc input { border: none; border-bottom: 1px solid var(--border); background: none; font-size: 32px; font-weight: 600; color: var(--accent); padding: 4px 0; outline: none; text-align: center; min-width: 3ch; max-width: 60%; }
+.exs-valc input:focus { border-bottom-color: var(--accent); }
+.exs-valc small { font-size: 13px; color: var(--text-faint); }
+.exs-save { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg-raised); border-radius: 20px; padding: 8px 14px; min-height: 36px; color: var(--text-dim); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 4px; }
+/* the completion: other person, the arrow carrying the amount, you */
+.exs-flow { display: flex; flex-direction: column; align-items: center; }
+.exs-person { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.exs-person .exs-av { width: 56px; height: 56px; border-radius: 50%; background: var(--bg-input); border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text-dim); }
+.exs-arrowrow { display: flex; align-items: center; justify-content: center; gap: 14px; height: 70px; margin: 4px 0; }
+.exs-varrow .shaft { stroke: var(--accent); stroke-width: 3; fill: none; stroke-linecap: round; stroke-dasharray: 60; stroke-dashoffset: 60; animation: exsDraw 0.7s ease-out 0.15s forwards; }
+.exs-varrow .head { fill: var(--accent); opacity: 0; animation: exsAppear 0.2s ease-out 0.8s forwards; }
+.exs-ride { font-size: 30px; font-weight: 600; color: var(--accent); opacity: 0; animation: exsRide 0.9s ease-in-out 0.2s forwards; }
+.exs-varrow.up + .exs-ride { animation-name: exsRideUp; }
+.exs-flow.done .exs-varrow .shaft, .exs-flow.done .exs-varrow .head, .exs-flow.done .exs-ride { animation: none; stroke-dashoffset: 0; opacity: 1; transform: none; }
+.exs-own .num.big { font-size: 40px; line-height: 1; transition: transform 0.25s ease-out; }
+.exs-own .num.land { animation: exsLand 0.5s ease-out; }
+.exs-in { animation: exsAppear 0.4s ease-out; }
+@keyframes exsDraw { to { stroke-dashoffset: 0; } }
+/* Processing and Settled (ruled Oct 2, eleventh session) */
+.exs-settle { display: flex; flex-direction: column; flex: 1; min-height: 100%; }
+.exs-fade { opacity: 0; transition: opacity .5s; }
+.exs-fade.in { opacity: 1; }
+.exs-settle-check { position: relative; width: 112px; height: 112px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; animation: exsPop .45s cubic-bezier(.2,1.4,.4,1) .2s both; }
+.exs-settle-check .ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--green); animation: exsRipple .8s ease-out .55s both; }
+.exs-settle-check path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: exsDraw .35s ease-out .6s forwards; }
+.exs-settle-t1 { font-size: 15px; color: var(--text-dim); margin-top: 22px; animation: exsAppear .4s ease-out 1s both; }
+.exs-settle-t2 { font-size: 32px; font-weight: 600; line-height: 1.1; animation: exsAppear .4s ease-out 1s both; }
+.exs-settle-t3 { font-size: 15px; color: var(--text-dim); margin-top: 8px; animation: exsAppear .4s ease-out 1.4s both; }
+.exs-settle-btns { width: 100%; animation: exsAppear .4s ease-out 1.9s both; }
+.exs-ended-x { background: var(--text-faint); }
+.exs-ended .exs-settle-btns { animation-delay: .6s; }
+@keyframes exsPop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes exsRipple { from { transform: scale(1); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .exs-settle-check, .exs-settle-check .ring, .exs-settle-check path, .exs-settle-t1, .exs-settle-t2, .exs-settle-t3, .exs-settle-btns { animation: none; stroke-dashoffset: 0; } .exs-settle-check .ring { display: none; } }
+@keyframes exsAppear { from { opacity: 0; } to { opacity: 1; } }
+@keyframes exsRide { 0% { opacity: 0; transform: translateY(-26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(26px); } }
+@keyframes exsRideUp { 0% { opacity: 0; transform: translateY(26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(-26px); } }
+@keyframes exsLand { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+/* Batch 1 (Oct 2 surface rulings, v2.69.0): DESIGN.md sizes 12/13/15/18/32,
+   one field style, Cancel exchange bottom left, list rows with chevron. */
+.exs-cap { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+.exs-lab { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+.exs-body { font-size: 15px; color: var(--text); line-height: 1.4; }
+.exs-t { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.exs-disp { font-size: 32px; font-weight: 600; color: var(--text); line-height: 1.15; display: flex; align-items: center; gap: 6px; }
+.exs-mark { color: var(--text-faint); flex-shrink: 0; }
+.exs-cancelrow { display: flex; justify-content: flex-start; padding-top: 12px; }
+.exs-cancel { background: none; border: none; padding: 10px 0; font-size: 12px; color: var(--text-faint); opacity: .8; cursor: pointer; font-family: inherit; text-align: left; }
+.exs-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 4px; background: none; border: none; border-bottom: 1px solid var(--border); text-align: left; cursor: pointer; font-family: inherit; }
+.exs-row.off { cursor: default; }
+.exs-row.off .exs-body { color: var(--text-dim); }
+.exs-rowmain { flex: 1; min-width: 0; }
+.exs-rowval { font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.exs-chev { color: var(--text-faint); flex-shrink: 0; }
+.exs-caprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.exs-switch { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 12px; color: var(--text-dim); cursor: pointer; font-family: inherit; }
+.exs-fl { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
+.exs-fl label { font-size: 12px; color: var(--text-faint); }
+.exs-fl2 { display: flex; gap: 10px; }
+.exs-fl2 .exs-fl { flex: 1; }
+.exs-box-in { width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 15px; color: var(--text); font-family: inherit; outline: none; }
+.exs-box-in:focus { border-color: var(--accent); }
+.exs-bigrow { display: flex; align-items: center; gap: 8px; }
+.exs-box-in.big { width: auto; min-width: 5ch; font-size: 32px; font-weight: 600; padding: 6px 12px; }
+.exs-box-in.big::-webkit-outer-spin-button, .exs-box-in.big::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.exs-box-in.big { -moz-appearance: textfield; }
+.exs-field.c { text-align: center; }
+.exs-box { width: 104px; padding: 12px 8px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-raised); text-align: center; cursor: pointer; font-family: inherit; }
+.exs-box.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+.exs-box .exs-av { width: 34px; height: 34px; border-radius: 50%; background: var(--bg-input); border: 1px solid var(--border); margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.exs-box .exs-n { font-size: 14px; font-weight: 600; color: var(--text); }
+.exs-arr { width: 44px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--text-faint); font-weight: 600; }
+.exs-arr svg { width: 44px; height: 24px; }
+.exs-arr .shaft { stroke: var(--accent); stroke-width: 3; fill: none; stroke-linecap: round; }
+.exs-arr .head { fill: var(--accent); }
+.exs-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); margin-bottom: 8px; cursor: pointer; text-align: left; width: 100%; font-family: inherit; }
+.exs-item .t { font-size: 15px; font-weight: 500; color: var(--text); }
+.exs-item .v { font-size: 16px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+.exs-doorrow { display: flex; align-items: center; gap: 12px; justify-content: flex-start; }
+.exs-doorrow .ic { width: 36px; height: 36px; border-radius: 8px; background: var(--accent-light); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 18px; flex-shrink: 0; }
+.exs-field { width: 100%; border: none; border-bottom: 1px solid var(--border); background: none; padding: 10px 0; font-family: inherit; color: var(--text); outline: none; }
+.exs-field:focus { border-bottom-color: var(--accent); }
+.exs-val { display: flex; align-items: baseline; gap: 8px; }
+.exs-val input { width: 50%; border: none; border-bottom: 1px solid var(--border); background: none; font-size: 32px; font-weight: 600; color: var(--accent); padding: 6px 0; outline: none; }
+.exs-val input:focus { border-bottom-color: var(--accent); }
+.exs-val small { font-size: 13px; color: var(--text-faint); }
+.exs-link { background: none; border: none; color: var(--accent); font-size: 13px; padding: 6px 0; cursor: pointer; font-family: inherit; text-align: left; }
+.exs-amber { --exs-amber: var(--amber); }
+.exs-box .exs-lab { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; margin-top: 6px; }
+.exs-box .exs-num { font-size: 15px; font-weight: 600; color: var(--text); }
+.exs-box .exs-num.amb { color: var(--amber); }
+.exs-box .exs-ic { display: flex; justify-content: center; gap: 6px; margin-bottom: 4px; min-height: 16px; }
+.exs-arr.flow .shaft { stroke-dasharray: 6 6; animation: exsFlow 0.6s linear infinite; }
+@keyframes exsFlow { to { stroke-dashoffset: -12; } }
+.exs-check { width: 56px; height: 56px; border-radius: 50%; background: var(--green); margin: 0 auto; display: flex; align-items: center; justify-content: center; }
+.exs-check svg { width: 30px; height: 30px; }
+.exs-bigval { display: flex; align-items: baseline; gap: 8px; font-size: 32px; font-weight: 600; color: var(--accent); }
+.exs-bigval small { font-size: 13px; color: var(--text-faint); font-family: inherit; font-weight: 400; }
 
 /* 8-step flow progress bar */
 .ex-progress { display: flex; gap: 3px; margin-bottom: 20px; }
@@ -758,7 +1019,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .paste-section.visible { display: block; }
 
 /* === TOAST === */
-.toast { position: fixed; bottom: calc(80px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px); opacity: 0; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 24px; font-size: 14px; z-index: 200; transition: transform 0.3s ease, opacity 0.3s ease; pointer-events: none; white-space: nowrap; }
+.toast { position: fixed; bottom: calc(150px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px); opacity: 0; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 24px; font-size: 14px; z-index: 200; transition: transform 0.3s ease, opacity 0.3s ease; pointer-events: none; white-space: nowrap; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
 @media (min-width: 481px) {
@@ -853,6 +1114,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <path d="M6 6 L18 18 M18 6 L6 18"/>
     </symbol>
+    <!-- v2.79.0: the HEP mark and the wallet are defined ONCE here. Every mark beside a number (exMarkSVG) and the My chain icon on Home reference these symbols, so changing the drawing here changes it everywhere. The wallet holds the mark by reference. The mark's line weight is a custom property so the wallet can draw it heavier at its smaller scale. -->
+    <symbol id="icon-hep-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <circle cx="8.2" cy="12" r="6.5" style="stroke-width: var(--hep-mark-stroke, 2.5)"/>
+      <circle cx="15.8" cy="12" r="6.5" style="stroke-width: var(--hep-mark-stroke, 2.5)"/>
+    </symbol>
+    <symbol id="icon-wallet" viewBox="0 0 24 24">
+      <rect x="2.5" y="5.5" width="19" height="14" fill="var(--bg-raised)" stroke="currentColor" stroke-width="2.1" stroke-linejoin="miter"/>
+      <use href="#icon-hep-mark" x="5.6" y="6.1" width="12.8" height="12.8" style="--hep-mark-stroke: 3.3"/>
+    </symbol>
+    <!-- v2.84.0: grip, the drag handle (DESIGN.md rule 11a). Six solid dots on the 24 grid. -->
+    <symbol id="icon-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.9"/><circle cx="15" cy="6" r="1.9"/><circle cx="9" cy="12" r="1.9"/><circle cx="15" cy="12" r="1.9"/><circle cx="9" cy="18" r="1.9"/><circle cx="15" cy="18" r="1.9"/></symbol>
     <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="9 6 15 12 9 18"/>
     </symbol>
@@ -968,7 +1240,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       An ancient practice, with a modern memory.
     </div>
     <button class="btn btn-primary" onclick="App.goToInstallOrPin()">Get Started</button>
-    <div style="margin-top:16px; text-align:center;"><button class="btn" style="background:none; color:var(--accent); font-size:13px; text-decoration:underline;" onclick="App.importBackup()">Recovering a previous chain? Import here</button></div>
+    <!-- v2.97.0 (Michael, Oct 3): bringing in an existing chain is a first-class choice on first open, not a small link -->
+    <button class="btn btn-secondary" style="margin-top:12px;" onclick="App.importBackup()">I have a backup</button>
+    <div style="margin-top:8px; text-align:center; font-size:13px; color:var(--text-faint); line-height:1.5;">Used HEP before, on another phone or in the browser? Bring your chain in now.</div>
   </div>
 
   <!-- INSTALL FIRST (any installable platform) -->
@@ -1213,11 +1487,20 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="home-identity">
       <div class="greeting" id="home-greeting">Your Chain</div>
     </div>
-    <div class="home-top-icons">
-      <button class="top-icon-btn" onclick="App.openWallet()" aria-label="My chain">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 1 0-6.364l2.121-2.122a4.5 4.5 0 0 1 6.364 6.364l-1.06 1.06"/><path d="M14 10a4.5 4.5 0 0 1 0 6.364l-2.121 2.122a4.5 4.5 0 0 1-6.364-6.364l1.06-1.06"/></svg>
-      </button>
-    </div>
+  </div>
+
+  <!-- v2.93.0: why the backup matters, iPhone browser only (opened from the amber icon on Home) -->
+  <div class="exs-sheet mc-sheet" id="backup-sheet" hidden>
+    <div class="exs-sheet-head"><div class="exs-h">Your records are only in this browser</div><button class="exs-x" aria-label="Close" onclick="App.closeBackupInfo()">&#215;</button></div>
+    <p class="exs-body">You are using HEP in Safari. Your exchanges are saved in this browser, not on your phone as an app.</p>
+    <p class="exs-body">Safari can erase them. It clears a website's saved data if you do not open it for 7 days, if you clear your history, and as soon as you close a Private Browsing tab. If that happens, these exchanges are gone.</p>
+    <p class="exs-body">HEP is a web app you can add to your home screen. Once it is installed, your records stay on your phone when you open and close it.</p>
+    <p class="exs-body">Installing does not bring your browser records with you, so back up first:</p>
+    <ol class="backup-steps">
+      <li>Close this and tap Back up now under your standing. Send it to yourself by Mail or Messages; a copy is also saved to this phone.</li>
+      <li>In Safari, tap the Share button, then Add to Home Screen.</li>
+      <li>Open HEP from your home screen, tap "Recovering a previous chain? Import here" and choose the file you saved.</li>
+    </ol>
   </div>
 
   <!-- TAB: Home (default landing) -->
@@ -1245,14 +1528,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     <div class="tab-content-inner" id="tab-settings-content"></div>
   </div>
 
-  <!-- FAB: Exchange action buttons -->
-  <div class="fab-bar" id="fab-bar">
-    <button class="fab-btn fab-btn-use" onclick="App.fabUse()" aria-label="Reuse previous exchange">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-    </button>
-    <button class="fab-btn fab-btn-new" onclick="App.fabNew()" aria-label="New exchange">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
+  <!-- Home doors strip (ruled Oct 2, twelfth session): two equal
+       buttons just above the tab bar, always there on the main tabs.
+       Replaces the floating plus and recycle buttons. -->
+  <div class="doors-strip" id="doors-strip">
+    <button class="btn btn-primary" onclick="App.exStartProviding()">Start</button>
+    <button class="btn btn-primary" onclick="App.exJoinExchange()">Join</button>
   </div>
 
   <!-- Tab bar -->
@@ -1262,16 +1543,16 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
       <span class="tab-label">Home</span>
     </div>
     <div class="tab-bar-item" onclick="App.switchTab('share')" data-tab="share">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="12" r="6" fill="currentColor" fill-opacity="0.55"/><circle cx="15" cy="12" r="6" fill="currentColor" fill-opacity="0.55"/></svg>
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="11" x2="16" y2="6.5"/><line x1="8" y1="13" x2="16" y2="17.5"/></g><g fill="currentColor"><circle cx="17.5" cy="5.5" r="3"/><circle cx="6.5" cy="12" r="3"/><circle cx="17.5" cy="18.5" r="3"/></g></svg>
       <span class="tab-label">Share</span>
     </div>
     <div class="tab-bar-item" onclick="App.switchTab('history')" data-tab="history">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><line x1="12" y1="12" x2="12" y2="7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="12" y1="12" x2="15" y2="14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
       <span class="tab-label">History</span>
     </div>
-    <div class="tab-bar-item" onclick="App.switchTab('learn')" data-tab="learn">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><rect x="3" y="4" width="4" height="16" rx="0.5"/><rect x="9" y="6" width="4" height="14" rx="0.5"/><rect x="15" y="3" width="4" height="17" rx="0.5"/></svg>
-      <span class="tab-label">Learn</span>
+    <div class="tab-bar-item" onclick="App.openWallet()" data-tab="account">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5z" fill="currentColor"/></svg>
+      <span class="tab-label">Account</span>
     </div>
     <div class="tab-bar-item" onclick="App.switchTab('settings')" data-tab="settings">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor"><circle cx="9" cy="6" r="2.5"/><circle cx="16" cy="12" r="2.5"/><circle cx="11" cy="18" r="2.5"/></g></svg>
@@ -1280,54 +1561,120 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 </div>
 
-<!-- ========== WALLET MODAL ========== -->
+<!-- ========== WALLET MODAL (My chain, v2.77.0; DESIGN.md rules 2, 2a, 3, 4a, 5, 7, 8, 9, 16) ========== -->
 <div class="modal-overlay" id="wallet-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>My Chain</h2>
-      <button class="modal-close" onclick="App.closeModal('wallet')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
+  <div class="modal mc">
+    <div class="modal-body mc-home">
+      <div class="exs-sheet-head"><div class="exs-h">Account</div><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
+      <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="mc-name" id="mc-name"></div><div class="exs-cap" id="mc-since"></div>
+        <button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button></div>
+      <div class="mc-standing">
+        <div class="exs-cap">Where you stand</div>
+        <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Currency</div><div class="exs-cap">What you have produced</div></div><span class="exs-rowval mc-blue" id="mc-s-cur"></span></div><div class="mc-track"><div class="mc-fill mc-blue-fill" id="mc-s-curbar"></div><div class="mc-gapbox" id="mc-s-curgap" hidden></div></div></div>
+        <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Cosmic share</div><div class="exs-cap">What you have received</div></div><span class="exs-rowval mc-amber" id="mc-s-cos"></span></div><div class="mc-track"><div class="mc-fill mc-amber-fill" id="mc-s-cosbar"></div><div class="mc-gapbox" id="mc-s-cosgap" hidden></div></div></div>
+        <div class="exs-cap" style="margin-top:16px">Your standing</div>
+        <div class="mc-display" id="mc-s-big"></div>
+        <p class="exs-cap" id="mc-s-ratio" style="margin:4px 0 0"></p>
+        <p class="mc-link"><a href="#" onclick="App.mcOpen('standing');return false">How standing is drawn</a></p>
+      </div>
+      <div class="exs-cap mc-group">Your texture</div>
+      <button class="exs-row" onclick="App.mcOpen('numbers')"><div class="exs-rowmain"><div class="exs-body">Numbers</div><div class="exs-cap">Your totals and counts</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('wave')"><div class="exs-rowmain"><div class="exs-body">Wave</div><div class="exs-cap">Your standing over time</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('people')"><div class="exs-rowmain"><div class="exs-body">People</div><div class="exs-cap">Who you have exchanged with, over time</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('reach')"><div class="exs-rowmain"><div class="exs-body">Reach</div><div class="exs-cap">How far your exchanges reach</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.openMyTextureFromWallet()"><div class="exs-rowmain"><div class="exs-body">As others see it</div><div class="exs-cap">Your texture, the way a counterparty sees it</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <div class="exs-cap mc-group">Your record</div>
+      <button class="exs-row" onclick="App.openChainViewerFromWallet()"><div class="exs-rowmain"><div class="exs-body">Exchange history</div><div class="exs-cap">Every recorded act</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <div class="exs-cap mc-group">Learn</div>
+      <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP works the way it does</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <div class="exs-cap mc-group">This phone</div>
+      <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
-    <div class="modal-body wallet-body">
+    <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
+    <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Learn</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="lr-modules"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-lmod" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="lr-mod-title"></div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-cap" id="lr-mod-sub" style="margin:0 0 6px"></p>
+      <div id="lr-mod-rows"></div>
+    </div>
+    <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-lesson" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="lr-l-title"></div><button class="exs-x" id="lr-l-x" aria-label="Back" onclick="App.lrBack()">&#215;</button></div>
+      <div class="lr-prog" id="lr-l-prog"></div>
+      <div class="lr-scroll" id="lr-l-body"></div>
+      <div class="lr-foot" id="lr-l-foot"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-standing" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">How standing is drawn</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Your standing is your currency minus your cosmic share: everything you have produced for others, less everything you have received from them. The two totals sit on one scale, and the dashed piece between the ends of the bars is your standing. When currency is longer you stand above; when cosmic share is longer you stand below.</p><p class="exs-cap">Neither total ever goes down. Your standing moves only because a new exchange adds to one side or the other, and any exchange can change it. There is no floor and no interest.</p><p class="exs-cap">Every unit was written in one exchange on two chains at once, produced on one and received on the other, signed by both people. That is why, across everyone, all standings add up to zero. The Wave shows how your standing has moved over time.</p><p class="exs-cap"><b>Two-column ledger</b> (double-entry bookkeeping, Pacioli, 1494). HEP keeps the rule that both sides must match, and moves it out of your own book and across everyone. What it removes is the debt: nothing is owed, nothing falls due, no interest.</p><p class="exs-cap"><b>Ratio in lowest terms.</b> The sentence under the number is a description, not a rate.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-numbers" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Numbers</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-cap">Standing</div>
+      <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Currency</div></div><div class="exs-rowval mc-big mc-blue" id="mc-n-cur"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Cosmic share</div></div><div class="exs-rowval mc-big mc-amber" id="mc-n-cos"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Standing</div></div><div class="exs-rowval mc-big" id="mc-n-st"></div></div>
+      <p class="mc-link"><a href="#" onclick="App.mcOpen('wave');return false">See how your standing moved</a></p>
+      <div class="exs-cap mc-gap">Exchanges</div>
+      <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Exchanges</div></div><div class="exs-rowval " id="mc-n-ex"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Provided</div></div><div class="exs-rowval mc-blue" id="mc-n-p"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Received</div></div><div class="exs-rowval mc-amber" id="mc-n-r"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">Witnessed</div></div><div class="exs-rowval " id="mc-n-w"></div></div>
+      <div class="exs-cap mc-gap">People</div>
+      <div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">People</div></div><div class="exs-rowval " id="mc-n-pe"></div></div><div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">More than once</div></div><div class="exs-rowval " id="mc-n-mo"></div></div>
+      <p class="mc-link"><a href="#" onclick="App.mcOpen('people');return false">See the people</a></p>
+      <p class="exs-cap" style="margin-top:20px">These numbers stay on your phone. They never appear in shared chain data.</p>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-wave" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Wave</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-body" id="mc-w-sentence" style="margin:0 0 14px"></p>
+      <div class="mc-seg" id="mc-w-mode" role="group"><button data-v="a" onclick="App.mcWaveMode('a')">Actual</button><button data-v="t" onclick="App.mcWaveMode('t')">Typical</button></div>
+      <svg id="mc-w-svg" class="mc-chart" viewBox="0 0 340 184"></svg>
+      <div class="exs-cap" style="margin-top:10px">How often: provided above the line, received below</div>
+      <svg id="mc-w-strip" class="mc-chart" viewBox="0 0 340 46"></svg>
+      <p class="exs-body" id="mc-w-counts" style="margin:6px 0 14px"></p>
+      <div class="mc-seg" id="mc-w-iv" role="group"><button data-v="each" onclick="App.mcWaveIv('each')">Each</button><button data-v="7" onclick="App.mcWaveIv('7')">Week</button><button data-v="30.44" onclick="App.mcWaveIv('30.44')">Month</button><button data-v="365.25" onclick="App.mcWaveIv('365.25')">Year</button></div>
+      <p class="exs-cap" id="mc-w-note" style="margin:8px 0 0"></p>
+      <p class="mc-link" id="mc-w-typlink" hidden><a href="#" onclick="App.mcOpen('typical');return false">How Typical is worked out</a></p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Your standing is what you have produced minus what you have received. Above the line, you have produced more than you have received. Below it, the reverse. There is no floor and no interest, and any exchange can change the direction.</p><p class="exs-cap">The line can sit below even when you provide more often, because what you receive can be worth more than what you provide. The bars under the line show how often, so both are visible.</p><p class="exs-cap">Week, Month and Year draw where you stood at the end of each block, like a closing price. The bars count the exchanges in each block.</p><p class="exs-cap"><b>Typical</b> evens out the few exchanges far bigger than your usual, using one fixed rule that is the same for everyone. Your chain itself is never altered.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-typical" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">How Typical is worked out</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-body">Most exchanges in a life are ordinary. Now and then a few are extraordinary: a windfall, a big job, a medical bill, a loss. Those few can take over the whole picture.</p>
+      <p class="exs-body">Typical evens out those few, the very good and the very hard alike, so you can see your everyday pattern. Nothing on your chain changes.</p>
+      <p class="exs-body" id="mc-t-count" style="font-weight:600"></p>
+      <ol class="exs-body mc-ol"><li>Exchanges are sorted into two kinds: what you provided and what you received.</li><li>For each kind, the app finds the middle-sized exchange (the median) and how far exchanges of that kind usually sit from it.</li><li>Any exchange more than 3.5 times that usual distance away is counted as a middle-sized exchange of its kind instead.</li><li>Every other exchange stays exactly as it was. The line and the blocks are redrawn from these.</li></ol>
+      <p class="exs-cap">Typical needs at least 20 exchanges of a kind before it evens any of them out.</p>
+      <p class="exs-cap">Method: modified z-score with median absolute deviation, threshold 3.5 (Iglewicz and Hoaglin, 1993), applied separately to provided and received exchanges. Flagged exchanges are replaced with the median of their kind. The chain itself is never altered; Typical is a view of it.</p>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-people" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">People</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-body" style="font-weight:600">Whose work you did</div><p class="exs-cap" id="mc-pp-n" style="margin:2px 0 10px"></p>
+      <div class="exs-cap">Each person who gave you credit, over time; bigger marks, more credit</div>
+      <svg id="mc-pp-rows" class="mc-chart" viewBox="0 0 340 100"></svg>
+      <div class="exs-cap" style="margin-top:6px">Credit of each exchange</div>
+      <svg id="mc-pp-bars" class="mc-chart" viewBox="0 0 340 50"></svg>
+      <div class="exs-body" style="font-weight:600; margin-top:26px">Whose work you received</div><p class="exs-cap" id="mc-pc-n" style="margin:2px 0 10px"></p>
+      <div class="exs-cap">Each person whose work you received, over time; bigger marks, more credit given</div>
+      <svg id="mc-pc-rows" class="mc-chart" viewBox="0 0 340 100"></svg>
+      <div class="exs-cap" style="margin-top:6px">Credit you gave in each exchange</div>
+      <svg id="mc-pc-bars" class="mc-chart" viewBox="0 0 340 50"></svg>
+      <div class="exs-cap" style="display:flex; justify-content:space-between; margin:4px 0 14px"><span>first exchange</span><span>today</span></div>
+      <div class="mc-seg" id="mc-p-iv" role="group"><button data-v="each" onclick="App.mcPeopleIv('each')">Each</button><button data-v="7" onclick="App.mcPeopleIv('7')">Week</button><button data-v="30.44" onclick="App.mcPeopleIv('30.44')">Month</button><button data-v="365.25" onclick="App.mcPeopleIv('365.25')">Year</button></div>
+      <p class="exs-cap" id="mc-p-note" style="margin:8px 0 0"></p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Each row is one person, in the order you first exchanged with them, with no names. Each mark is one exchange at the time it happened, sized by its credit. The bars beneath show each exchange's credit on the same stretch of time. Week, Month and Year add up the credit in each block.</p><p class="exs-cap">Everyone's pattern looks different, depending on the work you do and the exchanges you make. If something looks odd, it is there to be looked at and understood. Receiving is not a debt: the credit you gave someone is your recognition of what they did for you, not a bill.</p><p class="exs-cap">Someone reading your chain sees the rows only: uniform marks, no sizes, no bars, no numbers.</p><p class="exs-cap"><b>Customer concentration</b> (Pareto, Lorenz, Herfindahl) for how your exchange spreads across people. Supplier concentration on the receiving side.</p><p class="exs-cap"><b>Cohort and retention analysis</b> (direct marketing) for who comes back over time.</p><p class="exs-cap"><b>Sums per time block</b> (time-series resampling) for Week, Month and Year.</p><p class="exs-cap"><b>What HEP removed:</b> the index, the ranking and the targeting. Rows stay in the order people first appeared, never by size.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-reach" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Reach</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-cap">How far the people you exchange with are from you</div>
+      <svg id="mc-r-svg" class="mc-chart" viewBox="0 0 340 300"></svg>
+      <p class="exs-body" id="mc-r-sentence" style="margin:6px 0 4px"></p>
+      <p class="exs-cap" id="mc-r-unplaced" style="margin:0"></p>
+      <p class="exs-cap" style="margin:4px 0 0">Locations come from phones and are not guaranteed.</p>
+      <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Reach is the distance between you and the person you exchanged with, at the time of the exchange. You are wherever you are; they may be across town or across the world. Only a rough distance is kept for each exchange, never a place.</p><p class="exs-cap">The rings are distances, not borders: nearby (under 25 km), your region (to 300 km), across your country (to 1,500 km), across your continent (to 5,000 km), and across the world. Marks are spread around each ring, so the picture shows distance only, never direction. No place names are drawn and there is no map.</p><p class="exs-cap">Older exchanges that carry only a typed town and state are placed when they match your usual town or state; ones farther away are counted but not drawn, because how far they were was not recorded.</p><p class="exs-cap">It is on your phone only and never shown to anyone you exchange with. Nothing on your chain changes.</p><p class="exs-cap"><b>Distance decay</b> (geography, the gravity model of interaction, Zipf 1946; Tobler's first law). Interaction falls off with distance. Here the fall-off is drawn and nothing is done with it: no catchment, no market area, no prediction.</p><p class="exs-cap"><b>Activity space</b> (urban geography and mobility studies). Used to describe and to track. Here names and direction are removed and the picture never leaves the phone.</p></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="wallet-identity-panel"></div>
-      <div class="wallet-detail">
-        <div class="review-row"><span class="rlbl">Total provided</span><span class="rval" id="wallet-provided">0</span></div>
-        <div class="review-row"><span class="rlbl">Total received</span><span class="rval" id="wallet-received">0</span></div>
-        <div class="review-row"><span class="rlbl">Acts</span><span class="rval" id="wallet-acts">0</span></div>
-        <div class="review-row"><span class="rlbl">People</span><span class="rval" id="wallet-people">0</span></div>
-        <div class="review-row"><span class="rlbl">Repeat counterparties</span><span class="rval" id="wallet-repeat">0</span></div>
-        <div class="review-row"><span class="rlbl">Categories</span><span class="rval" id="wallet-categories">0</span></div>
-        <div class="review-row"><span class="rlbl">Chain age</span><span class="rval" id="wallet-age">&mdash;</span></div>
-        <div class="review-row"><span class="rlbl">Witnessed</span><span class="rval" id="wallet-witnessed">0</span></div>
-        <div class="review-row"><span class="rlbl">Participation ratio</span><span class="rval" id="wallet-ratio-text"></span></div>
-        <div id="wallet-ratio-bar" style="margin-top:8px; margin-bottom:8px;"></div>
-        <div class="review-row" style="border-top:1px solid var(--border); padding-top:10px;"><span class="rlbl">Net balance <button style="background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; text-decoration:underline; padding:0 0 0 6px;" onclick="App.showTextureDetail('wallet-position-explain')">what is this</button></span><span class="rval" id="wallet-net-balance">0</span></div>
-      </div>
-
-      <!-- Chain Health + Pricing History + Full Chain -->
-      <div style="margin-top:20px;">
-        <div style="display:flex; align-items:center; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyTextureFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Chain health</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">How others see your chain</span>
-          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
-        </div>
-        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openMyPricingFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Pricing history</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Your services and prices</span>
-          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
-        </div>
-        <div style="display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.openChainViewerFromWallet();">
-          <span style="font-size:14px; font-weight:500; color:var(--text);">Full chain</span>
-          <span style="flex:1; font-size:12px; color:var(--text-faint); text-align:right; margin:0 10px;">Every recorded act</span>
-          <span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>
-        </div>
-      </div>
-
-      <p style="font-size:14px; color:var(--text-dim); margin-top:16px; line-height:1.5; text-align:center;">Your totals are private. They never appear in shared chain data.</p>
-
-      <!-- Standing content moved here from the (now-removed) Standing tab.
-           Renders identity panel, POH verdict, categories, stats, and
-           related surfaces. renderStandingTab() writes into this div. -->
-      <div id="wallet-standing-content" style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border);"></div>
+      <div id="wallet-standing-content"></div>
     </div>
   </div>
 </div>
@@ -1376,7 +1723,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   <div class="modal">
     <div class="modal-header">
       <h2 id="exchange-header">New exchange</h2>
-      <button class="modal-close" id="exchange-close" onclick="App.closeExchange()"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
+      <button class="modal-close" id="exchange-close" onclick="App.exX()" aria-label="Back"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
     </div>
     <!-- 3-step progress indicator (role-aware: proposer=green, confirmer=blue).
          JS rebuilds the labels and step states via renderIndicator(). -->
@@ -1391,37 +1738,43 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- ===== NEW 8-STEP FLOW ===== -->
 
-      <!-- STEP 1: Connect -->
-      <div class="hs-step" id="ex-step-connect">
-        <div id="ex-connect-content">
-          <!-- Populated dynamically: choice, start mode, or join mode -->
+      <!-- STEP 1: Connect. Screens 1 and 2 of the relay flow render
+           into ex-connect-content: "Who are you exchanging with?" (fabNew),
+           "Your code" (exBeginStart), "Enter their code" (exJoinExchange). -->
+      <div class="hs-step exs" id="ex-step-connect">
+        <div id="ex-connect-content" style="display:flex; flex-direction:column; flex:1;">
+          <!-- Populated dynamically -->
         </div>
       </div>
 
-      <!-- STEP 2: Verify (SAS) -->
-      <div class="hs-step" id="ex-step-verify">
-        <div class="connect-partner" id="ex-verify-partner" style="justify-content:center; flex-direction:column; align-items:center; padding:20px;">
-          <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:10px;">?</div>
-          <div class="cp-name" id="ex-verify-name" style="font-size:20px; margin-bottom:6px;">Connected</div>
-          <div class="sas-badge" style="margin:8px 0 0 0;">
-            <span class="sas-lock"><svg class="icon icon-md"><use href="#icon-lock"/></svg></span>
-            <span class="sas-code" id="ex-sas-code" style="font-size:26px; letter-spacing:6px;">--</span>
-          </div>
-          <div style="font-size:12px; color:var(--text-faint); margin-top:6px;">Check this matches their screen</div>
+      <!-- STEP 2: Verify (SAS). Screen 3, the safety check. The same
+           hs-step is reused by exConfirmSAS for the chain read until
+           cycle 2 gives that its own screen. -->
+      <div class="hs-step exs" id="ex-step-verify">
+        <!-- Screen 3, Verify (ruled Oct 2, tenth session): centered;
+             "Confirm Priya has this mark"; the two-character mark with a
+             lock in the regular font (a mark, not a code); It matches at
+             the bottom; quiet Not the right person. -->
+        <div class="connect-partner" id="ex-verify-partner" style="background:none; border:none; margin-bottom:0; display:flex; justify-content:center; flex-direction:column; align-items:center; padding:24px 0 0; text-align:center;">
+          <div class="cp-avatar" id="ex-verify-avatar" style="width:56px; height:56px; font-size:24px; margin-bottom:14px;">?</div>
+          <div class="exs-h" id="ex-verify-title" style="margin-bottom:6px;">Confirm they have this mark</div>
+          <div class="exs-m" id="ex-verify-line" style="margin-bottom:28px;">Ask them if this mark is on their screen.</div>
+          <div class="exs-mark"><svg class="icon"><use href="#icon-lock"/></svg><span id="ex-sas-code">--</span></div>
+          <span id="ex-verify-name" style="display:none;">Connected</span>
         </div>
-        <button class="btn btn-primary" style="margin-top:20px;" onclick="App.exConfirmSAS()">Confirm</button>
-        <div style="text-align:center; margin-top:12px;">
-          <span style="font-size:13px; color:var(--text-faint); cursor:pointer; text-decoration:underline;" onclick="App.exRejectSAS()">Not the right person?</span>
-        </div>
+        <div class="exs-grow" id="ex-verify-grow"></div>
+        <button class="btn btn-primary" style="width:100%;" onclick="App.exConfirmSAS()">It matches</button>
+        <button class="exs-quiet" id="ex-verify-reject" onclick="App.exRejectSAS()">Not the right person</button>
       </div>
 
       <!-- STEP 3: Texture review -->
-      <div class="hs-step" id="ex-step-texture">
-        <div id="ex-texture-content">
-          <!-- Populated by JS: texture summary + optional tab viewer -->
+      <!-- Screen 4, the chain read (ruled Oct 1). exRenderChainRead fills
+           ex-texture-content: name, the overlap drawing, one line, the
+           two bare icons, Continue, Not now. -->
+      <div class="hs-step exs" id="ex-step-texture">
+        <div id="ex-texture-content" style="display:flex; flex-direction:column; flex:1;">
+          <!-- Populated by JS -->
         </div>
-        <button class="btn btn-primary" style="margin-top:16px;" onclick="App.exContinueFromTexture()">Continue</button>
-        <button class="btn btn-secondary" style="margin-top:8px; width:100%; color:var(--text-faint); background:none; border:none; font-size:14px;" onclick="App.closeExchange()">Cancel exchange</button>
       </div>
 
       <!-- STEP 4: Role selection -->
@@ -1434,21 +1787,18 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
         <p style="font-size:13px; color:var(--text-faint); text-align:center; margin-top:20px; line-height:1.5;">The provider describes the act and sets the price. The receiver reviews and confirms.</p>
       </div>
 
-      <!-- STEP: Waiting for provider to set up exchange (receiver path) -->
-      <div class="hs-step" id="ex-step-receiver-wait">
-        <!-- Proposal card drops in here when ready -->
+      <!-- STEP: the other phone while the proposer writes (ruled Oct 1):
+           one quiet line and Not now. The proposal card drops into
+           ex-rw-proposal when it arrives (cycle 4 gives it the review layout). -->
+      <div class="hs-step exs" id="ex-step-receiver-wait">
         <div id="ex-rw-proposal" style="display:none;"></div>
-        <!-- Spinner (hidden when proposal arrives) -->
-        <div id="ex-rw-spinner" style="text-align:center; padding:24px 0 16px;">
-          <div style="width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; margin:0 auto 14px; animation:exSpin 1s linear infinite;"></div>
-          <div style="font-size:15px; font-weight:600; color:var(--text); margin-bottom:4px;" id="ex-rw-spinner-label">Waiting for their proposal</div>
-          <div style="font-size:13px; color:var(--text-dim);">Review their chain while you wait</div>
-          <style>@keyframes exSpin { to { transform: rotate(360deg); } }</style>
+        <div id="ex-rw-spinner" style="display:flex; flex-direction:column; flex:1;">
+          <div style="height:120px"></div>
+          <div class="exs-wait"><i></i><span id="ex-rw-spinner-label">Waiting for their proposal</span></div>
+          <div class="exs-grow"></div>
+          <button class="exs-quiet" id="ex-rw-cancel" onclick="App.closeExchange()">Not now</button>
         </div>
-        <!-- Chain data tiles (always available) -->
-        <div id="ex-rw-tiles"></div>
-        <!-- Cancel -->
-        <button class="btn btn-secondary" style="width:100%; margin-top:16px; color:var(--text-faint);" onclick="App.closeExchange()" id="ex-rw-cancel">Cancel exchange</button>
+        <div id="ex-rw-tiles" style="display:none;"></div>
         <!-- Hidden elements for compat -->
         <div id="ex-receiver-wait-title" style="display:none;">Waiting for their proposal</div>
         <div id="ex-receiver-wait-content" style="display:none;"></div>
@@ -1457,51 +1807,30 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 
       <!-- ===== END NEW 8-STEP FLOW ===== -->
 
-      <!-- STEP: Fill form (old flow — preserved for now) -->
-      <div class="hs-step" id="ex-step-form">
-        <div class="prefill-bar" id="ex-prefill-bar" style="display:none;">
-          <div class="pf-text"><span class="pf-label">Pre-filled:</span> <span id="ex-prefill-desc"></span></div>
-          <button class="pf-clear" onclick="App.clearPrefill()" aria-label="Clear"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
-        </div>
-
-        <div id="ex-form-partner-label" style="font-size:15px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;"></div>
-
-        <!-- Direction toggle (segmented control) -->
-        <div class="exf-seg" id="dir-toggle">
-          <button class="exf-seg-btn active" onclick="App.setDirection('provided')" id="dir-providing">I provided</button>
-          <button class="exf-seg-btn" onclick="App.setDirection('received')" id="dir-receiving">I received</button>
-        </div>
-
-        <!-- Category pills -->
-        <div class="exf-section-label">Category</div>
-        <div class="exf-pills" id="ex-cat-pills"></div>
-        <input type="hidden" id="ex-category" value="">
-
-        <!-- Description -->
-        <div class="exf-section-label">What was done</div>
-        <input type="text" id="ex-desc" class="exf-input" placeholder="e.g., Fixed kitchen faucet and under-sink plumbing">
-
-        <!-- Duration -->
-        <div class="exf-section-label">Duration (optional)</div>
-        <input type="text" id="ex-duration" class="exf-input" placeholder="e.g., 2 hours">
-
-        <!-- Value with pricing context -->
-        <div class="exf-section-label">Value</div>
-        <div class="exf-value-card">
-          <input type="number" id="ex-value" inputmode="decimal" step="any" min="0" placeholder="Enter value" class="exf-value-input">
-          <div class="exf-value-anchors">
-            <span>Small favor: ~50</span><span>Full day: ~5,000</span><span>Best work: ~50,000+</span>
-          </div>
-          <div id="ex-pricing-context"></div>
-        </div>
-
+      <!-- STEP: The proposal, screen 6, three beats (ruled Oct 1).
+           Beat 1 Who is providing; beat 2 What was provided (three doors
+           and their lists); beat 3 the form. The hidden inputs keep the
+           ids generateProposal and the reuse paths read, so the proposal
+           machinery is untouched. -->
+      <div class="hs-step exs" id="ex-step-form">
+        <div id="ex-beats" style="display:flex; flex-direction:column; flex:1;"></div>
         <!-- Hidden compat fields -->
+        <div id="ex-prefill-bar" style="display:none;"><span id="ex-prefill-desc"></span></div>
+        <div id="ex-form-partner-label" style="display:none;"></div>
+        <div id="ex-cat-pills" style="display:none;"></div>
+        <div id="ex-pricing-context" style="display:none;"></div>
+        <input type="hidden" id="ex-category" value="">
+        <input type="hidden" id="ex-duration" value="">
         <input type="hidden" id="ex-hours" value="">
         <input type="hidden" id="ex-minutes" value="">
         <input type="hidden" id="ex-city" value="">
         <input type="hidden" id="ex-state" value="">
+      </div>
 
-        <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="App.generateProposal()">Send proposal</button>
+      <!-- Screens 7 to 9 (ruled Oct 1): review, wait, the flowing arrow
+           and completion, all on one layout. exRenderRV fills it. -->
+      <div class="hs-step exs" id="ex-step-rv">
+        <div id="ex-rv" style="display:flex; flex-direction:column; flex:1;"></div>
       </div>
 
       <!-- STEP 2: Transport selection -->
@@ -1835,6 +2164,24 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
   </div>
 </div>
 
+<!-- ========== INVITE MODAL (invite pipeline slice 1) ========== -->
+<div class="modal-overlay" id="invite-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Invite Someone New</h2>
+      <button class="modal-close" onclick="App.closeModal('invite')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p id="invite-intro" style="font-size:14px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">One code does both jobs. It brings them into the app, and it opens an exchange with you, so the invitation and your first cooperative act are the same gesture.</p>
+      <div id="invite-status" style="font-size:15px; color:var(--text); margin-bottom:14px;"></div>
+      <div class="qr-container" id="invite-qr-wrap" style="display:none;"><canvas id="invite-qr"></canvas></div>
+      <div class="share-url" id="invite-url" style="display:none;"></div>
+      <div id="invite-queue"></div>
+      <button class="btn btn-secondary" id="invite-close-pipe" style="display:none; margin-top:12px;" onclick="App.closeInvitePipe()">Close this invite</button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== LEARN MODAL ========== -->
 <div class="modal-overlay" id="learn-overlay">
   <div class="modal">
@@ -1944,52 +2291,59 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 </div>
 
 
-<!-- ========== DECLARATIONS EDIT MODAL ========== -->
-<div class="modal-overlay" id="declarations-overlay"> 
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Your Declarations</h2>
-      <button class="modal-close" onclick="App.closeModal('declarations')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="photo-area">
-        <div class="photo-preview" id="edit-photo-preview">&#9678;</div>
-        <div class="photo-buttons">
-          <button class="photo-btn" onclick="App.editCapturePhoto()">Camera</button>
-          <button class="photo-btn" onclick="App.editUploadPhoto()">Upload</button>
-        </div>
+<!-- ========== DECLARATIONS EDIT: "About you" (v2.81.0; DESIGN.md rules 2, 3, 4, 4a, 7a, 12, 15). Opens over My chain; X discards unsaved changes and returns exactly where you were; Save commits. The scale exercise no longer lives here. ========== -->
+<div class="modal-overlay" id="declarations-overlay">
+  <div class="modal mc">
+    <div class="modal-body mc-home dc">
+      <div class="exs-sheet-head"><div class="exs-h">About you</div><button class="exs-x" aria-label="Close" onclick="App.closeDeclarationsEdit()">&#215;</button></div>
+      <div class="mc-id dc-id">
+        <div class="mc-photo dc-photo" id="edit-photo-preview"></div>
+        <div class="exs-cap dc-date" id="edit-photo-date"></div>
+        <div class="dc-photo-ctl"><button class="mc-edit" onclick="App.editCapturePhoto()">Camera</button><button class="mc-edit" onclick="App.editUploadPhoto()">Upload</button></div>
         <input type="file" id="edit-photo-file" accept="image/*" style="display:none" onchange="App.handleEditPhotoFile(event)">
         <input type="file" id="edit-photo-capture" accept="image/*" capture="user" style="display:none" onchange="App.handleEditPhotoFile(event)">
-        <div id="edit-photo-date" style="font-size: 13px; color:var(--text-faint); margin-top:6px;"></div>
       </div>
-      <div class="field">
-        <label>Name</label>
-        <input type="text" id="edit-name" placeholder="What should people call you?">
+      <div class="exs-fl"><label for="edit-name">Name</label><input class="exs-box-in" type="text" id="edit-name" placeholder="What should people call you?"></div>
+      <div class="exs-fl"><label for="edit-about">About</label><textarea class="exs-box-in dc-area" id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea></div>
+      <p class="mc-link dc-cvlink"><a href="#" onclick="App.dcOpenCV();return false">How this is different from a CV</a></p>
+      <p class="mc-link dc-prevlink"><a href="#" onclick="App.dcOpenPreview();return false">As others see it</a></p>
+      <div class="exs-cap mc-group">Skills and qualifications</div>
+      <p class="exs-lab dc-help">What you can do for others: trades, crafts, services, licenses, certificates.</p>
+      <div id="edit-skills-list"></div>
+      <div class="dc-addrow">
+        <input class="exs-box-in" type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, carpentry, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
+        <button class="dc-add" onclick="App.addSkill('edit')">Add</button>
       </div>
-      <div class="field">
-        <label>About</label>
-        <textarea id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea>
+      <div class="exs-cap mc-group">Education</div>
+      <p class="exs-lab dc-help">What has shaped what you know: degrees, courses, books you have read, mentoring you received, self-study.</p>
+      <div id="edit-edu-list"></div>
+      <div class="dc-addrow">
+        <input class="exs-box-in" type="text" id="edit-edu-input" placeholder="e.g. BA in history, read Schumacher, apprenticed to a welder" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addEdu()}">
+        <button class="dc-add" onclick="App.addEdu()">Add</button>
       </div>
-      <div class="skills-section">
-        <label>Skills &amp; qualifications</label>
-        <div class="skills-list" id="edit-skills-list"></div>
-        <div class="skill-add-row">
-          <input type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
-          <button class="skill-add-btn" onclick="App.addSkill('edit')">Add</button>
-        </div>
-      </div>
-
-      <div id="edit-range-display" style="border-top:1px solid var(--border); margin-top:20px; padding-top:20px; display:none;">
-        <label style="font-size:15px; font-weight:600; color:var(--text); display:block; margin-bottom:10px;">Your Value Range</label>
-        <div id="edit-range-summary" style="padding:14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius);"></div>
-        <p style="font-size:13px; color:var(--text-faint); margin-top:8px; line-height:1.5;">Your scale exercise helps you think about how you value things. As you exchange with others, your actual history becomes the real picture.</p>
-        <button style="width:100%; margin-top:10px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); font-size:14px; cursor:pointer;" onclick="App.closeModal('declarations'); App.openDeclareRange();">Redo the scale exercise</button>
-      </div>
-
-      <p style="font-size: 13px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Your photo helps verify you are a real person. It stays on your device.</p>
+      <p class="exs-cap dc-note">Describe yourself truthfully, the way you want to be known. Everything here stays on this phone.</p>
+      <p class="exs-cap" style="margin-top:8px">Your photo helps show you are a real person.</p>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-primary" onclick="App.saveDeclarationsEdit()">Save</button>
+    <div class="dc-foot"><button class="btn btn-primary" onclick="App.saveDeclarationsEdit()">Save</button></div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-preview" hidden>
+      <div class="exs-sheet-head"><div></div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('preview')">&#215;</button></div>
+      <div id="dc-preview-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-pskills" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Skills and qualifications</div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('pskills')">&#215;</button></div>
+      <div id="dc-pskills-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-pedu" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Education</div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('pedu')">&#215;</button></div>
+      <div id="dc-pedu-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-cv" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">How this is different from a CV</div><button class="exs-x" aria-label="Close" onclick="App.dcCloseCV()">&#215;</button></div>
+      <p class="exs-body">Everyone learns differently. Some people are brilliant and never finished high school. Some learned a trade from a grandparent, a friend or a neighbor. Some read one book, or met one idea, that changed how they see the world. Others spent years in school and earned degrees and certificates. All of it counts.</p>
+      <p class="exs-body">This is where you describe your body of knowledge: what you can do, and how you came to know it. A mentor, a school, an author you value, a philosophy that shaped you, years of practice. Your skills and your education are yours. Nobody grades them here.</p>
+      <p class="exs-body">A CV is built to be judged. It ranks you against other people and opens or closes doors. This is not that. Nothing here is scored, compared or checked, and nothing here is needed to exchange with anyone.</p>
+      <p class="exs-body">It is here for one reason: so that when you work with someone, they can understand where you are coming from and the way you learned what you know.</p>
+      <p class="exs-body">It is optional. Write as much or as little as you like, change it whenever you want, or leave it empty.</p>
     </div>
   </div>
 </div>
@@ -2063,7 +2417,17 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 </div>
 
 <!-- Hidden inputs -->
-<input type="file" id="import-file" accept=".json,.hcp" style="display:none" onchange="App.handleImportFile(event)">
+<!-- v2.95.0: import replaces the chain on this phone; warn first when it holds exchanges -->
+<div class="exs-sheet mc-sheet" id="import-sheet" hidden>
+  <div class="exs-sheet-head"><div class="exs-h">Replace this phone's chain?</div><button class="exs-x" aria-label="Close" onclick="App.closeImportSheet()">&#215;</button></div>
+  <p class="exs-body" id="import-sheet-count"></p>
+  <p class="exs-body">Importing a backup replaces them with what is in the backup. Anything on this phone that is not in the backup will be gone.</p>
+  <p class="exs-body">If you want to keep them, back up this phone first.</p>
+  <button class="exs-link" onclick="App.importBackUpFirst()">Back up this phone first</button>
+  <div style="flex:1"></div>
+  <button class="exs-door p" onclick="App.importChooseFile()">Choose backup file</button>
+</div>
+<input type="file" id="import-file" accept=".json,.hcp,.txt" style="display:none" onchange="App.handleImportFile(event)">
 <!-- Texture detail overlay (sits above exchange modal) -->
 <div class="modal-overlay" id="texture-detail-overlay" style="z-index:200;">
   <div class="modal">
@@ -2137,5 +2501,12 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 <script src="vendor/qrcode.js"></script>
 <script src="hep-core.js"></script>
 <script src="hep-app.js"></script>
+<script>
+(function(){
+  function setTabbarH(){ var t=document.querySelector('.tab-bar'); if(!t) return; var h=t.offsetHeight; if(h>0) document.documentElement.style.setProperty('--tabbar-h', h+'px'); }
+  setTabbarH(); window.addEventListener('resize', setTabbarH); window.addEventListener('load', setTabbarH);
+  try { var t=document.querySelector('.tab-bar'); if (t && window.ResizeObserver) new ResizeObserver(setTabbarH).observe(t); } catch(_) {}
+})();
+</script>
 </body>
 </html>

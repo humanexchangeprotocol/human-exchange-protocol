@@ -234,7 +234,26 @@ const PAIR_CODE_LENGTH = 4;
     doneDetails: null,
   };
 
-  const SK = 'hcp_dev_data';
+  // v2.99.3: production and the /dev/ build share one origin, so they used to
+  // share one chain in localStorage and an open production tab could overwrite
+  // what dev saved. Production keeps the original key (every real user's data
+  // is there); /dev/ gets its own, copied once from the shared key so testers
+  // keep their chain. Path-based, so the same file promotes unchanged.
+  const SK = (function() {
+    var prodKey = 'hcp_dev_data';
+    if (window.location.pathname.indexOf('/dev/') !== 0) return prodKey;
+    var devKey = 'hep_devbuild_data';
+    try {
+      if (localStorage.getItem(devKey) === null && localStorage.getItem(prodKey) !== null) {
+        ['', '_keys', '_backup'].forEach(function(sfx) {
+          var v = localStorage.getItem(prodKey + sfx);
+          if (v !== null) localStorage.setItem(devKey + sfx, v);
+        });
+        console.log('[storage] dev build: copied chain from the shared key once');
+      }
+    } catch (e) { console.warn('[storage] dev key copy failed:', e && e.message); }
+    return devKey;
+  })();
 
   // --- Storage ---
   function save() {
