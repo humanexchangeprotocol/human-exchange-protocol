@@ -485,7 +485,8 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .dc-about-text { margin: 0; line-height: 1.5; white-space: pre-wrap; }
 .dc-p-gap { height: 14px; }
 .dc-help { margin: 4px 0 6px; }
-.dc-save { margin-top: 24px; }
+/* v2.89.0: Save is pinned to the bottom of the edit sheet (rule 3a); the content scrolls behind it. */
+.dc-foot { flex-shrink: 0; padding: 12px 20px calc(12px + var(--safe-bottom)); background: var(--bg); border-top: 1px solid var(--border); }
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
 .mc-sheet { padding-top: var(--safe-top); }
 .mc-sheet[hidden] { display: none; }
@@ -2260,8 +2261,8 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       </div>
       <p class="exs-cap dc-note">Describe yourself truthfully, the way you want to be known. Everything here stays on this phone.</p>
       <p class="exs-cap" style="margin-top:8px">Your photo helps show you are a real person.</p>
-      <button class="btn btn-primary dc-save" onclick="App.saveDeclarationsEdit()">Save</button>
     </div>
+    <div class="dc-foot"><button class="btn btn-primary" onclick="App.saveDeclarationsEdit()">Save</button></div>
     <div class="exs-sheet mc-sheet" id="dc-sheet-preview" hidden>
       <div class="exs-sheet-head"><div></div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('preview')">&#215;</button></div>
       <div id="dc-preview-body"></div>
