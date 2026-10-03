@@ -636,35 +636,48 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Skills ---
+  // v2.81.0: on "About you" (prefix 'edit') skills change a draft that Save commits and X discards; setup still writes straight to state.
+  function skillList(prefix) {
+    if (prefix === 'edit' && _declDraft) return _declDraft.skills;
+    if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
+    return state.declarations.skills;
+  }
   function addSkill(prefix) {
     const input = document.getElementById(prefix + '-skill-input');
     const raw = input.value.trim();
     if (!raw) return;
-    if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
+    const list = skillList(prefix);
     const items = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
     let added = 0;
     items.forEach(val => {
-      if (!state.declarations.skills.includes(val)) {
-        state.declarations.skills.push(val);
+      if (!list.includes(val)) {
+        list.push(val);
         added++;
       }
     });
     if (added === 0 && items.length > 0) { toast('Already added'); return; }
     input.value = '';
     renderSkillsList(prefix);
-    if (prefix === 'edit') save();
   }
 
   function removeSkill(prefix, idx) {
-    if (!Array.isArray(state.declarations.skills)) state.declarations.skills = [];
-    state.declarations.skills.splice(idx, 1);
+    skillList(prefix).splice(idx, 1);
     renderSkillsList(prefix);
-    if (prefix === 'edit') save();
   }
 
   function renderSkillsList(prefix) {
     const container = document.getElementById(prefix + '-skills-list');
     container.innerHTML = '';
+    if (prefix === 'edit') {
+      // v2.81.0: plain rows with the word Remove (rule 15: X means back, so no x on a row)
+      skillList('edit').forEach((skill, i) => {
+        const row = document.createElement('div');
+        row.className = 'exs-row mc-vrow';
+        row.innerHTML = '<div class="exs-rowmain"><div class="exs-body">' + esc(skill) + '</div></div><button class="dc-rm" onclick="App.removeSkill(\'edit\',' + i + ')">Remove</button>';
+        container.appendChild(row);
+      });
+      return;
+    }
     state.declarations.skills.forEach((skill, i) => {
       const chip = document.createElement('div');
       chip.className = 'skill-chip';
@@ -1057,6 +1070,18 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('mc-r-unplaced').textContent = unplaced ? unplaced + (unplaced === 1 ? ' exchange carries' : ' exchanges carry') + ' no place and ' + (unplaced === 1 ? 'is' : 'are') + ' not drawn.' : '';
   }
 
+  // v2.81.0: My chain's person block, drawn here and again after "About you" is saved
+  function mcPhoto() {
+    var photo = state.declarations.photo || '';
+    if (!photo) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) photo = g.photoData; }
+    return photo;
+  }
+  function mcRenderPerson() {
+    var photo = mcPhoto(), name = state.declarations.name || 'Anonymous';
+    document.getElementById('mc-photo').innerHTML = photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase());
+    document.getElementById('mc-name').textContent = name;
+  }
+
   function openWallet() {
     _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
     document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
@@ -1070,11 +1095,7 @@ const PAIR_CODE_LENGTH = 4;
     });
     var st = cur - cos, M = exMarkSVG(14), side = st > 0 ? 'mc-blue' : (st < 0 ? 'mc-amber' : '');
     var people = Object.keys(cp).length, more = Object.keys(cp).filter(function(k) { return cp[k] >= 2; }).length;
-    var photo = state.declarations.photo || '';
-    if (!photo) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) photo = g.photoData; }
-    var name = state.declarations.name || 'Anonymous';
-    document.getElementById('mc-photo').innerHTML = photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase());
-    document.getElementById('mc-name').textContent = name;
+    mcRenderPerson();
     var since = '';
     if (state.chain.length) { var d0 = new Date(state.chain[0].timestamp); since = 'Chain since ' + d0.toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
     document.getElementById('mc-since').textContent = since;
@@ -5206,48 +5227,56 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
-  // --- Declarations Edit ---
+  // --- Declarations Edit: "About you" (v2.81.0) ---
+  // Opens over My chain. Everything changed here (photo, name, about, skills) is a draft:
+  // Save commits it, X throws it away and returns exactly where you were (DESIGN.md, edit sheets).
+  var _declDraft = null;
+  function declPhotoDateText(iso) {
+    return iso ? 'Photo taken ' + new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No photo yet';
+  }
+  function renderDeclPhoto() {
+    var p = document.getElementById('edit-photo-preview');
+    var photo = _declDraft.photo || mcPhoto();
+    var name = (document.getElementById('edit-name').value || state.declarations.name || 'Anonymous').trim() || 'Anonymous';
+    p.innerHTML = photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase());
+    document.getElementById('edit-photo-date').textContent = declPhotoDateText(_declDraft.photoDate);
+  }
   function openDeclarationsEdit() {
-    showModal('declarations');
-    const p = document.getElementById('edit-photo-preview');
-    if (state.declarations.photo) { p.innerHTML = '<img src="' + state.declarations.photo + '">'; p.classList.add('has-photo'); }
-    else { p.innerHTML = '\u25ce'; p.classList.remove('has-photo'); }
-    document.getElementById('edit-name').value = state.declarations.name || '';
-    document.getElementById('edit-about').value = state.declarations.about || '';
-    const de = document.getElementById('edit-photo-date');
-    de.textContent = state.declarations.photoDate ? 'Photo: ' + new Date(state.declarations.photoDate).toLocaleDateString() : 'No photo yet';
+    var d = state.declarations;
+    _declDraft = { photo: d.photo || null, photoDate: d.photoDate || null, photoSource: d.photoSource, skills: (Array.isArray(d.skills) ? d.skills : []).slice() };
+    document.getElementById('edit-name').value = d.name || '';
+    document.getElementById('edit-about').value = d.about || '';
+    document.getElementById('edit-skill-input').value = '';
+    renderDeclPhoto();
     renderSkillsList('edit');
-    // Show scale exercise values if set
-    const rangeDisplay = document.getElementById('edit-range-display');
-    if (state.declarations.rangeSimpleVal && state.declarations.rangeComplexVal) {
-      const ratio = Math.round(state.declarations.rangeComplexVal / state.declarations.rangeSimpleVal);
-      let h = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">';
-      h += '<div><div style="font-size:13px; color:var(--text-faint);">A small favor</div><div style="font-size:18px; font-weight:500; color:var(--accent);">' + state.declarations.rangeSimpleVal + '</div></div>';
-      h += '<div style="font-size:14px; color:var(--text-faint);">1 : ' + ratio + '</div>';
-      h += '<div style="text-align:right;"><div style="font-size:13px; color:var(--text-faint);">Your best work</div><div style="font-size:18px; font-weight:500; color:var(--accent);">' + state.declarations.rangeComplexVal + '</div></div>';
-      h += '</div>';
-      if (state.declarations.rangeDailyVal) {
-        h += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size:14px; color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
-      }
-      document.getElementById('edit-range-summary').innerHTML = h;
-      rangeDisplay.style.display = 'block';
-    } else {
-      rangeDisplay.style.display = 'none';
-    }
+    var body = document.querySelector('#declarations-overlay .modal-body'); if (body) body.scrollTop = 0;
+    showModal('declarations');
+  }
+  function closeDeclarationsEdit() {
+    _declDraft = null;
+    closeModal('declarations');
   }
   function editCapturePhoto() { document.getElementById('edit-photo-capture').click(); }
   function editUploadPhoto() { document.getElementById('edit-photo-file').click(); }
   function handleEditPhotoFile(event) {
-    const file = event.target.files[0]; if (!file) return;
+    const file = event.target.files[0]; if (!file || !_declDraft) return;
     const isCamera = event.target.hasAttribute('capture');
     const reader = new FileReader();
-    reader.onload = e => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); const max = 400; let w = img.width, h = img.height; if (w > h) { if (w > max) { h = h * max / w; w = max; } } else { if (h > max) { w = w * max / h; h = max; } } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); const du = c.toDataURL('image/jpeg', 0.8); state.declarations.photo = du; state.declarations.photoDate = new Date().toISOString(); state.declarations.photoSource = isCamera ? 'camera' : 'file'; const p = document.getElementById('edit-photo-preview'); p.innerHTML = '<img src="' + du + '">'; p.classList.add('has-photo'); document.getElementById('edit-photo-date').textContent = 'Photo: ' + new Date().toLocaleDateString(); }; img.src = e.target.result; };
+    reader.onload = e => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); const max = 400; let w = img.width, h = img.height; if (w > h) { if (w > max) { h = h * max / w; w = max; } } else { if (h > max) { w = w * max / h; h = max; } } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); const du = c.toDataURL('image/jpeg', 0.8); if (!_declDraft) return; _declDraft.photo = du; _declDraft.photoDate = new Date().toISOString(); _declDraft.photoSource = isCamera ? 'camera' : 'file'; renderDeclPhoto(); }; img.src = e.target.result; };
     reader.readAsDataURL(file); event.target.value = '';
   }
   function saveDeclarationsEdit() {
-    state.declarations.name = document.getElementById('edit-name').value.trim();
-    state.declarations.about = document.getElementById('edit-about').value.trim();
-    save(); closeModal('declarations'); refreshHome(); toast('Declarations updated');
+    if (!_declDraft) { closeModal('declarations'); return; }
+    var d = state.declarations;
+    d.name = document.getElementById('edit-name').value.trim();
+    d.about = document.getElementById('edit-about').value.trim();
+    if (_declDraft.photo !== (d.photo || null)) { d.photo = _declDraft.photo; d.photoDate = _declDraft.photoDate; d.photoSource = _declDraft.photoSource; }
+    d.skills = _declDraft.skills.slice();
+    _declDraft = null;
+    save(); closeModal('declarations'); refreshHome();
+    var w = document.getElementById('wallet-overlay');
+    if (w && w.classList.contains('active')) mcRenderPerson();
+    toast('Saved');
   }
 
   // --- Scale Exercise (standalone modal) ---
@@ -13366,7 +13395,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,

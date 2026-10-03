@@ -465,6 +465,19 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 #wallet-overlay .modal { max-width: none; }
 /* My chain (v2.77.0): the list and its sheets share the exchange flow's sheet, row, caption and X. Reading screen: everything left-aligned (rule 7). */
 #wallet-overlay .modal.mc { max-width: 480px; } /* v2.77.2: same width as the exchange sheet, so no gutter on phones */
+/* v2.81.0: "About you" (declarations edit), built on My chain's frame and the exchange field style (rule 12). */
+#declarations-overlay .modal.mc { max-width: 480px; }
+.dc-id { padding-bottom: 20px; }
+.dc-photo { width: 96px; height: 96px; font-size: 40px; }
+.dc-date { margin-top: 8px; }
+.dc-photo-ctl { display: flex; gap: 4px; justify-content: center; }
+.dc-photo-ctl .mc-edit { margin-top: 4px; }
+.dc-area { resize: none; line-height: 1.4; }
+.dc-addrow { display: flex; gap: 8px; margin-top: 12px; }
+.dc-add { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 16px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.dc-rm { background: none; border: none; font-family: inherit; font-size: 12px; color: var(--text-faint); cursor: pointer; padding: 6px 0 6px 10px; flex-shrink: 0; }
+.dc-note { margin-top: 20px; }
+.dc-save { margin-top: 24px; }
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
 .mc-sheet { padding-top: var(--safe-top); }
 .mc-sheet[hidden] { display: none; }
@@ -1499,7 +1512,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="modal-body mc-home">
       <div class="exs-sheet-head"><div class="exs-h">My chain</div><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
       <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="mc-name" id="mc-name"></div><div class="exs-cap" id="mc-since"></div>
-        <button class="mc-edit" onclick="App.closeModal('wallet'); App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button></div>
+        <button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button></div>
       <div class="mc-standing">
         <div class="exs-cap">Where you stand</div>
         <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Currency</div><div class="exs-cap">What you have produced</div></div><span class="exs-rowval mc-blue" id="mc-s-cur"></span></div><div class="mc-track"><div class="mc-fill mc-blue-fill" id="mc-s-curbar"></div><div class="mc-gapbox" id="mc-s-curgap" hidden></div></div></div>
@@ -2204,52 +2217,28 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 </div>
 
 
-<!-- ========== DECLARATIONS EDIT MODAL ========== -->
-<div class="modal-overlay" id="declarations-overlay"> 
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Your Declarations</h2>
-      <button class="modal-close" onclick="App.closeModal('declarations')"><svg class="icon icon-lg"><use href="#icon-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="photo-area">
-        <div class="photo-preview" id="edit-photo-preview">&#9678;</div>
-        <div class="photo-buttons">
-          <button class="photo-btn" onclick="App.editCapturePhoto()">Camera</button>
-          <button class="photo-btn" onclick="App.editUploadPhoto()">Upload</button>
-        </div>
+<!-- ========== DECLARATIONS EDIT: "About you" (v2.81.0; DESIGN.md rules 2, 3, 4, 4a, 7a, 12, 15). Opens over My chain; X discards unsaved changes and returns exactly where you were; Save commits. The scale exercise no longer lives here. ========== -->
+<div class="modal-overlay" id="declarations-overlay">
+  <div class="modal mc">
+    <div class="modal-body mc-home dc">
+      <div class="exs-sheet-head"><div class="exs-h">About you</div><button class="exs-x" aria-label="Close" onclick="App.closeDeclarationsEdit()">&#215;</button></div>
+      <div class="mc-id dc-id">
+        <div class="mc-photo dc-photo" id="edit-photo-preview"></div>
+        <div class="exs-cap dc-date" id="edit-photo-date"></div>
+        <div class="dc-photo-ctl"><button class="mc-edit" onclick="App.editCapturePhoto()">Camera</button><button class="mc-edit" onclick="App.editUploadPhoto()">Upload</button></div>
         <input type="file" id="edit-photo-file" accept="image/*" style="display:none" onchange="App.handleEditPhotoFile(event)">
         <input type="file" id="edit-photo-capture" accept="image/*" capture="user" style="display:none" onchange="App.handleEditPhotoFile(event)">
-        <div id="edit-photo-date" style="font-size: 13px; color:var(--text-faint); margin-top:6px;"></div>
       </div>
-      <div class="field">
-        <label>Name</label>
-        <input type="text" id="edit-name" placeholder="What should people call you?">
+      <div class="exs-fl"><label for="edit-name">Name</label><input class="exs-box-in" type="text" id="edit-name" placeholder="What should people call you?"></div>
+      <div class="exs-fl"><label for="edit-about">About</label><textarea class="exs-box-in dc-area" id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea></div>
+      <div class="exs-cap mc-group">Skills and qualifications</div>
+      <div id="edit-skills-list"></div>
+      <div class="dc-addrow">
+        <input class="exs-box-in" type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
+        <button class="dc-add" onclick="App.addSkill('edit')">Add</button>
       </div>
-      <div class="field">
-        <label>About</label>
-        <textarea id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea>
-      </div>
-      <div class="skills-section">
-        <label>Skills &amp; qualifications</label>
-        <div class="skills-list" id="edit-skills-list"></div>
-        <div class="skill-add-row">
-          <input type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
-          <button class="skill-add-btn" onclick="App.addSkill('edit')">Add</button>
-        </div>
-      </div>
-
-      <div id="edit-range-display" style="border-top:1px solid var(--border); margin-top:20px; padding-top:20px; display:none;">
-        <label style="font-size:15px; font-weight:600; color:var(--text); display:block; margin-bottom:10px;">Your Value Range</label>
-        <div id="edit-range-summary" style="padding:14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius);"></div>
-        <p style="font-size:13px; color:var(--text-faint); margin-top:8px; line-height:1.5;">Your scale exercise helps you think about how you value things. As you exchange with others, your actual history becomes the real picture.</p>
-        <button style="width:100%; margin-top:10px; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); font-size:14px; cursor:pointer;" onclick="App.closeModal('declarations'); App.openDeclareRange();">Redo the scale exercise</button>
-      </div>
-
-      <p style="font-size: 13px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">Your photo helps verify you are a real person. It stays on your device.</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-primary" onclick="App.saveDeclarationsEdit()">Save</button>
+      <p class="exs-cap dc-note">Your photo helps show you are a real person. It stays on this phone.</p>
+      <button class="btn btn-primary dc-save" onclick="App.saveDeclarationsEdit()">Save</button>
     </div>
   </div>
 </div>
