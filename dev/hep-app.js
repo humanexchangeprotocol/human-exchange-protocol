@@ -11243,6 +11243,25 @@ function init() {
   function waveInterval(iv) { _wave.iv = iv; renderHomeTab(); }
   function toggleWavePanel() { _wave.panel = !_wave.panel; renderHomeTab(); }
 
+  // v2.90.0: the Home hero. Standing is shown unsigned with above/below (rule 8), coloured by side (rule 16).
+  function homeHeroHTML(cur, cos, n) {
+    var name = state.declarations.name || 'Anonymous', photo = mcPhoto();
+    var st = cur - cos, side = st > 0 ? 'mc-blue' : (st < 0 ? 'mc-amber' : '');
+    var word = st > 0 ? 'above' : (st < 0 ? 'below' : 'even');
+    var sent = !n ? 'Your standing begins with your first exchange.'
+      : st > 0 ? 'You have produced more than you have received.'
+      : st < 0 ? 'You have received more than you have produced.'
+      : 'What you have produced and received are even.';
+    var h = '<div class="home-hero">';
+    h += '<div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div>';
+    h += '<div class="exs-cap" style="margin-top:28px">Your standing</div>';
+    h += '<div class="mc-display ' + side + '">' + Math.abs(st).toLocaleString() + ' ' + exMarkSVG(20) + '</div>';
+    if (n) h += '<div class="home-hero-word ' + side + '">' + word + '</div>';
+    h += '<p class="exs-cap home-hero-sent">' + sent + '</p>';
+    return h + '</div>';
+  }
+  function openLearnFromAccount() { closeModal('wallet'); switchTab('learn'); }
+
   function renderHomeTab() {
     var el = document.getElementById('tab-home-content');
     if (!el) return;
@@ -11268,9 +11287,9 @@ function init() {
     // one sentence in lowest terms, and a "How this is drawn" panel.
     // Own phone only; never in the snapshot. Replaces the act-count
     // card and the participation ratio bar (v2.61.18 and earlier).
-    html += exRenderPairTexture(totalP, totalR);
-    // The wave (texture cycle 7, ruled Oct 1; built v2.67.4). Own phone only.
-    try { html += exRenderWaveTexture(); } catch(we) { console.log('[home] wave render failed:', we.message); }
+    // v2.90.0 (clean Home, ruled Oct 3): photo, standing, one sentence. The pair bars and the wave
+    // now live only in Account (My chain); the recent list lives in History. In flight stays below.
+    html += homeHeroHTML(totalP, totalR, totalActs);
 
     // === IN FLIGHT ===
     // Holds anything still in motion -- before it settles into the
@@ -11409,94 +11428,6 @@ function init() {
       // possible) read like the recent list -- thin border between rows.
       html += ifRows.join('<div style="height:1px; background:var(--border);"></div>');
 
-      html += '</div>';
-    }
-
-    // === RECENT (settled only) ===
-    if (settledRecords.length > 0) {
-      var recent = settledRecords.slice().reverse().slice(0, 8);
-
-      html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">';
-      html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px;">Recent exchanges</div>';
-      if (ex.length > 8) {
-        html += '<span style="font-size:var(--fs-sm); color:var(--accent); cursor:pointer;" onclick="App.switchTab(\'history\')">View all</span>';
-      }
-      html += '</div>';
-
-      // Filter pills — same data-attribute pattern as History so the filter
-      // handler can stay the same. Uses home-specific class so the two
-      // filters don't collide visually.
-      html += '<div style="display:flex; gap:8px; margin-bottom:12px;">';
-      html += '<button class="home-pill hist-pill active" data-home-filter="all" onclick="App.homeFilter(\'all\')">All</button>';
-      html += '<button class="home-pill hist-pill" data-home-filter="provided" onclick="App.homeFilter(\'provided\')">Provided</button>';
-      html += '<button class="home-pill hist-pill" data-home-filter="received" onclick="App.homeFilter(\'received\')">Received</button>';
-      html += '</div>';
-
-      html += '<div id="home-list" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow);">';
-      recent.forEach(function(r, idx) {
-        var desc = r.description || r.category || 'Exchange';
-        var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
-        var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-        var isProv = r.energyState === 'provided';
-        // Pending = record exists in chain but witness attestation has not
-        // arrived yet. submitWitness sets r.witnessAttestation on success
-        // and triggers a re-render. Until then, this record reads as
-        // pending on Home -- a small pill next to the title plus a
-        // 'pending witness' status line below.
-        var isPending = !r.witnessAttestation;
-        // Fresh = timestamp is recent enough to mean "this exchange just
-        // happened during this session of the app". Triggers a brief
-        // background-fade animation on the row so the user's eye finds
-        // it after the modal closes. 8s window covers normal cases
-        // including the witness round-trip.
-        var isFresh = recordAgeMs(r) < 8000;
-        // Bite 2 of language audit: row valence neutralized. Received is not
-        // bad in HEP; provided and received are two roles in a cooperative
-        // act, both honest. Green for provided, blue for received -- both
-        // pleasant, neither valence-laden -- matches the Home totals pattern.
-        // Direction is still carried by the arrow icon and the +/- sign.
-        var valColor = isProv ? 'var(--green)' : 'var(--blue)';
-        var valSign = isProv ? '+' : '\u2212';
-        var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
-        var arrowIcon = isProv
-          ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
-          : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
-        var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
-        var border = idx < recent.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
-        var freshClass = isFresh ? ' fresh' : '';
-        html += '<div class="home-row' + freshClass + '" data-dir="' + r.energyState + '" style="' + border + ' cursor:pointer;" onclick="var d=this.querySelector(\'.home-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-        html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
-        html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
-        html += '<div style="flex:1; min-width:0;">';
-        var pendingPill = isPending
-          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--accent-light); color:var(--accent); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Pending</span>'
-          : '';
-        html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + pendingPill + '</div>';
-        var subtitleText = isPending
-          ? (name ? esc(name) + ' \u00b7 ' : '') + 'Pending witness attestation'
-          : (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts;
-        var subtitleColor = isPending ? 'var(--accent)' : 'var(--text-faint)';
-        html += '<div style="font-size:var(--fs-sm); color:' + subtitleColor + ';">' + subtitleText + '</div>';
-        html += '</div>';
-        html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
-        html += '</div>';
-        // Expandable detail
-        html += '<div class="home-detail" style="display:none; padding:0 0 14px 56px; font-size:var(--fs-sm); color:var(--text-dim); line-height:1.8;">';
-        if (r.category) html += '<div><span style="color:var(--text-faint);">Category:</span> ' + esc(r.category) + '</div>';
-        if (r.duration) html += '<div><span style="color:var(--text-faint);">Duration:</span> ' + formatDuration(r.duration) + '</div>';
-        var fullName = r.counterpartyName || '';
-        var fpShort = (r.counterparty || '').substring(0, 16);
-        if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
-        html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
-        if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
-        html += '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    } else if (!hasInFlight) {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:30px 20px; text-align:center; box-shadow:var(--shadow);">';
-      html += '<div style="font-size:var(--fs-md); color:var(--text-dim); line-height:1.6;">When you record your first cooperative exchange, it will appear here.</div>';
       html += '</div>';
     }
 
@@ -13507,7 +13438,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
