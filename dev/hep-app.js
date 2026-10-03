@@ -10055,7 +10055,8 @@ function init() {
   // a stand-in (two circles) until the glyph is drawn.
   function exMarkSVG(px) {
     px = px || 14;
-    return '<svg class="exs-mark" width="' + px + '" height="' + px + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-label="HEP"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>';
+    // v2.79.0: references the one HEP mark symbol in index.html's sprite (#icon-hep-mark).
+    return '<svg class="exs-mark" width="' + px + '" height="' + px + '" role="img" aria-label="HEP"><use href="#icon-hep-mark"/></svg>';
   }
   function exCancelHTML() {
     return '<div class="exs-grow"></div><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';

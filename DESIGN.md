@@ -35,7 +35,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 ## Icons
 
-14. One icon style, the bottom bar's (ruled Oct 2: every icon matches the system already built). Icons sit on a 24 grid and are solid: shapes filled with the current colour. Shapes that overlap are filled at 0.55 so the overlap reads darker (the HEP mark, Share, network). A line, where a shape needs one, is 2.5 wide with round ends and joins (3 for check). No thin outline icons, no emoji. Corners are square except where the shape itself is round (Home's house has crisp corners; circles stay circles). Outline icons (like History) leave their inside white so anything inside reads crisply. Icons rest in the faint tone at 22px, the bottom bar's tone and size, and turn blue when active; none sits darker than the bar. A small named set defined once in the sprite and reused by name.
+14. One icon style, the bottom bar's (ruled Oct 2: every icon matches the system already built). Icons sit on a 24 grid and are solid: shapes filled with the current colour. Shapes that overlap are filled at 0.55 so the overlap reads darker (the HEP mark, Share, network). A line, where a shape needs one, is 2.5 wide with round ends and joins (3 for check). No thin outline icons, no emoji. Corners are square except where the shape itself is round (Home's house has crisp corners; circles stay circles). Outline icons (like History) leave their inside white so anything inside reads crisply. Icons rest in the faint tone at 22px, the bottom bar's tone and size, and turn blue when active; none sits darker than the bar. A small named set defined once in the sprite and reused by name. The HEP mark (#icon-hep-mark, two crossing rings, ruled Oct 2) and the wallet (#icon-wallet, a square-cornered wallet holding the mark) live only in the sprite; everything else references them, so a redraw happens in one place.
 15. An icon never carries meaning alone except X and chevron. Every other icon has a word beside it.
 
 ## Color and shape
@@ -50,5 +50,6 @@ A design question these rules do not answer is written here when it comes up, ru
 - Segmented controls (Actual / Typical, Each / Week / Month / Year on the textures): no rule yet. The mockup uses a quiet pill row on `--bg-input`.
 - Charts (line weights, fills, axis labels, bar strips): no rule yet beyond rule 16's colours.
 - Where Reach is turned on. Ruled off by default, own phone only; the mockup shows it as already on. The switch has no home yet.
-- The My chain icon on Home: chosen Oct 2, a square-cornered wallet holding the HEP mark as two crossing rings, no circle around it, 26px because it sits up top (same line weight as the bar). Still open: rule 15 asks for a word beside it.
+- The My chain icon on Home: still open, rule 15 asks for a word beside it.
+- The Share tab draws the mark as two filled circles (#icon-cooperation), separate from #icon-hep-mark. Whether Share keeps its own drawing or references the mark is open.
 - The word for standing in the wallet: "Standing" is in use; whether it is final is open.
