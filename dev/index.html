@@ -36,6 +36,8 @@
   --green-light: rgba(43, 140, 62, 0.08);
   --red: #CC4444;
   --red-light: rgba(204, 68, 68, 0.08);
+  --amber: #B5742A;  /* received, cosmic share, the below side of standing (DESIGN.md 8a, 16) */
+  --amber-light: rgba(181, 116, 42, 0.10);
   --blue: #2A5A8F;
   --blue-light: rgba(42, 90, 143, 0.08);
   /* Structure */
@@ -46,6 +48,8 @@
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   /* Typography */
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
+  /* DESIGN.md rule 5: the five sizes. New and converted surfaces use only these. */
+  --fs-caption: 12px; --fs-label: 13px; --fs-body: 15px; --fs-title: 18px; --fs-display: 32px;
   /* Radius + fonts */
   --radius: 10px;
   --radius-sm: 6px;
@@ -519,9 +523,9 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .mc-gap { margin-top: 24px; }
 .mc-big { font-size: 18px; }
 .mc-blue, .exs-rowval.mc-blue, .mc-display.mc-blue { color: var(--accent); }
-.mc-amber, .exs-rowval.mc-amber, .exs-cap.mc-amber, .mc-display.mc-amber { color: #B5742A; }
+.mc-amber, .exs-rowval.mc-amber, .exs-cap.mc-amber, .mc-display.mc-amber { color: var(--amber); }
 .mc-blue-fill { background: var(--accent); }
-.mc-amber-fill { background: #B5742A; }
+.mc-amber-fill { background: var(--amber); }
 .mc-link { margin: 10px 0 0; }
 .mc-link[hidden] { display: none; }
 .mc-link a { font-size: 13px; color: var(--accent); text-decoration: underline; }
@@ -531,7 +535,7 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .mc-tbar-top { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px; }
 .mc-track { position: relative; height: 14px; border-radius: var(--radius-sm); background: var(--bg-input); }
 .mc-fill { height: 14px; border-radius: var(--radius-sm); }
-.mc-gapbox { position: absolute; top: 0; height: 14px; border: 1.5px dashed #B5742A; border-radius: var(--radius-sm); background: rgba(181,116,42,0.10); }
+.mc-gapbox { position: absolute; top: 0; height: 14px; border: 1.5px dashed var(--amber); border-radius: var(--radius-sm); background: rgba(181,116,42,0.10); }
 .mc-gapbox.mc-up { border-color: var(--accent); background: var(--accent-light); }
 .mc-gapbox[hidden] { display: none; }
 .mc-how { margin-top: 28px; }
@@ -756,14 +760,14 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-say .who { font-size: 16px; font-weight: 600; color: var(--text); }
 .exs-say .does { font-size: 13px; color: var(--text-dim); }
 .exs-say .what { font-size: 19px; font-weight: 600; color: var(--text); margin: 2px 0 10px; }
-.exs-say .amt { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--accent); }
+.exs-say .amt { font-size: 30px; font-weight: 600; color: var(--accent); }
 .exs-say .amt small { font-family: inherit; font-size: 13px; font-weight: 400; color: var(--text-faint); margin-left: 6px; }
 .exs-own { text-align: center; }
 .exs-own .lab { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; }
-.exs-own .num { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--text); }
-.exs-own .num.amb { color: #B5742A; }
+.exs-own .num { font-size: 22px; font-weight: 600; color: var(--text); }
+.exs-own .num.amb { color: var(--amber); }
 .exs-valc { display: flex; justify-content: center; align-items: baseline; gap: 6px; }
-.exs-valc input { border: none; border-bottom: 1px solid var(--border); background: none; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); padding: 4px 0; outline: none; text-align: center; min-width: 3ch; max-width: 60%; }
+.exs-valc input { border: none; border-bottom: 1px solid var(--border); background: none; font-size: 32px; font-weight: 600; color: var(--accent); padding: 4px 0; outline: none; text-align: center; min-width: 3ch; max-width: 60%; }
 .exs-valc input:focus { border-bottom-color: var(--accent); }
 .exs-valc small { font-size: 13px; color: var(--text-faint); }
 .exs-save { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg-raised); border-radius: 20px; padding: 8px 14px; min-height: 36px; color: var(--text-dim); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 4px; }
@@ -774,7 +778,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-arrowrow { display: flex; align-items: center; justify-content: center; gap: 14px; height: 70px; margin: 4px 0; }
 .exs-varrow .shaft { stroke: var(--accent); stroke-width: 3; fill: none; stroke-linecap: round; stroke-dasharray: 60; stroke-dashoffset: 60; animation: exsDraw 0.7s ease-out 0.15s forwards; }
 .exs-varrow .head { fill: var(--accent); opacity: 0; animation: exsAppear 0.2s ease-out 0.8s forwards; }
-.exs-ride { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--accent); opacity: 0; animation: exsRide 0.9s ease-in-out 0.2s forwards; }
+.exs-ride { font-size: 30px; font-weight: 600; color: var(--accent); opacity: 0; animation: exsRide 0.9s ease-in-out 0.2s forwards; }
 .exs-varrow.up + .exs-ride { animation-name: exsRideUp; }
 .exs-flow.done .exs-varrow .shaft, .exs-flow.done .exs-varrow .head, .exs-flow.done .exs-ride { animation: none; stroke-dashoffset: 0; opacity: 1; transform: none; }
 .exs-own .num.big { font-size: 40px; line-height: 1; transition: transform 0.25s ease-out; }
@@ -846,20 +850,20 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-field { width: 100%; border: none; border-bottom: 1px solid var(--border); background: none; padding: 10px 0; font-family: inherit; color: var(--text); outline: none; }
 .exs-field:focus { border-bottom-color: var(--accent); }
 .exs-val { display: flex; align-items: baseline; gap: 8px; }
-.exs-val input { width: 50%; border: none; border-bottom: 1px solid var(--border); background: none; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); padding: 6px 0; outline: none; }
+.exs-val input { width: 50%; border: none; border-bottom: 1px solid var(--border); background: none; font-size: 32px; font-weight: 600; color: var(--accent); padding: 6px 0; outline: none; }
 .exs-val input:focus { border-bottom-color: var(--accent); }
 .exs-val small { font-size: 13px; color: var(--text-faint); }
 .exs-link { background: none; border: none; color: var(--accent); font-size: 13px; padding: 6px 0; cursor: pointer; font-family: inherit; text-align: left; }
-.exs-amber { --exs-amber: #B5742A; }
+.exs-amber { --exs-amber: var(--amber); }
 .exs-box .exs-lab { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; margin-top: 6px; }
-.exs-box .exs-num { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--text); }
-.exs-box .exs-num.amb { color: #B5742A; }
+.exs-box .exs-num { font-size: 15px; font-weight: 600; color: var(--text); }
+.exs-box .exs-num.amb { color: var(--amber); }
 .exs-box .exs-ic { display: flex; justify-content: center; gap: 6px; margin-bottom: 4px; min-height: 16px; }
 .exs-arr.flow .shaft { stroke-dasharray: 6 6; animation: exsFlow 0.6s linear infinite; }
 @keyframes exsFlow { to { stroke-dashoffset: -12; } }
 .exs-check { width: 56px; height: 56px; border-radius: 50%; background: var(--green); margin: 0 auto; display: flex; align-items: center; justify-content: center; }
 .exs-check svg { width: 30px; height: 30px; }
-.exs-bigval { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--accent); }
+.exs-bigval { display: flex; align-items: baseline; gap: 8px; font-size: 32px; font-weight: 600; color: var(--accent); }
 .exs-bigval small { font-size: 13px; color: var(--text-faint); font-family: inherit; font-weight: 400; }
 
 /* 8-step flow progress bar */

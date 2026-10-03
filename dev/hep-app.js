@@ -951,7 +951,7 @@ const PAIR_CODE_LENGTH = 4;
   // How standing is drawn. A sheet can open another over it; X closes the
   // top one. Every drawing reads only the person's own chain, on this phone.
   var _mcStack = [];
-  var MC_AMB = '#B5742A';
+  var MC_AMB = 'var(--amber)';
   function mcOpen(k) {
     var el = document.getElementById('mc-sheet-' + k);
     if (!el) return;
@@ -1109,7 +1109,7 @@ const PAIR_CODE_LENGTH = 4;
 
   // ---- Learn illustrations (v2.100.0): generic examples, never the person's data.
   // Each takes a stage; later steps of a lesson draw more of the same picture.
-  var LR_BLUE = 'var(--accent)', LR_AMB = '#B5742A', LR_FAINT = 'var(--text-faint)', LR_LINE = 'var(--border)';
+  var LR_BLUE = 'var(--accent)', LR_AMB = 'var(--amber)', LR_FAINT = 'var(--text-faint)', LR_LINE = 'var(--border)';
   function lrT(x, y, txt, o) { o = o || {}; return '<text x="' + x + '" y="' + y + '" font-size="' + (o.s || 12) + '" fill="' + (o.c || LR_FAINT) + '" text-anchor="' + (o.a || 'start') + '"' + (o.w ? ' font-weight="600"' : '') + '>' + txt + '</text>'; }
   function lrRand(seed) { var x = seed; return function() { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
   function lrFig(t, s) {
@@ -10293,7 +10293,7 @@ function init() {
     h += '<text id="exs-amt" x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text)" opacity="0">' + p.value.toLocaleString() + '</text>';
     h += '<g id="exs-tots" opacity="0">'
       + '<text x="52" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Cosmic share</text>'
-      + '<text id="exs-nl" x="52" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="#B5742A">+0</text>'
+      + '<text id="exs-nl" x="52" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--amber)">+0</text>'
       + '<text x="252" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Currency</text>'
       + '<text id="exs-nr" x="252" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--accent)">+0</text></g>';
     h += '</svg>';
@@ -11380,7 +11380,7 @@ function init() {
     var h = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px; box-shadow:var(--shadow);">';
     h += '<div style="font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:14px;">What you have produced and received</div>';
     h += bar('Produced', totalP, 'var(--accent)');
-    h += bar('Received', totalR, '#B5742A');
+    h += bar('Received', totalR, 'var(--amber)');
     h += '<div style="font-size:var(--fs-md); color:var(--text); margin-top:14px; line-height:1.5;">' + esc(exPairSentence(totalP, totalR)) + '</div>';
     if (!totalP && !totalR) h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:6px;">Tap Start below to begin one.</div>';
     h += '<button style="background:none; border:none; padding:10px 0 0; color:var(--accent); font-size:var(--fs-sm); cursor:pointer; font-family:inherit;" onclick="App.togglePairPanel()">How this is drawn' + (_pairPanelOpen ? ' \u2212' : ' +') + '</button>';
@@ -11455,7 +11455,7 @@ function init() {
     var svg = '<svg viewBox="0 0 ' + W + ' ' + HT + '" style="width:100%; display:block;">';
     svg += '<defs><clipPath id="wave-cu"><rect width="' + W + '" height="' + Z + '"/></clipPath><clipPath id="wave-cd"><rect y="' + Z + '" width="' + W + '" height="' + (HT - Z) + '"/></clipPath></defs>';
     svg += '<polygon points="' + Pg + '" fill="var(--accent)" fill-opacity=".14" clip-path="url(#wave-cu)"/>';
-    svg += '<polygon points="' + Pg + '" fill="#B5742A" fill-opacity=".22" clip-path="url(#wave-cd)"/>';
+    svg += '<polygon points="' + Pg + '" fill="var(--amber)" fill-opacity=".22" clip-path="url(#wave-cd)"/>';
     svg += '<line x1="' + X0 + '" y1="' + Z + '" x2="' + X1 + '" y2="' + Z + '" stroke="var(--text-faint)" stroke-width=".8"/>';
     svg += '<polyline points="' + L + '" fill="none" stroke="var(--text)" stroke-width="1.6" stroke-linejoin="round"/>';
     svg += '<circle cx="' + lx + '" cy="' + ly + '" r="2.6" fill="var(--text)"/>';
