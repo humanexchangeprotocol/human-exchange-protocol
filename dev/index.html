@@ -283,8 +283,8 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .home-identity .greeting { font-size: 17px; color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home-identity .fp { font-family: var(--font-mono); font-size: 13px; color: var(--text-faint); }
 .home-top-icons { display: flex; gap: 8px; flex-shrink: 0; }
-.top-icon-btn { width: 44px; height: 44px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; color: var(--text-dim); display: flex; align-items: center; justify-content: center; }
-.top-icon-btn:active { border-color: var(--accent); color: var(--accent); }
+.top-icon-btn { width: 44px; height: 44px; background: none; border: none; padding: 0; color: var(--text-faint); display: flex; align-items: center; justify-content: center; cursor: pointer; } /* v2.78.0: no circle; the icon alone, in the bottom bar's faint tone (DESIGN.md rule 14) */
+.top-icon-btn:active { color: var(--accent); }
 .home-stats { display: flex; justify-content: center; gap: 32px; padding: 12px 20px 16px; flex-shrink: 0; }
 .home-stat { text-align: center; }
 .home-stat .val { font-size: 22px; font-weight: 500; color: var(--text); }
@@ -1417,7 +1417,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
     </div>
     <div class="home-top-icons">
       <button class="top-icon-btn" onclick="App.openWallet()" aria-label="My chain">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 1 0-6.364l2.121-2.122a4.5 4.5 0 0 1 6.364 6.364l-1.06 1.06"/><path d="M14 10a4.5 4.5 0 0 1 0 6.364l-2.121 2.122a4.5 4.5 0 0 1-6.364-6.364l1.06-1.06"/></svg>
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="14" fill="var(--bg-raised)" stroke="currentColor" stroke-width="2.1" stroke-linejoin="miter"/><circle cx="10" cy="12.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="14" cy="12.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
       </button>
     </div>
   </div>
