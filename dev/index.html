@@ -487,7 +487,9 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .home-backup { margin-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 8px; } /* v2.92.0: unbacked-exchanges line, iPhone browser only */
 .home-backup-row { display: flex; align-items: center; gap: 2px; }
 .home-backup-warn { width: 44px; height: 44px; margin: -12px 0 -12px -10px; background: none; border: none; padding: 0; color: #B5742A; display: flex; align-items: center; justify-content: center; cursor: pointer; } /* v2.93.0: amber warning icon opens #backup-sheet */
-#backup-sheet { position: fixed; top: 0; bottom: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; z-index: 50; }
+#import-sheet { position: fixed; top: 0; bottom: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; z-index: 300; }
+#import-sheet .exs-body + .exs-body { margin-top: 10px; }
+#backup-sheet { position: fixed; top: 0; bottom: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; z-index: 300; }
 #backup-sheet .exs-body + .exs-body { margin-top: 10px; }
 #backup-sheet .backup-steps { margin: 10px 0 0; padding-left: 22px; font-size: 15px; color: var(--text); line-height: 1.4; }
 #backup-sheet .backup-steps li + li { margin-top: 6px; }
@@ -2378,6 +2380,16 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 </div>
 
 <!-- Hidden inputs -->
+<!-- v2.95.0: import replaces the chain on this phone; warn first when it holds exchanges -->
+<div class="exs-sheet mc-sheet" id="import-sheet" hidden>
+  <div class="exs-sheet-head"><div class="exs-h">Replace this phone's chain?</div><button class="exs-x" aria-label="Close" onclick="App.closeImportSheet()">&#215;</button></div>
+  <p class="exs-body" id="import-sheet-count"></p>
+  <p class="exs-body">Importing a backup replaces them with what is in the backup. Anything on this phone that is not in the backup will be gone.</p>
+  <p class="exs-body">If you want to keep them, back up this phone first.</p>
+  <button class="exs-link" onclick="App.importBackUpFirst()">Back up this phone first</button>
+  <div style="flex:1"></div>
+  <button class="exs-door p" onclick="App.importChooseFile()">Choose backup file</button>
+</div>
 <input type="file" id="import-file" accept=".json,.hcp,.txt" style="display:none" onchange="App.handleImportFile(event)">
 <!-- Texture detail overlay (sits above exchange modal) -->
 <div class="modal-overlay" id="texture-detail-overlay" style="z-index:200;">

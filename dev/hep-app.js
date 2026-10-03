@@ -6715,7 +6715,18 @@ const PAIR_CODE_LENGTH = 4;
     toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
   }
 
-  function importBackupAction() { document.getElementById('import-file').click(); }
+  // v2.95.0 (Michael, Oct 3): import replaces this phone's chain (there is no
+  // merge yet), so if the phone already holds exchanges, say so first.
+  function importBackupAction() {
+    var acts = (state.chain || []).filter(HCP.isAct).length;
+    if (!acts) { document.getElementById('import-file').click(); return; }
+    var el = document.getElementById('import-sheet'); if (!el) { document.getElementById('import-file').click(); return; }
+    document.getElementById('import-sheet-count').textContent = 'This phone has ' + acts + (acts === 1 ? ' exchange' : ' exchanges') + '.';
+    el.hidden = false; el.scrollTop = 0;
+  }
+  function closeImportSheet() { var el = document.getElementById('import-sheet'); if (el) el.hidden = true; }
+  function importChooseFile() { closeImportSheet(); document.getElementById('import-file').click(); }
+  function importBackUpFirst() { closeImportSheet(); exportBackupAction(); }
 
   async function handleImportFile(event) {
     const file = event.target.files[0]; if (!file) return;
@@ -13478,7 +13489,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo,
+    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
