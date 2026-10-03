@@ -959,6 +959,7 @@ const PAIR_CODE_LENGTH = 4;
       if (k === 'wave') mcDrawWave();
       else if (k === 'people') mcDrawPeople();
       else if (k === 'reach') mcDrawReach();
+      else if (k === 'learn') lrRenderHome();
     } catch (e) { console.log('[my-chain] draw failed:', e.message); }
     el.style.zIndex = 6 + _mcStack.length;
     el.hidden = false; el.scrollTop = 0;
@@ -990,6 +991,221 @@ const PAIR_CODE_LENGTH = 4;
     return { list: list, span: span };
   }
   function mcSegPress(id, v) { document.querySelectorAll('#' + id + ' button').forEach(function(b) { b.setAttribute('aria-pressed', b.dataset.v === v ? 'true' : 'false'); }); }
+
+  // ---- Learn (v2.99.0, seventeenth session) ----
+  // Modules > lessons > steps, from lessons.json version 2. The Learn and
+  // module sheets are reading sheets; the lesson player is a flow sheet
+  // (Continue pinned, X back one step, DESIGN.md 2a and 3a). A lesson is
+  // marked read when its last step is passed; the completion screen is
+  // modelled on the exchange's Settled screen.
+  var LR_KEY = 'hep_dev_learn_done';
+  var _lr = { mod: null, les: null, step: 0, done: false };
+  function lrRead() { try { return JSON.parse(localStorage.getItem(LR_KEY) || '{}'); } catch (e) { return {}; } }
+  function lrMark(k) { var d = lrRead(); d[k] = Date.now(); try { localStorage.setItem(LR_KEY, JSON.stringify(d)); } catch (e) {} }
+  function lrMods() { return (LEARN_DATA && LEARN_DATA.modules) || []; }
+  function lrLes(k) { return (LEARN_DATA && LEARN_DATA.lessons && LEARN_DATA.lessons[k]) || null; }
+  function lrModByKey(k) { return lrMods().filter(function(m) { return m.key === k; })[0] || null; }
+  function lrRow(onclick, word, cap) {
+    return '<button class="exs-row" onclick="' + onclick + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+  }
+  function lrModCap(m, done) {
+    if (m.kind === 'links') return m.subtitle;
+    var n = (m.lessons || []).length, r = (m.lessons || []).filter(function(k) { return done[k]; }).length;
+    return m.subtitle + (r === 0 ? '' : r === n ? ' \u00b7 All read' : ' \u00b7 ' + r + ' of ' + n + ' read');
+  }
+  function lrRenderHome() {
+    var el = document.getElementById('lr-modules');
+    if (!el) return;
+    if (!lessonsReady) { el.innerHTML = '<p class="exs-cap">Loading\u2026</p>'; loadLessons().then(lrRenderHome); return; }
+    var done = lrRead();
+    el.innerHTML = lrMods().map(function(m) { return lrRow("App.lrOpenModule('" + m.key + "')", m.title, lrModCap(m, done)); }).join('');
+  }
+  function lrRenderModule() {
+    var m = lrModByKey(_lr.mod); if (!m) return;
+    document.getElementById('lr-mod-title').textContent = m.title;
+    document.getElementById('lr-mod-sub').textContent = m.subtitle;
+    var done = lrRead(), h = '';
+    if (m.kind === 'links') {
+      (m.items || []).forEach(function(it) {
+        h += '<a class="exs-row" href="' + esc(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none"><div class="exs-rowmain"><div class="exs-body">' + esc(it.title) + '</div><div class="exs-cap">' + esc(it.caption) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></a>';
+      });
+    } else {
+      (m.lessons || []).forEach(function(k) {
+        var l = lrLes(k); if (!l) return;
+        h += lrRow("App.lrOpenLesson('" + k + "')", l.title, done[k] ? 'Read' : l.caption);
+      });
+    }
+    document.getElementById('lr-mod-rows').innerHTML = h;
+  }
+  function lrOpenModule(k) {
+    if (!lessonsReady) { loadLessons().then(function() { lrOpenModule(k); }); return; }
+    _lr.mod = k; lrRenderModule();
+    var el = document.getElementById('mc-sheet-lmod');
+    if (el && el.hidden) mcOpen('lmod');
+  }
+  function lrOpenLesson(k) {
+    var l = lrLes(k); if (!l) return;
+    if (!_lr.mod) { var mm = lrMods().filter(function(m) { return (m.lessons || []).indexOf(k) >= 0; })[0]; _lr.mod = mm ? mm.key : null; }
+    _lr.les = k; _lr.step = 0; _lr.done = false;
+    lrRenderStep();
+    var el = document.getElementById('mc-sheet-lesson');
+    if (el && el.hidden) mcOpen('lesson');
+  }
+  function lrRenderStep() {
+    var l = lrLes(_lr.les); if (!l) return;
+    var st = l.steps[_lr.step], n = l.steps.length;
+    document.getElementById('lr-l-title').textContent = l.title;
+    document.getElementById('lr-l-x').style.visibility = '';
+    var prog = document.getElementById('lr-l-prog'); prog.hidden = false;
+    var p = ''; for (var i = 0; i < n; i++) p += '<i class="' + (i <= _lr.step ? 'on' : '') + '"></i>'; prog.innerHTML = p;
+    var h = '<h3 class="lr-step-t">' + esc(st.title) + '</h3><p class="lr-step-b">' + esc(st.body) + '</p>';
+    if (st.fig && typeof lrFig === 'function') { var f = lrFig(st.fig.t, st.fig.s); if (f) h += '<div class="lr-fig">' + f + '</div>'; }
+    if (st.link) h += '<p class="mc-link"><a href="#" onclick="App.mcOpen(\'' + st.link.open + '\');return false">' + esc(st.link.label) + '</a></p>';
+    var body = document.getElementById('lr-l-body'); body.innerHTML = h; body.scrollTop = 0;
+    document.getElementById('lr-l-foot').innerHTML = '<button class="btn btn-primary" onclick="App.lrNext()">' + (_lr.step === n - 1 ? 'Finish' : 'Continue') + '</button>';
+  }
+  function lrNext() {
+    var l = lrLes(_lr.les); if (!l) return;
+    if (_lr.step < l.steps.length - 1) { _lr.step++; lrRenderStep(); return; }
+    lrMark(_lr.les); _lr.done = true; lrRenderDone();
+    lrRenderModule(); lrRenderHome();
+  }
+  function lrBack() {
+    if (_lr.done || _lr.step === 0) { mcClose(); return; }
+    _lr.step--; lrRenderStep();
+  }
+  function lrNextTarget() {
+    var mods = lrMods(), m = lrModByKey(_lr.mod);
+    if (!m) return null;
+    var ls = m.lessons || [], i = ls.indexOf(_lr.les);
+    if (i >= 0 && i < ls.length - 1) return { les: ls[i + 1], label: 'Next lesson' };
+    var mi = mods.indexOf(m);
+    if (mi >= 0 && mi < mods.length - 1) return { mod: mods[mi + 1].key, label: 'Next: ' + mods[mi + 1].title, moduleDone: true };
+    return { end: true, label: 'Done', moduleDone: true };
+  }
+  function lrRenderDone() {
+    var l = lrLes(_lr.les), t = lrNextTarget();
+    document.getElementById('lr-l-x').style.visibility = 'hidden';
+    document.getElementById('lr-l-title').textContent = '';
+    document.getElementById('lr-l-prog').hidden = true;
+    var mAll = lrModByKey(_lr.mod), rd = lrRead(), allRead = !!mAll && (mAll.lessons || []).every(function(k) { return rd[k]; });
+    var h = '<div class="lr-done"><div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="52" height="52"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+    h += '<div class="exs-settle-t1">' + (allRead ? 'Module complete' : 'Lesson complete') + '</div>';
+    h += '<div class="exs-t exs-settle-t3" style="color:var(--text)">' + esc(l.title) + '</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div></div>';
+    document.getElementById('lr-l-body').innerHTML = h;
+    var f = '<div class="exs-settle-btns"><button class="btn btn-primary" onclick="App.lrContinue()">' + esc(t ? t.label : 'Done') + '</button>';
+    if (t && !t.end) f += '<button class="exs-quiet" onclick="App.mcClose()">Back to lessons</button>';
+    f += '</div>';
+    document.getElementById('lr-l-foot').innerHTML = f;
+  }
+  function lrContinue() {
+    var t = lrNextTarget();
+    if (!t || t.end) { mcClose(); return; }
+    if (t.les) { lrOpenLesson(t.les); return; }
+    mcClose(); lrOpenModule(t.mod);
+  }
+
+  // ---- Learn illustrations (v2.100.0): generic examples, never the person's data.
+  // Each takes a stage; later steps of a lesson draw more of the same picture.
+  var LR_BLUE = 'var(--accent)', LR_AMB = '#B5742A', LR_FAINT = 'var(--text-faint)', LR_LINE = 'var(--border)';
+  function lrT(x, y, txt, o) { o = o || {}; return '<text x="' + x + '" y="' + y + '" font-size="' + (o.s || 12) + '" fill="' + (o.c || LR_FAINT) + '" text-anchor="' + (o.a || 'start') + '"' + (o.w ? ' font-weight="600"' : '') + '>' + txt + '</text>'; }
+  function lrRand(seed) { var x = seed; return function() { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
+  function lrFig(t, s) {
+    var h = '';
+    if (t === 'pair') {
+      h = '<svg viewBox="0 0 340 ' + (s >= 2 ? 190 : 120) + '">';
+      h += '<circle cx="60" cy="44" r="26" fill="var(--accent-light)" stroke="' + LR_BLUE + '" stroke-width="2"/>' + lrT(60, 92, 'Provided', { a: 'middle', c: 'var(--text)', s: 13 });
+      h += '<circle cx="280" cy="44" r="26" fill="rgba(181,116,42,0.12)" stroke="' + LR_AMB + '" stroke-width="2"/>' + lrT(280, 92, 'Received', { a: 'middle', c: 'var(--text)', s: 13 });
+      h += '<line x1="98" y1="44" x2="242" y2="44" stroke="' + LR_LINE + '" stroke-width="2" stroke-dasharray="5 5"/>';
+      h += '<rect x="132" y="26" width="76" height="36" rx="8" fill="var(--bg-raised)" stroke="' + LR_LINE + '"/>' + lrT(170, 50, '40', { a: 'middle', c: 'var(--text)', s: 18, w: 1 });
+      h += lrT(170, 80, 'agreed by both', { a: 'middle' });
+      if (s >= 2) {
+        h += '<rect x="20" y="116" width="80" height="12" rx="4" fill="' + LR_BLUE + '"/>' + lrT(20, 148, 'Currency grows by 40', { c: LR_BLUE });
+        h += '<rect x="240" y="116" width="80" height="12" rx="4" fill="' + LR_AMB + '"/>' + lrT(320, 148, 'Cosmic share grows by 40', { c: LR_AMB, a: 'end' });
+        h += lrT(170, 178, 'One record, written on both phones', { a: 'middle' });
+      }
+      return h + '</svg>';
+    }
+    if (t === 'scale') {
+      h = '<svg viewBox="0 0 340 110">';
+      var x0 = 14, x1 = 326, labels = ['1', '10', '100', '1k', '10k', '100k', '1M'];
+      h += '<line x1="' + x0 + '" y1="50" x2="' + x1 + '" y2="50" stroke="var(--text-dim)" stroke-width="2"/>';
+      for (var i = 0; i < 7; i++) { var x = x0 + (x1 - x0) * i / 6; h += '<line x1="' + x + '" y1="42" x2="' + x + '" y2="58" stroke="var(--text-dim)" stroke-width="1.5"/>' + lrT(x, 76, labels[i], { a: 'middle' }); }
+      h += lrT(x0, 24, 'One ruler, 1 to 1,000,000, the same for everyone');
+      if (s >= 2) {
+        var r = lrRand(7);
+        for (var k = 0; k < 9; k++) { var px = x0 + 30 + r() * 120; h += '<circle cx="' + px.toFixed(1) + '" cy="50" r="5" fill="var(--bg)" stroke="' + LR_BLUE + '" stroke-width="2"/>'; }
+        h += lrT(x0, 100, 'Your own marks, found by exchanging with people', { c: LR_BLUE });
+      }
+      return h + '</svg>';
+    }
+    if (t === 'bars') {
+      var cur = 70, cos = s >= 3 ? 85 : 50, W = 236, X = 104, mx = 100;
+      var st = cur - cos;
+      h = '<svg viewBox="0 0 340 ' + (s >= 2 ? 168 : 100) + '">';
+      h += lrT(0, 30, 'Currency', { c: 'var(--text)', s: 13 }) + '<rect x="' + X + '" y="18" width="' + W + '" height="14" rx="4" fill="var(--bg-input)"/><rect x="' + X + '" y="18" width="' + (W * cur / mx) + '" height="14" rx="4" fill="' + LR_BLUE + '"/>';
+      h += lrT(0, 70, 'Cosmic share', { c: 'var(--text)', s: 13 }) + '<rect x="' + X + '" y="58" width="' + W + '" height="14" rx="4" fill="var(--bg-input)"/><rect x="' + X + '" y="58" width="' + (W * cos / mx) + '" height="14" rx="4" fill="' + LR_AMB + '"/>';
+      if (s >= 2) {
+        var a = X + W * Math.min(cur, cos) / mx, b = X + W * Math.max(cur, cos) / mx, col = st >= 0 ? LR_BLUE : LR_AMB;
+        h += '<rect x="' + a + '" y="' + (st >= 0 ? 18 : 58) + '" width="' + (b - a) + '" height="14" rx="4" fill="none" stroke="' + col + '" stroke-width="1.5" stroke-dasharray="4 3"/>';
+        h += lrT(0, 112, Math.abs(st) + ' ' + (st >= 0 ? 'above' : 'below'), { c: col, s: 18, w: 1 });
+        if (s >= 3) h += lrT(0, 140, 'A new exchange added to cosmic share.') + lrT(0, 158, 'Neither total went down.'); else h += lrT(0, 140, 'Your standing is the difference');
+      }
+      return h + '</svg>';
+    }
+    if (t === 'wave') {
+      var pts = [], N = 60;
+      for (var j = 0; j <= N; j++) { var u = j / N; var y = 0.55 * Math.sin(u * 5.2) + 0.35 * Math.sin(u * 13 + 1) - (u > 0.42 && u < 0.72 ? 0.9 * Math.sin((u - 0.42) / 0.3 * Math.PI) : 0) + (u > 0.72 ? 1.0 * (u - 0.72) / 0.28 : 0); pts.push([u, y]); }
+      var upto = s === 1 ? 0.38 : s === 2 ? 0.7 : 1, Y0 = 80, A = 46, L = 10, R = 330;
+      var vis = pts.filter(function(q) { return q[0] <= upto + 1e-9; });
+      var d = vis.map(function(q, n) { return (n ? 'L' : 'M') + (L + (R - L) * q[0]).toFixed(1) + ' ' + (Y0 - A * q[1]).toFixed(1); }).join(' ');
+      var lastX = (L + (R - L) * vis[vis.length - 1][0]).toFixed(1);
+      h = '<svg viewBox="0 0 340 176"><defs><clipPath id="lrUp"><rect x="0" y="0" width="340" height="' + Y0 + '"/></clipPath><clipPath id="lrDn"><rect x="0" y="' + Y0 + '" width="340" height="100"/></clipPath></defs>';
+      var area = d + ' L' + lastX + ' ' + Y0 + ' L' + L + ' ' + Y0 + ' Z';
+      h += '<path d="' + area + '" fill="var(--accent-light)" clip-path="url(#lrUp)"/><path d="' + area + '" fill="rgba(181,116,42,0.15)" clip-path="url(#lrDn)"/>';
+      h += '<line x1="' + L + '" y1="' + Y0 + '" x2="' + R + '" y2="' + Y0 + '" stroke="var(--text-faint)" stroke-width="1" stroke-dasharray="3 3"/>';
+      h += '<path d="' + d + '" fill="none" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+      h += lrT(L, Y0 - 56, 'above', { c: LR_BLUE }) + lrT(L, Y0 + 62, 'below', { c: LR_AMB });
+      if (s >= 2) h += lrT(L + (R - L) * 0.57, Y0 + 82, 'a hard year', { a: 'middle' });
+      h += lrT(L, 172, 'time \u2192');
+      return h + '</svg>';
+    }
+    if (t === 'people') {
+      var rows = 5, r2 = lrRand(3), uni = s >= 3;
+      function block(x, w, col, seed) {
+        var g = '', rr = lrRand(seed);
+        for (var q = 0; q < rows; q++) { var yy = 30 + q * 22, start = q * 0.14; g += '<line x1="' + x + '" y1="' + yy + '" x2="' + (x + w) + '" y2="' + yy + '" stroke="' + LR_LINE + '"/>';
+          for (var m = 0; m < 5; m++) { var tt = start + rr() * (1 - start); var sz = uni ? 3 : 2.5 + rr() * 5; g += '<circle cx="' + (x + w * tt).toFixed(1) + '" cy="' + yy + '" r="' + sz.toFixed(1) + '" fill="' + (uni ? 'var(--text-faint)' : col) + '"/>'; } }
+        return g;
+      }
+      h = '<svg viewBox="0 0 340 160">';
+      h += lrT(0, 14, uni ? 'As others see it' : 'Whose work you did', { c: uni ? 'var(--text)' : LR_BLUE }) + block(0, s >= 2 ? 160 : 340, LR_BLUE, 11);
+      if (s >= 2) h += lrT(180, 14, uni ? '' : 'Whose work you received', { c: LR_AMB }) + block(180, 160, LR_AMB, 29);
+      h += lrT(0, 150, uni ? 'Rows only: plain marks, no sizes, no numbers' : 'Each row is a person; each mark is one exchange');
+      return h + '</svg>';
+    }
+    if (t === 'reach') {
+      var cx = 170, cy = 120, radii = [18, 40, 64, 88, 110], names = ['nearby', 'region', 'country', 'continent', 'world'];
+      var counts = s === 1 ? [4, 2, 0, 0, 0] : s === 2 ? [7, 4, 2, 0, 0] : [9, 6, 3, 2, 1];
+      h = '<svg viewBox="0 0 340 270">';
+      radii.forEach(function(rr, n) { h += '<circle cx="' + cx + '" cy="' + cy + '" r="' + rr + '" fill="none" stroke="' + LR_LINE + '" stroke-width="1.5"/>'; });
+      h += lrT(cx, 248, 'Rings from the centre: nearby, your region,', { a: 'middle' }) + lrT(cx, 264, 'your country, your continent, the world', { a: 'middle' });
+      h += '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="var(--text)"/>';
+      var rr3 = lrRand(5);
+      counts.forEach(function(c, n) { var inner = n ? radii[n - 1] : 0; for (var q = 0; q < c; q++) { var ang = rr3() * Math.PI * 2, rad = inner + 5 + rr3() * (radii[n] - inner - 8); h += '<circle cx="' + (cx + rad * Math.cos(ang)).toFixed(1) + '" cy="' + (cy + rad * Math.sin(ang)).toFixed(1) + '" r="4" fill="' + LR_BLUE + '"/>'; } });
+      return h + '</svg>';
+    }
+    return '';
+  }
+  // Entry points from outside Account: the setup screen and the old "Learn why" links.
+  function lrOpenFromOutside(lessonKey) {
+    var ov = document.getElementById('wallet-overlay');
+    if (!ov || ov.style.display !== 'flex') openWallet();
+    lrRenderHome(); mcOpen('learn');
+    if (lessonKey) loadLessons().then(function() { lrOpenLesson(lessonKey); });
+  }
 
   // ---- Wave ----
   var _mcWMode = 'a', _mcWIv = '30.44';
@@ -7623,6 +7839,7 @@ const PAIR_CODE_LENGTH = 4;
   // the same data. Strip emojis at the data layer; renderers add no fallbacks.
   let LEARN_TOPICS = {};
   let LESSON_GROUPS = [];
+  let LEARN_DATA = null;
   let lessonsReady = false;
   let _lessonsLoadPromise = null;
 
@@ -7636,6 +7853,7 @@ const PAIR_CODE_LENGTH = 4;
       .then(function(data) {
         LEARN_TOPICS = data.topics || {};
         LESSON_GROUPS = data.groups || [];
+        LEARN_DATA = data;
         lessonsReady = true;
       })
       .catch(function(err) {
@@ -7767,6 +7985,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function openLessonTile(topicKey) {
+    // v2.99.0: the old tile lessons are replaced; old keys route to the new Learn.
+    if (topicKey === 'sovereignty') { lrOpenFromOutside('gs-web'); return; }
+    if (!lrLes(topicKey)) { lrOpenFromOutside(null); return; }
+    lrOpenFromOutside(topicKey); return;
     if (!lessonsReady) {
       loadLessons().then(function() { openLessonTile(topicKey); });
       return;
@@ -7889,10 +8111,7 @@ const PAIR_CODE_LENGTH = 4;
     renderLearnTab();
   }
 
-  function openLearn() {
-    showModal('learn');
-    learnShowMenu();
-  }
+  function openLearn() { lrOpenFromOutside(null); }
 
   function learnShowMenu() {
     currentLearnTopic = null;
@@ -11306,7 +11525,7 @@ function init() {
     if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openWallet();return false">See your full standing</a></p>';
     return h + '</div>';
   }
-  function openLearnFromAccount() { closeModal('wallet'); switchTab('learn'); }
+  function openLearnFromAccount() { lrRenderHome(); mcOpen('learn'); }
 
   function renderHomeTab() {
     var el = document.getElementById('tab-home-content');
@@ -13484,7 +13703,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
