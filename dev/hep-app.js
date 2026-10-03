@@ -11243,21 +11243,16 @@ function init() {
   function waveInterval(iv) { _wave.iv = iv; renderHomeTab(); }
   function toggleWavePanel() { _wave.panel = !_wave.panel; renderHomeTab(); }
 
-  // v2.90.0: the Home hero. Standing is shown unsigned with above/below (rule 8), coloured by side (rule 16).
+  // v2.91.0: the Home hero is the photo and the standing number only (Michael, Oct 3: no word, no sentence;
+  // the number is the standing). Colour still follows the side (rule 16). "See your full standing" opens Account.
   function homeHeroHTML(cur, cos, n) {
     var name = state.declarations.name || 'Anonymous', photo = mcPhoto();
     var st = cur - cos, side = st > 0 ? 'mc-blue' : (st < 0 ? 'mc-amber' : '');
-    var word = st > 0 ? 'above' : (st < 0 ? 'below' : 'even');
-    var sent = !n ? 'Your standing begins with your first exchange.'
-      : st > 0 ? 'You have produced more than you have received.'
-      : st < 0 ? 'You have received more than you have produced.'
-      : 'What you have produced and received are even.';
     var h = '<div class="home-hero">';
     h += '<div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div>';
     h += '<div class="exs-cap" style="margin-top:28px">Your standing</div>';
     h += '<div class="mc-display ' + side + '">' + Math.abs(st).toLocaleString() + ' ' + exMarkSVG(20) + '</div>';
-    if (n) h += '<div class="home-hero-word ' + side + '">' + word + '</div>';
-    h += '<p class="exs-cap home-hero-sent">' + sent + '</p>';
+    if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openWallet();return false">See your full standing</a></p>';
     return h + '</div>';
   }
   function openLearnFromAccount() { closeModal('wallet'); switchTab('learn'); }
