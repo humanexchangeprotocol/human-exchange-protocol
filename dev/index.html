@@ -1474,7 +1474,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <p class="exs-body">HEP is a web app you can add to your home screen. Once it is installed, your records stay on your phone when you open and close it.</p>
     <p class="exs-body">Installing does not bring your browser records with you, so back up first:</p>
     <ol class="backup-steps">
-      <li>Close this, tap Back up now under your standing, and save the file.</li>
+      <li>Close this and tap Back up now under your standing. Send it to yourself by Mail or Messages; a copy is also saved to this phone.</li>
       <li>In Safari, tap the Share button, then Add to Home Screen.</li>
       <li>Open HEP from your home screen, tap "Recovering a previous chain? Import here" and choose the file you saved.</li>
     </ol>
@@ -2378,7 +2378,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 </div>
 
 <!-- Hidden inputs -->
-<input type="file" id="import-file" accept=".json,.hcp" style="display:none" onchange="App.handleImportFile(event)">
+<input type="file" id="import-file" accept=".json,.hcp,.txt" style="display:none" onchange="App.handleImportFile(event)">
 <!-- Texture detail overlay (sits above exchange modal) -->
 <div class="modal-overlay" id="texture-detail-overlay" style="z-index:200;">
   <div class="modal">

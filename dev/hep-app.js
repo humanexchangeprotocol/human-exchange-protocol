@@ -6673,18 +6673,46 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
+  // v2.94.0 (Michael, Oct 3): one tap does both. The share panel opens with
+  // the file (Mail, Messages, Files, any cloud: the person's own inbox
+  // becomes the central place for backups, no server), and a copy is saved
+  // to this phone. Share first, because it needs the tap; the local copy
+  // follows when the panel closes, whether they shared or cancelled.
   async function exportBackupAction() {
+    var bk, text, name;
     try {
-      const bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin);
+      bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin);
       bk.declarations = state.declarations;
       bk.settings = state.settings;
-      const blob = new Blob([JSON.stringify(bk, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      text = JSON.stringify(bk, null, 2);
       var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
-      var exportDate = new Date().toISOString().slice(0, 10);
-      a.download = 'HEP-Backup_' + exportName + '_' + exportDate + '.json';
-      a.click(); URL.revokeObjectURL(a.href); markBackedUp(); toast('Backup downloaded'); renderBrowserStorageBanner();
-    } catch(e) { toast('Backup failed'); }
+      name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
+    } catch(e) { toast('Backup failed'); return; }
+    function saveLocal() {
+      try {
+        var blob = new Blob([text], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
+        return true;
+      } catch(e) { return false; }
+    }
+    // Some browsers (Chrome on Android) refuse to share .json files, so fall back to a .txt copy of the same file.
+    var shareFile = null;
+    try {
+      if (navigator.share && navigator.canShare) {
+        var f1 = new File([text], name, { type: 'application/json' });
+        if (navigator.canShare({ files: [f1] })) shareFile = f1;
+        else { var f2 = new File([text], name + '.txt', { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) shareFile = f2; }
+      }
+    } catch(e) { shareFile = null; }
+    var shared = false;
+    if (shareFile) {
+      try { await navigator.share({ files: [shareFile], title: 'HEP backup' }); shared = true; } catch(e) { shared = false; }
+    }
+    var saved = saveLocal();
+    if (shared || saved) { markBackedUp(); renderBrowserStorageBanner(); }
+    toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
   }
 
   function importBackupAction() { document.getElementById('import-file').click(); }
