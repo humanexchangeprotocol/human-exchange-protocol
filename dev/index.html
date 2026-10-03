@@ -477,6 +477,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .dc-add { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 16px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; flex-shrink: 0; }
 .dc-rm { background: none; border: none; font-family: inherit; font-size: 12px; color: var(--text-faint); cursor: pointer; padding: 6px 0 6px 10px; flex-shrink: 0; }
 .dc-note { margin-top: 20px; }
+.dc-help { margin: 4px 0 6px; }
 .dc-save { margin-top: 24px; }
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
 .mc-sheet { padding-top: var(--safe-top); }
@@ -2232,9 +2233,10 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <div class="exs-fl"><label for="edit-name">Name</label><input class="exs-box-in" type="text" id="edit-name" placeholder="What should people call you?"></div>
       <div class="exs-fl"><label for="edit-about">About</label><textarea class="exs-box-in dc-area" id="edit-about" rows="3" placeholder="What you do, what you offer."></textarea></div>
       <div class="exs-cap mc-group">Skills and qualifications</div>
+      <p class="exs-lab dc-help">Anything that helps people understand what you bring: books you have read, courses you have taken, degrees, mentoring you received, self-study. Describe yourself truthfully, the way you want to be known.</p>
       <div id="edit-skills-list"></div>
       <div class="dc-addrow">
-        <input class="exs-box-in" type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, CPR certified" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
+        <input class="exs-box-in" type="text" id="edit-skill-input" placeholder="e.g. Licensed plumber, read Schumacher, self-taught welder" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addSkill('edit')}">
         <button class="dc-add" onclick="App.addSkill('edit')">Add</button>
       </div>
       <p class="exs-cap dc-note">Your photo helps show you are a real person. It stays on this phone.</p>
