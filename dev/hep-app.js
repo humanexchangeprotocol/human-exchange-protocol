@@ -984,7 +984,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!ex.length) return { list: [], span: 1 };
     var t0 = new Date(ex[0].timestamp).getTime();
     var list = ex.map(function(r) {
-      return { t: (new Date(r.timestamp).getTime() - t0) / 86400000, dir: r.energyState === 'provided' ? 'p' : 'r', v: Number(r.value) || 0, person: r.counterparty || '?', city: (r.city || '').trim().toLowerCase(), st: (r.state || '').trim().toLowerCase() };
+      return { t: (new Date(r.timestamp).getTime() - t0) / 86400000, dir: r.energyState === 'provided' ? 'p' : 'r', v: Number(r.value) || 0, person: r.counterparty || '?', city: (r.city || '').trim().toLowerCase(), st: (r.state || '').trim().toLowerCase(), rb: (typeof r.reachBand === 'number' && r.reachBand >= 0 && r.reachBand <= 4) ? r.reachBand : null };
     });
     var span = Math.max(1, (Date.now() - t0) / 86400000);
     return { list: list, span: span };
@@ -1089,41 +1089,48 @@ const PAIR_CODE_LENGTH = 4;
     mcSegPress('mc-p-iv', _mcPIv);
   }
 
-  // ---- Reach: rings from the city and state fields; distance only, no direction ----
+  // ---- Reach (v2.88.0): distance between you and the other person, five bands; distance only, no direction ----
+  // Reads record.reachBand (0-4) when present (writing it is a pending protocol change, writing/reach-band-spec.md).
+  // Older records with only typed city/state: same town as usual = nearby, same state = region; farther ones are counted, not drawn.
   function mcDrawReach() {
     var A = mcActs(), svg = document.getElementById('mc-r-svg'); svg.innerHTML = '';
-    var cx = 170, cy = 150, R = [44, 96, 140], LAB = ['your town', 'your state', 'farther'];
+    var cx = 170, cy = 150, R = [28, 56, 85, 114, 142], LAB = ['nearby', 'region', 'country', 'continent', 'world'];
     R.slice().reverse().forEach(function(r) { svg.appendChild(mcEl('circle', { cx: cx, cy: cy, r: r, fill: 'none', stroke: 'var(--border)' })); });
-    R.forEach(function(r, i) { mcText(svg, cx + 4, cy - r + 14, LAB[i]); });
-    // the usual place: the city and state that appear most often
+    R.forEach(function(r, i) { mcText(svg, cx + 4, cy - r + 12, LAB[i]); });
     var cc = {}, sc = {};
-    A.list.forEach(function(e) { if (e.city) cc[e.city + '|' + e.st] = (cc[e.city + '|' + e.st] || 0) + 1; if (e.st) sc[e.st] = (sc[e.st] || 0) + 1; });
+    A.list.forEach(function(e) { if (e.rb !== null) return; if (e.city) cc[e.city + '|' + e.st] = (cc[e.city + '|' + e.st] || 0) + 1; if (e.st) sc[e.st] = (sc[e.st] || 0) + 1; });
     function top(o) { var best = null, n = 0; Object.keys(o).forEach(function(k) { if (o[k] > n) { n = o[k]; best = k; } }); return best; }
     var homeCity = top(cc), homeSt = top(sc);
     var seed = 19; function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
-    var counts = [0, 0, 0], unplaced = 0;
+    var counts = [0, 0, 0, 0, 0], unplaced = 0, olderFar = 0;
     A.list.forEach(function(e) {
-      var ring;
-      if (!e.city && !e.st) { unplaced++; return; }
-      if (homeCity && e.city && (e.city + '|' + e.st) === homeCity) ring = 0;
-      else if (homeSt && e.st && e.st === homeSt) ring = 1;
-      else if (!e.st && e.city && homeCity && homeCity.split('|')[0] === e.city) ring = 0;
-      else if (!e.st) { unplaced++; return; }
-      else ring = 2;
+      var ring = e.rb;
+      if (ring === null) {
+        if (!e.city && !e.st) { unplaced++; return; }
+        if (homeCity && e.city && (e.city + '|' + e.st) === homeCity) ring = 0;
+        else if (!e.st && e.city && homeCity && homeCity.split('|')[0] === e.city) ring = 0;
+        else if (homeSt && e.st && e.st === homeSt) ring = 1;
+        else if (e.st) { olderFar++; return; }
+        else { unplaced++; return; }
+      }
       counts[ring]++;
-      var r0 = ring ? R[ring - 1] : 0, r1 = R[ring], a = rnd() * Math.PI * 2, d = r0 + 5 + rnd() * (r1 - r0 - 10);
+      var r0 = ring ? R[ring - 1] : 0, r1 = R[ring], a = rnd() * Math.PI * 2, d = r0 + 5 + rnd() * Math.max(1, r1 - r0 - 10);
       svg.appendChild(mcEl('circle', { cx: (cx + Math.cos(a) * d).toFixed(1), cy: (cy + Math.sin(a) * d).toFixed(1), r: 2.4, fill: 'var(--accent)', 'fill-opacity': '.7' }));
     });
     svg.appendChild(mcEl('circle', { cx: cx, cy: cy, r: 3, fill: 'var(--text)' }));
-    var placed = counts[0] + counts[1] + counts[2], sent;
-    if (!placed) sent = 'None of your exchanges carry a place yet, so there is nothing to draw.';
+    var W = ['nearby', 'in your region', 'across your country', 'across your continent', 'across the world'];
+    var placed = counts.reduce(function(a, b) { return a + b; }, 0), sent;
+    if (!placed) sent = 'None of your exchanges carry a distance yet, so there is nothing to draw.';
     else {
-      var most = counts.indexOf(Math.max.apply(null, counts)), mostW = ['within your own town', 'elsewhere in your state', 'beyond your state'][most];
-      var far = counts[2] ? 'beyond your state' : (counts[1] ? 'elsewhere in your state' : 'no farther than your town');
-      sent = 'Most of your exchanges are ' + mostW + '.' + (far === 'no farther than your town' ? ' None reached beyond it yet.' : ' The farthest reached ' + far + '.');
+      var most = counts.indexOf(Math.max.apply(null, counts)), far = 0;
+      for (var k = 4; k >= 0; k--) { if (counts[k]) { far = k; break; } }
+      sent = 'Most of the people you exchange with are ' + W[most] + '.' + (far > most ? ' The farthest was ' + W[far] + '.' : '');
     }
     document.getElementById('mc-r-sentence').textContent = sent;
-    document.getElementById('mc-r-unplaced').textContent = unplaced ? unplaced + (unplaced === 1 ? ' exchange carries' : ' exchanges carry') + ' no place and ' + (unplaced === 1 ? 'is' : 'are') + ' not drawn.' : '';
+    var notes = [];
+    if (olderFar) notes.push(olderFar + (olderFar === 1 ? ' older exchange was' : ' older exchanges were') + ' farther than your state; how far was not recorded.');
+    if (unplaced) notes.push(unplaced + (unplaced === 1 ? ' exchange carries' : ' exchanges carry') + ' no distance and ' + (unplaced === 1 ? 'is' : 'are') + ' not drawn.');
+    document.getElementById('mc-r-unplaced').textContent = notes.join(' ');
   }
 
   // v2.81.0: My chain's person block, drawn here and again after "About you" is saved
