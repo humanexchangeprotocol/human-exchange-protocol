@@ -1476,24 +1476,29 @@ const PAIR_CODE_LENGTH = 4;
     renderBrowserStorageBanner();
   }
 
-  // iOS-only: when the app is running in a Safari tab (not installed to
-  // the home screen), the chain lives only in this browser's storage and
-  // will not carry over on install. Show a persistent, dismissible-by-
-  // installing reminder with a one-tap export. Non-iOS and installed
-  // contexts render nothing.
+  // iOS-only: in a Safari tab (not installed) the chain lives only in this
+  // browser's storage. v2.92.0 (Michael, Oct 3): the reminder shows only
+  // when there are exchanges on the chain that no backup has captured,
+  // and says how many. Saving a backup (or restoring one) records the act
+  // count in SK_backup; the line returns when a new exchange lands.
+  function backupMarker() { try { return JSON.parse(localStorage.getItem(SK + '_backup') || 'null'); } catch(e) { return null; } }
+  function markBackedUp() { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, at: new Date().toISOString() })); } catch(e) {} }
   function renderBrowserStorageBanner() {
-    var host = document.getElementById('home');
-    if (!host) return;
     var existing = document.getElementById('browser-storage-banner');
-    var isiOS = detectInstallPlatform() === 'ios';
-    if (!isiOS) { if (existing) existing.remove(); return; }
-    if (existing) return;
+    if (existing) existing.remove();
+    if (detectInstallPlatform() !== 'ios') return;
+    var acts = state.chain.filter(HCP.isAct).length;
+    var m = backupMarker();
+    var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
+    if (unbacked <= 0) return;
+    var hero = document.querySelector('#tab-home-content .home-hero');
+    if (!hero) return;
     var b = document.createElement('div');
     b.id = 'browser-storage-banner';
-    b.style.cssText = 'background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:var(--radius); padding:12px 14px; margin:12px 0; font-size:13px; color:var(--text-dim); line-height:1.5;';
-    b.innerHTML = 'You are using HEP in the browser. On iPhone your records live here, not on your phone, and will not carry over when you install. ' +
-      '<button style="display:block; margin-top:8px; background:var(--accent); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:600;" onclick="App.exportBackup()">Save a backup now</button>';
-    host.insertBefore(b, host.firstChild);
+    b.className = 'home-backup';
+    b.innerHTML = '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div>' +
+      '<button class="exs-save" onclick="App.exportBackup()">Back up now</button>';
+    hero.appendChild(b);
   }
 
 
@@ -6673,7 +6678,7 @@ const PAIR_CODE_LENGTH = 4;
       var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
       var exportDate = new Date().toISOString().slice(0, 10);
       a.download = 'HEP-Backup_' + exportName + '_' + exportDate + '.json';
-      a.click(); URL.revokeObjectURL(a.href); toast('Backup downloaded');
+      a.click(); URL.revokeObjectURL(a.href); markBackedUp(); toast('Backup downloaded'); renderBrowserStorageBanner();
     } catch(e) { toast('Backup failed'); }
   }
 
@@ -6693,7 +6698,7 @@ const PAIR_CODE_LENGTH = 4;
       if (bk.settings) state.settings = Object.assign(state.settings, bk.settings);
       // Witness URL is a device setting, not a chain property — never import it
       state.settings.witnessUrl = DEFAULT_WITNESS_URL;
-      state.pin = pin; await saveKeys(pin); save(); state.initialized = true; refreshHome();
+      state.pin = pin; await saveKeys(pin); save(); markBackedUp(); state.initialized = true; refreshHome();
       showScreen('home'); toast('Restored \u2014 ' + state.chain.filter(HCP.isAct).length + ' acts');
       handleIncomingPayload(); checkPendingInvite(); checkPingOnOpen(); checkPhotoNudge();
     } catch(e) { console.error('Import error:', e); toast('Import failed: ' + e.message); }
