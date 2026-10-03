@@ -485,6 +485,12 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .home-hero .mc-display { justify-content: center; margin-top: 2px; }
 .home-hero-link { margin-top: 12px; }
 .home-backup { margin-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 8px; } /* v2.92.0: unbacked-exchanges line, iPhone browser only */
+.home-backup-row { display: flex; align-items: center; gap: 2px; }
+.home-backup-warn { width: 44px; height: 44px; margin: -12px 0 -12px -10px; background: none; border: none; padding: 0; color: #B5742A; display: flex; align-items: center; justify-content: center; cursor: pointer; } /* v2.93.0: amber warning icon opens #backup-sheet */
+#backup-sheet { position: fixed; top: 0; bottom: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; z-index: 50; }
+#backup-sheet .exs-body + .exs-body { margin-top: 10px; }
+#backup-sheet .backup-steps { margin: 10px 0 0; padding-left: 22px; font-size: 15px; color: var(--text); line-height: 1.4; }
+#backup-sheet .backup-steps li + li { margin-top: 6px; }
 .dc-note { margin-top: 20px; }
 .dc-cvlink { margin: 18px 0 0; }
 .dc-prevlink { margin: 8px 0 0; }
@@ -1458,6 +1464,20 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="home-identity">
       <div class="greeting" id="home-greeting">Your Chain</div>
     </div>
+  </div>
+
+  <!-- v2.93.0: why the backup matters, iPhone browser only (opened from the amber icon on Home) -->
+  <div class="exs-sheet mc-sheet" id="backup-sheet" hidden>
+    <div class="exs-sheet-head"><div class="exs-h">Your records are only in this browser</div><button class="exs-x" aria-label="Close" onclick="App.closeBackupInfo()">&#215;</button></div>
+    <p class="exs-body">You are using HEP in Safari. Your exchanges are saved in this browser, not on your phone as an app.</p>
+    <p class="exs-body">Safari can erase them. It clears a website's saved data if you do not open it for 7 days, if you clear your history, and as soon as you close a Private Browsing tab. If that happens, these exchanges are gone.</p>
+    <p class="exs-body">HEP is a web app you can add to your home screen. Once it is installed, your records stay on your phone when you open and close it.</p>
+    <p class="exs-body">Installing does not bring your browser records with you, so back up first:</p>
+    <ol class="backup-steps">
+      <li>Close this, tap Back up now under your standing, and save the file.</li>
+      <li>In Safari, tap the Share button, then Add to Home Screen.</li>
+      <li>Open HEP from your home screen, tap "Recovering a previous chain? Import here" and choose the file you saved.</li>
+    </ol>
   </div>
 
   <!-- TAB: Home (default landing) -->

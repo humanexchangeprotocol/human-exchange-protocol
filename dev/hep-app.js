@@ -1496,11 +1496,16 @@ const PAIR_CODE_LENGTH = 4;
     var b = document.createElement('div');
     b.id = 'browser-storage-banner';
     b.className = 'home-backup';
-    b.innerHTML = '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div>' +
+    b.innerHTML = '<div class="home-backup-row"><button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' +
+      '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div></div>' +
       '<button class="exs-save" onclick="App.exportBackup()">Back up now</button>';
     hero.appendChild(b);
   }
 
+
+  // v2.93.0: the warning sheet behind the amber icon (Michael, Oct 3).
+  function openBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) { el.hidden = false; el.scrollTop = 0; } }
+  function closeBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) el.hidden = true; }
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -13445,7 +13450,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile,
+    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
