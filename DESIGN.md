@@ -55,3 +55,6 @@ A design question these rules do not answer is written here when it comes up, ru
 - The My chain icon on Home: still open, rule 15 asks for a word beside it.
 - The Share tab draws the mark as two filled circles (#icon-cooperation), separate from #icon-hep-mark. Whether Share keeps its own drawing or references the mark is open.
 - The word for standing in the wallet: "Standing" is in use; whether it is final is open.
+- Edit sheets (Oct 3, from the declarations edit mockup): a sheet that changes saved values (photo, name, about, skills) with Save at the bottom is neither a flow sheet nor a reading sheet. The mockup opens it over My chain and has X discard unsaved changes and return to My chain exactly as it was. Whether X discards, keeps a draft, or asks first is open.
+- Removing an item from a list a person typed (a skill): rule 15 reserves X for back, so the mockup uses the word "Remove" in caption size, faintest grey, at the right of the row, in place of the old chip with a small x. Open.
+- The title of the declarations edit sheet: the mockup says "About you"; the built page says "Your Declarations". Open.
