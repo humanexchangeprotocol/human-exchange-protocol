@@ -5308,9 +5308,51 @@ const PAIR_CODE_LENGTH = 4;
     renderSkillsList('edit');
     renderEduList();
     var body = document.querySelector('#declarations-overlay .modal-body'); if (body) body.scrollTop = 0;
-    dcCloseCV();
+    dcCloseCV(); ['preview','pskills','pedu'].forEach(dcCloseSheet);
     showModal('declarations');
   }
+  // v2.86.0: "As others see it" on About you. The About a counterparty sees, drawn from the open draft.
+  // aboutSheetHTML / aboutListHTML take plain data so the real counterparty view (sharing, pinned) can reuse them.
+  function aboutSheetHTML(d, opts) {
+    var name = (d.name || '').trim() || 'Anonymous';
+    var photo = d.photo || '';
+    var skills = d.skills || [], edu = d.education || [], about = (d.about || '').trim();
+    var chev = '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg>';
+    var h = '<div class="mc-id" style="padding-top:0"><div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div><div class="mc-name">' + esc(name) + '</div><div class="exs-cap">In their own words</div></div>';
+    if (!about && !skills.length && !edu.length) {
+      return h + '<p class="exs-body">Nothing written yet. With nothing here, the people you exchange with see no about icon at all.</p>';
+    }
+    if (about) h += '<p class="exs-body dc-about-text">' + esc(about) + '</p><div class="dc-p-gap"></div>';
+    if (skills.length) h += '<button class="exs-row" onclick="' + opts.skills + '"><div class="exs-rowmain"><div class="exs-body">Skills and qualifications</div><div class="exs-cap">' + skills.length + ' listed</div></div>' + chev + '</button>';
+    if (edu.length) h += '<button class="exs-row" onclick="' + opts.edu + '"><div class="exs-rowmain"><div class="exs-body">Education</div><div class="exs-cap">' + edu.length + ' listed</div></div>' + chev + '</button>';
+    h += '<p class="exs-cap" style="margin-top:22px">' + esc(name) + ' wrote this and chose to share it. HEP records exchanges between people; it does not check what anyone says about themselves. The chain shows what has been done.</p>';
+    return h;
+  }
+  function aboutListHTML(name, list) {
+    return '<div class="exs-cap" style="margin-bottom:4px">' + esc((name || '').trim() || 'Anonymous') + ', in their own words</div>' +
+      list.map(function(x) { return '<div class="exs-row mc-vrow"><div class="exs-rowmain"><div class="exs-body">' + esc(x) + '</div></div></div>'; }).join('');
+  }
+  function dcPreviewData() {
+    return {
+      name: document.getElementById('edit-name').value,
+      about: document.getElementById('edit-about').value,
+      photo: (_declDraft && _declDraft.photo) || mcPhoto(),
+      skills: _declDraft ? _declDraft.skills : [], education: _declDraft ? _declDraft.education : []
+    };
+  }
+  function dcOpenPreview() {
+    if (!_declDraft) return;
+    var d = dcPreviewData();
+    document.getElementById('dc-preview-body').innerHTML = aboutSheetHTML(d, { skills: "App.dcOpenPList('skills')", edu: "App.dcOpenPList('edu')" });
+    var el = document.getElementById('dc-sheet-preview'); el.hidden = false; el.scrollTop = 0;
+  }
+  function dcOpenPList(which) {
+    var d = dcPreviewData();
+    var key = which === 'edu' ? 'pedu' : 'pskills';
+    document.getElementById('dc-' + key + '-body').innerHTML = aboutListHTML(d.name, which === 'edu' ? d.education : d.skills);
+    var el = document.getElementById('dc-sheet-' + key); el.hidden = false; el.scrollTop = 0;
+  }
+  function dcCloseSheet(k) { var el = document.getElementById('dc-sheet-' + k); if (el) el.hidden = true; }
   // v2.85.0: "How this is different from a CV", a reading sheet over About you (rules 2, 9). X returns to the edit sheet with the draft untouched.
   function dcOpenCV() { var el = document.getElementById('dc-sheet-cv'); if (el) { el.hidden = false; el.scrollTop = 0; } }
   function dcCloseCV() { var el = document.getElementById('dc-sheet-cv'); if (el) el.hidden = true; }
@@ -13458,7 +13500,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, dcOpenCV, dcCloseCV, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,

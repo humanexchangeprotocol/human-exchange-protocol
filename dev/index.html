@@ -481,6 +481,9 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 .dc-note { margin-top: 20px; }
 .dc-cvlink { margin: 18px 0 0; }
+.dc-preview { margin-top: 18px; border-top: 1px solid var(--border); }
+.dc-about-text { margin: 0; line-height: 1.5; white-space: pre-wrap; }
+.dc-p-gap { height: 14px; }
 .dc-help { margin: 4px 0 6px; }
 .dc-save { margin-top: 24px; }
 .mc-home { padding: 0 20px calc(20px + var(--safe-bottom)); padding-top: var(--safe-top); }
@@ -2253,9 +2256,22 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
         <input class="exs-box-in" type="text" id="edit-edu-input" placeholder="e.g. BA in history, read Schumacher, apprenticed to a welder" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addEdu()}">
         <button class="dc-add" onclick="App.addEdu()">Add</button>
       </div>
+      <button class="exs-row dc-preview" onclick="App.dcOpenPreview()"><div class="exs-rowmain"><div class="exs-body">As others see it</div><div class="exs-cap">Your About, the way a person you exchange with sees it</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <p class="exs-cap dc-note">Describe yourself truthfully, the way you want to be known. Everything here stays on this phone.</p>
       <p class="exs-cap" style="margin-top:8px">Your photo helps show you are a real person.</p>
       <button class="btn btn-primary dc-save" onclick="App.saveDeclarationsEdit()">Save</button>
+    </div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-preview" hidden>
+      <div class="exs-sheet-head"><div></div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('preview')">&#215;</button></div>
+      <div id="dc-preview-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-pskills" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Skills and qualifications</div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('pskills')">&#215;</button></div>
+      <div id="dc-pskills-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="dc-sheet-pedu" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Education</div><button class="exs-x" aria-label="Close" onclick="App.dcCloseSheet('pedu')">&#215;</button></div>
+      <div id="dc-pedu-body"></div>
     </div>
     <div class="exs-sheet mc-sheet" id="dc-sheet-cv" hidden>
       <div class="exs-sheet-head"><div class="exs-h">How this is different from a CV</div><button class="exs-x" aria-label="Close" onclick="App.dcCloseCV()">&#215;</button></div>
