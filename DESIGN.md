@@ -31,6 +31,8 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 10. There is no inline expander. If something is short enough to show inline, show it. A disclosure always opens a reading sheet.
 11. A control that goes somewhere else in the flow is a button or a row with a right chevron, never an underlined phrase. A list of places to go (My chain) is plain rows: word, caption, chevron, no icons, the same row the exchange uses.
 
+11a. **Reordering** (ruled Oct 3): a list a person typed and can arrange (skills, education) shows the grip, six solid dots (#icon-grip), at the left of each row, in the faint tone at 20px, only when the list has two or more items. Press and drag the grip: on a phone you hold and move, on a computer the pointer shows a grabbing hand. The row being moved lifts (raised background, large shadow) and the others swap around it in place, nothing slides (rule 4a). The order is part of the draft on an edit sheet (rule 3a): Save keeps it, X discards it.
+
 ## Fields
 
 12. One field style, used everywhere a person types: label above in caption size, a single quiet box (`--bg-input`, one border, `--radius-sm`), body text inside, accent border on focus. No field is styled per spot.
@@ -39,7 +41,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 ## Icons
 
 14. One icon style, the bottom bar's (ruled Oct 2: every icon matches the system already built). Icons sit on a 24 grid and are solid: shapes filled with the current colour. Shapes that overlap are filled at 0.55 so the overlap reads darker (the HEP mark, Share, network). A line, where a shape needs one, is 2.5 wide with round ends and joins (3 for check). No thin outline icons, no emoji. Corners are square except where the shape itself is round (Home's house has crisp corners; circles stay circles). Outline icons (like History) leave their inside white so anything inside reads crisply. Icons rest in the faint tone at 22px, the bottom bar's tone and size, and turn blue when active; none sits darker than the bar. A small named set defined once in the sprite and reused by name. The HEP mark (#icon-hep-mark, two crossing rings, ruled Oct 2) and the wallet (#icon-wallet, a square-cornered wallet holding the mark) live only in the sprite; everything else references them, so a redraw happens in one place.
-15. An icon never carries meaning alone except X and chevron. Every other icon has a word beside it.
+15. An icon never carries meaning alone except X, chevron and the grip (rule 11a). Every other icon has a word beside it.
 15a. Removing an item a person typed into a list (a skill) uses the word "Remove" at the right of its row, caption size, faintest grey; never a small x, which means back (ruled Oct 3).
 
 ## Color and shape

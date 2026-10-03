@@ -673,6 +673,35 @@ const PAIR_CODE_LENGTH = 4;
     input.value = '';
     renderEduList();
   }
+  // v2.84.0: drag to reorder a typed list (DESIGN.md rule 11a). Press the grip and drag; rows swap in place, nothing slides (rule 4a).
+  // Pointer events cover mouse and touch alike. The new order lands in the draft; Save commits it like any other change.
+  function dcDrag(e, key) {
+    if (!_declDraft) return;
+    var list = key === 'education' ? _declDraft.education : _declDraft.skills;
+    var handle = e.currentTarget, row = handle.closest('.exs-row'), box = row && row.parentNode;
+    if (!box) return;
+    e.preventDefault();
+    // Listen on window, not the handle: moving the row in the DOM releases pointer capture, which lost the drag after the first swap.
+    row.classList.add('dc-dragging'); document.body.classList.add('dc-drag');
+    function move(ev) {
+      if (ev.pointerId !== e.pointerId) return;
+      var y = ev.clientY;
+      var others = Array.prototype.filter.call(box.children, function(r) { return r !== row; });
+      var idx = others.filter(function(r) { var b = r.getBoundingClientRect(); return b.top + b.height / 2 < y; }).length;
+      var ref = others[idx] || null;
+      if (ref !== row.nextElementSibling) box.insertBefore(row, ref);
+    }
+    function up(ev) {
+      if (ev && ev.pointerId !== e.pointerId) return;
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+      row.classList.remove('dc-dragging'); document.body.classList.remove('dc-drag');
+      var order = Array.prototype.map.call(box.children, function(r) { return list[+r.dataset.i]; });
+      list.splice.apply(list, [0, list.length].concat(order));
+      if (key === 'education') renderEduList(); else renderSkillsList('edit');
+    }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  }
+
   function removeEdu(idx) { if (!_declDraft) return; _declDraft.education.splice(idx, 1); renderEduList(); }
   function renderEduList() {
     const c = document.getElementById('edit-edu-list'); if (!c || !_declDraft) return;
@@ -680,7 +709,8 @@ const PAIR_CODE_LENGTH = 4;
     _declDraft.education.forEach((item, i) => {
       const row = document.createElement('div');
       row.className = 'exs-row mc-vrow';
-      row.innerHTML = '<div class="exs-rowmain"><div class="exs-body">' + esc(item) + '</div></div><button class="dc-rm" onclick="App.removeEdu(' + i + ')">Remove</button>';
+      row.dataset.i = i;
+      row.innerHTML = (_declDraft.education.length > 1 ? '<button class="dc-grip" aria-label="Drag to reorder" onpointerdown="App.dcDrag(event,\'education\')"><svg width="20" height="20" aria-hidden="true"><use href="#icon-grip"/></svg></button>' : '') + '<div class="exs-rowmain"><div class="exs-body">' + esc(item) + '</div></div><button class="dc-rm" onclick="App.removeEdu(' + i + ')">Remove</button>';
       c.appendChild(row);
     });
   }
@@ -698,7 +728,8 @@ const PAIR_CODE_LENGTH = 4;
       skillList('edit').forEach((skill, i) => {
         const row = document.createElement('div');
         row.className = 'exs-row mc-vrow';
-        row.innerHTML = '<div class="exs-rowmain"><div class="exs-body">' + esc(skill) + '</div></div><button class="dc-rm" onclick="App.removeSkill(\'edit\',' + i + ')">Remove</button>';
+        row.dataset.i = i;
+        row.innerHTML = (skillList('edit').length > 1 ? '<button class="dc-grip" aria-label="Drag to reorder" onpointerdown="App.dcDrag(event,\'skills\')"><svg width="20" height="20" aria-hidden="true"><use href="#icon-grip"/></svg></button>' : '') + '<div class="exs-rowmain"><div class="exs-body">' + esc(skill) + '</div></div><button class="dc-rm" onclick="App.removeSkill(\'edit\',' + i + ')">Remove</button>';
         container.appendChild(row);
       });
       return;
@@ -13399,7 +13430,7 @@ function init() {
     switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
-    addSkill, removeSkill, addEdu, removeEdu, toggleSkillPicker,
+    addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
     startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
