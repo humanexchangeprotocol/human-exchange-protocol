@@ -1486,7 +1486,9 @@ const PAIR_CODE_LENGTH = 4;
   function renderBrowserStorageBanner() {
     var existing = document.getElementById('browser-storage-banner');
     if (existing) existing.remove();
-    if (detectInstallPlatform() !== 'ios') return;
+    // v2.96.0 (Michael, Oct 3): every device, installed or not. The amber icon and its
+    // Safari sheet stay iPhone-browser only, since that sheet is about Safari.
+    var iosBrowser = detectInstallPlatform() === 'ios';
     var acts = state.chain.filter(HCP.isAct).length;
     var m = backupMarker();
     var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
@@ -1496,7 +1498,7 @@ const PAIR_CODE_LENGTH = 4;
     var b = document.createElement('div');
     b.id = 'browser-storage-banner';
     b.className = 'home-backup';
-    b.innerHTML = '<div class="home-backup-row"><button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' +
+    b.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') +
       '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div></div>' +
       '<button class="exs-save" onclick="App.exportBackup()">Back up now</button>';
     hero.appendChild(b);
