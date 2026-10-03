@@ -35,7 +35,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 ## Icons
 
-14. One stroke style: 1.75 line weight on a 24 grid, round caps. A small named set defined once and reused by name (device, chain, similar, x, chevron, check, arrow, shield, hep-mark). No emoji, no filled glyphs beside stroke glyphs.
+14. One icon style, the bottom bar's (ruled Oct 2: every icon matches the system already built). Icons sit on a 24 grid and are solid: shapes filled with the current colour. Shapes that overlap are filled at 0.55 so the overlap reads darker (the HEP mark, Share, network). A line, where a shape needs one, is 2.5 wide with round ends and joins (3 for check). No thin outline icons, no emoji. A small named set defined once in the sprite and reused by name.
 15. An icon never carries meaning alone except X and chevron. Every other icon has a word beside it.
 
 ## Color and shape
