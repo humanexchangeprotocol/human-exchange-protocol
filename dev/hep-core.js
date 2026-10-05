@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.108.0';
+const APP_VERSION='2.109.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -130,6 +130,10 @@ const RT_GENESIS='genesis'; // record type for chain origin anchor
 const RT_PARENT='parent';
 // Step 2 (v2.102.0): the device certificate record. Not an exchange either.
 const RT_DEVICE='device';
+// Step 4 (v2.109.0): the repair record. A copy of an exchange first written on
+// another of the person's devices. It IS an act (it counts once, by
+// originalHash); it names where it came from so the fork stays visible.
+const RT_REPAIR='repair';
 function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS&&r.type!==RT_PARENT&&r.type!==RT_DEVICE;}
 const u8=new TextEncoder(),u8d=new TextDecoder();
 const bth=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -464,6 +468,12 @@ function ser(r){
       `dl:${r.deviceLabelHash||''}`,
       `dt:${r.deviceCertTs||''}`,
       `dg:${r.deviceSig||''}`
+    ]:r.type===RT_REPAIR?[
+      // Step 4 (v2.109.0): repair fields exist only on repair records. The act
+      // fields, actHash and counterpartySig ride in the common fields above.
+      `oh:${r.originalHash||''}`,
+      `of:${r.originalFp||''}`,
+      `ot:${r.originalType||''}`
     ]:[]).join('|');
   }
   throw new Error('Unsupported serVersion: '+r.serVersion);
@@ -554,7 +564,7 @@ async function vc(c,k){
 // whose counterparty is this chain's own root (same-owner rule, Oct 5 2026);
 // reported apart from errors until Step 0b enforcement.
 async function vcm(c,rootPubJwk){
-  const e=[],signers=[],devices=[],selfActs=[];
+  const e=[],signers=[],devices=[],selfActs=[],repSeen=new Set();
   const rootFp=await kfp(rootPubJwk);
   const trusted=[{fp:rootFp,key:await ipk(rootPubJwk)}];
   let parentJwk=null,parentFp=null;
@@ -568,6 +578,7 @@ async function vcm(c,rootPubJwk){
       if(r.serVersion!==SV_LEGACY&&r.prevHash3&&r.prevHash3!==hr3(c[i-1]))e.push(`Record ${i}: SHA3 hash mismatch`);
     }
     if(isAct(r)&&r.counterparty&&r.counterparty===rootFp)selfActs.push(i);
+    if(r.type===RT_REPAIR){if(!r.originalHash)e.push(`Record ${i}: repair without originalHash`);else if(repSeen.has(r.originalHash))e.push(`Record ${i}: repeated repair`);else repSeen.add(r.originalHash);}
     let signer=null;
     for(const t of trusted){if(await vr(r,t.key)){signer=t.fp;break;}}
     signers.push(signer);
@@ -587,10 +598,43 @@ async function vcm(c,rootPubJwk){
   }
   return{valid:e.length===0,errors:e,signers:signers,rootFp:rootFp,parentFp:parentFp,devices:devices,selfActs:selfActs};
 }
-function cd(c){const ex=c.filter(isAct);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
-function wb(c){let b=0;for(const r of c){if(!isAct(r))continue;if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
+// Acts counted once: a repair whose originalHash already appeared is skipped.
+// Sync never writes such a duplicate; this is the safety net (Step 4).
+function acts(c){const seen=new Set(),o=[];for(const r of c){if(!isAct(r))continue;if(r.type===RT_REPAIR&&r.originalHash){if(seen.has(r.originalHash))continue;seen.add(r.originalHash);}o.push(r);}return o}
+function cd(c){const ex=acts(c);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
+function wb(c){let b=0;for(const r of acts(c)){if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
 function er(a,b){const da=cd(a),db=cd(b);if(!db||!da)return 1;return da/db}
-function grr(c){const ex=c.filter(isAct);if(!ex.length)return{provided:0,received:0,ratio:0};let p=0,r=0;for(const x of ex){if(x.energyState==='provided')p++;else if(x.energyState==='received')r++;}return{provided:p,received:r,ratio:p/(p+r||1)}}
+function grr(c){const ex=acts(c);if(!ex.length)return{provided:0,received:0,ratio:0};let p=0,r=0;for(const x of ex){if(x.energyState==='provided')p++;else if(x.energyState==='received')r++;}return{provided:p,received:r,ratio:p/(p+r||1)}}
+
+// Step 4 (v2.109.0): make an unsigned repair record from an act found on
+// another device's chain. origHash is the act's first hash (a repair passes
+// its own originalHash through, so a repair of a repair still names the very
+// first record); origFp is the key that first signed it. Append with atc.
+function crep(o,origHash,origFp){
+  const r={serVersion:SV,type:RT_REPAIR,value:o.value,energyState:o.energyState,counterparty:o.counterparty,timestamp:o.timestamp,seq:null,prevHash:null,prevHash3:null,signature:null,
+    originalHash:origHash,originalFp:origFp,originalType:o.type===RT_REPAIR?(o.originalType||''):o.type};
+  for(const k of['counterpartyName','duration','description','category','actHash','counterpartySig'])if(o[k]!==undefined&&o[k]!=='')r[k]=o[k];
+  return r;
+}
+// The sync step, one direction: given my chain and the other device's chain
+// (already verified under the same root; theirSigners is vcm(theirs).signers),
+// return the repair records I should append, in their order. Idempotent: run
+// again after appending and it returns nothing. Pings, genesis, parent and
+// device records are never copied.
+async function mergeFrom(mine,theirs,theirSigners){
+  const known=new Set();
+  for(const r of mine){if(!isAct(r))continue;known.add(r.type===RT_REPAIR&&r.originalHash?r.originalHash:await hr(r));}
+  const out=[];
+  for(let i=0;i<theirs.length;i++){
+    const r=theirs[i];if(!isAct(r))continue;
+    const isRep=r.type===RT_REPAIR&&r.originalHash;
+    const key=isRep?r.originalHash:await hr(r);
+    if(known.has(key))continue;
+    known.add(key);
+    out.push(crep(r,key,isRep?(r.originalFp||''):((theirSigners&&theirSigners[i])||'')));
+  }
+  return out;
+}
 
 // --- Encryption ---
 async function dkp(pin,salt){const km=await crypto.subtle.importKey('raw',u8.encode(pin),'PBKDF2',false,['deriveKey']);return await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:PBKDF_I,hash:'SHA-256'},km,{name:AESN,length:AESL},false,['encrypt','decrypt'])}
@@ -856,7 +900,7 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================
