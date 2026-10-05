@@ -2694,6 +2694,20 @@ const PAIR_CODE_LENGTH = 4;
   let sessionCode = null;
   let sessionTheirCode = null;
   let sessionPartner = null;
+  // Step 3b (v2.103.0): does the partner's key speak for the fingerprint they
+  // claim? Fire and forget, log only, once per partner key. Never awaited.
+  var bindLogged = {};
+  function logPartnerBinding(p) {
+    try {
+      if (!p || !p.public_key || !p.fingerprint) return;
+      var k = p.fingerprint + ':' + (p.public_key.x || '');
+      if (bindLogged[k]) return; bindLogged[k] = true;
+      var proof = (p.thread_snapshot && p.thread_snapshot.device_proof) || null;
+      HCP.verifyKeyBinding(p.fingerprint, p.public_key, proof).then(function(r) {
+        console.log('[bind] ' + (r.ok ? (r.mode === 'device' ? 'device proof ok' : 'key matches fingerprint') : 'UNBOUND (observe only): ' + r.mode + (r.error ? ', ' + r.error : '')) + ', ' + p.fingerprint.substring(0, 12));
+      }).catch(function(e) { console.log('[bind] check failed:', e.message); });
+    } catch (e) { console.log('[bind] check failed:', e.message); }
+  }
   let sessionProposal = null;
   // Step 0 countersignature (v2.100.0): the act hash both phones compute for
   // this session and the other person's signature over it. Cleared with the session.
@@ -3037,7 +3051,7 @@ const PAIR_CODE_LENGTH = 4;
       const data = await resp.json();
 
       if (data.connected) {
-        sessionPartner = data.partner;
+        sessionPartner = data.partner; logPartnerBinding(data.partner);
         await onSessionConnected();
       } else {
         document.getElementById('session-status-line').textContent = 'Waiting for them to connect...';
@@ -3578,7 +3592,7 @@ const PAIR_CODE_LENGTH = 4;
 
       // First: check for connection if not yet connected
       if (!sessionPartner && data.connected) {
-        sessionPartner = data.partner;
+        sessionPartner = data.partner; logPartnerBinding(data.partner);
         stopSessionPoll();
         await onSessionConnected();
         return;
@@ -8820,7 +8834,7 @@ function init() {
       var data = await resp.json();
 
       if (data.connected) {
-        sessionPartner = data.partner;
+        sessionPartner = data.partner; logPartnerBinding(data.partner);
         exOnConnected();
       } else {
         // Show waiting and poll
@@ -8874,7 +8888,7 @@ function init() {
         if (!validation.valid) { sessionViolation(validation.reason); return; }
         if (data.connected && data.partner) {
           exStopConnectPoll();
-          sessionPartner = data.partner;
+          sessionPartner = data.partner; logPartnerBinding(data.partner);
           exOnConnected();
         }
       } catch(e) {}
@@ -8892,7 +8906,7 @@ function init() {
         if (!validation.valid) { sessionViolation(validation.reason); return; }
         if (data.connected && data.partner) {
           exStopConnectPoll();
-          sessionPartner = data.partner;
+          sessionPartner = data.partner; logPartnerBinding(data.partner);
           exOnConnected();
         }
       } catch(e) {}
