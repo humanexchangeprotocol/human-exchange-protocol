@@ -295,8 +295,10 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Chain append (handles genesis protocol commitment) ---
   async function appendRecord(record) {
-    // Duplicate guard: reject if last record matches counterparty + value + timestamp within 30s
-    if (state.chain.length > 0) {
+    // Duplicate guard: reject if last record matches counterparty + value + timestamp within 30s.
+    // v2.101.0: acts only. A parent record has value 0 and no counterparty, like a ping,
+    // and would otherwise be dropped silently after a recent ping.
+    if (state.chain.length > 0 && HCP.isAct(record)) {
       const last = state.chain[state.chain.length - 1];
       if (last.counterparty === record.counterparty && last.value === record.value && last.energyState === record.energyState) {
         const timeDiff = Math.abs(new Date(record.timestamp).getTime() - new Date(last.timestamp).getTime());
@@ -971,6 +973,96 @@ const PAIR_CODE_LENGTH = 4;
   // top one. Every drawing reads only the person's own chain, on this phone.
   var _mcStack = [];
   var MC_AMB = 'var(--amber)';
+  // ---- Parent key (Step 1, v2.101.0). Dev test entry under This phone; the
+  // real entry point is "Add a device" (Step 3). The parent private key is
+  // encrypted under the person's password and stored only here (SK + '_parent').
+  // A stored key counts only if a parent record on this chain carries the same
+  // public key (a restored or different chain leaves an orphan, ignored).
+  function pkState() {
+    var stored = null;
+    try { stored = JSON.parse(localStorage.getItem(SK + '_parent') || 'null'); } catch (e) { stored = null; }
+    var rec = null;
+    for (var i = 0; i < state.chain.length; i++) {
+      var r = state.chain[i];
+      if (r.type === HCP.RECORD_TYPE_PARENT && r.parentKey) { rec = r; }
+    }
+    var match = !!(stored && rec && stored.publicKey && stored.publicKey.x === rec.parentKey.x && stored.publicKey.y === rec.parentKey.y);
+    return { stored: match ? stored : null, rec: rec, orphan: !!(stored && !match) };
+  }
+  function pkRowCaption() {
+    var el = document.getElementById('pk-row-cap'); if (!el) return;
+    var st = pkState();
+    el.textContent = st.stored ? 'Set on this phone' : (st.rec ? 'On your chain, not on this phone' : 'Not set');
+  }
+  function pkOpen() { pkRender(); mcOpen('parent'); }
+  function pkRender() {
+    var body = document.getElementById('pk-body'), foot = document.getElementById('pk-foot');
+    if (!body || !foot) return;
+    var st = pkState(), h = '';
+    if (st.stored) {
+      h += '<div class="exs-cap mc-group">Your parent key</div>';
+      h += '<div class="exs-body">Fingerprint</div><div class="exs-cap" style="font-family:var(--font-mono);">' + esc(st.stored.parentFp) + '</div>';
+      h += '<div class="exs-body" style="margin-top:12px;">Created</div><div class="exs-cap">' + esc(new Date(st.stored.created).toLocaleString()) + '</div>';
+      if (st.stored.hint) h += '<div class="exs-body" style="margin-top:12px;">Hint</div><div class="exs-cap">' + esc(st.stored.hint) + '</div>';
+      h += '<div class="exs-fl" style="margin-top:20px;"><label for="pk-check">Check your password</label><input class="exs-box-in" type="password" id="pk-check" autocomplete="off"></div>';
+      h += '<p class="exs-cap" id="pk-msg" style="margin-top:8px;"></p>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button class="btn btn-primary" id="pk-btn" style="width:100%;" onclick="App.pkCheck()">Check password</button>';
+      return;
+    }
+    if (st.rec) {
+      h += '<p class="exs-body">Your chain has a parent key, but its locked copy is not on this phone. It stays on the phone where it was made.</p>';
+      body.innerHTML = h; foot.innerHTML = ''; return;
+    }
+    h += '<p class="exs-body">A parent key sits above this phone\u2019s key. Later it is what lets you add another device to this chain.</p>';
+    h += '<p class="exs-body" style="margin-top:10px;">It is locked by a password you choose. The password is stored nowhere, the locked key stays on this phone, and neither is ever sent to a server.</p>';
+    h += '<p class="exs-cap" style="margin-top:10px;">Test build. Your exchanges do not depend on this key: if you forget the password, nothing on your chain is lost.</p>';
+    h += '<div class="exs-fl" style="margin-top:20px;"><label for="pk-pw">Password</label><input class="exs-box-in" type="password" id="pk-pw" autocomplete="new-password"></div>';
+    h += '<div class="exs-fl"><label for="pk-pw2">Type it again</label><input class="exs-box-in" type="password" id="pk-pw2" autocomplete="new-password"></div>';
+    h += '<div class="exs-fl"><label for="pk-hint">Hint (optional)</label><input class="exs-box-in" type="text" id="pk-hint" autocomplete="off"></div>';
+    h += '<p class="exs-cap">The hint is kept on this phone as plain text. Never put the password in it.</p>';
+    h += '<p class="exs-cap" id="pk-msg" style="margin-top:8px;"></p>';
+    body.innerHTML = h;
+    foot.innerHTML = '<button class="btn btn-primary" id="pk-btn" style="width:100%;" onclick="App.pkCreate()">Create parent key</button>';
+  }
+  function pkMsg(t, red) { var m = document.getElementById('pk-msg'); if (m) { m.textContent = t; m.style.color = red ? 'var(--red)' : 'var(--green)'; } }
+  async function pkCreate() {
+    var pw = (document.getElementById('pk-pw') || {}).value || '';
+    var pw2 = (document.getElementById('pk-pw2') || {}).value || '';
+    var hint = ((document.getElementById('pk-hint') || {}).value || '').trim();
+    if (pw.length < 8) { pkMsg('Use at least 8 characters.', true); return; }
+    if (pw !== pw2) { pkMsg('The two passwords do not match.', true); return; }
+    if (hint && pw.toLowerCase().indexOf(hint.toLowerCase()) >= 0 || (hint && hint.toLowerCase().indexOf(pw.toLowerCase()) >= 0)) { pkMsg('The hint gives the password away. Change one of them.', true); return; }
+    var st = pkState();
+    if (st.stored || st.rec) { pkRender(); return; }
+    if (!state.publicKeyJwk || !state.privateKey) { pkMsg('This phone\u2019s key is not loaded.', true); return; }
+    var btn = document.getElementById('pk-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Creating\u2026'; }
+    try {
+      var P = await HCP.makeParent(state.publicKeyJwk, pw, hint);
+      localStorage.setItem(SK + '_parent', JSON.stringify(P.stored));
+      try {
+        await appendRecord(P.record);
+      } catch (ae) { localStorage.removeItem(SK + '_parent'); throw ae; }
+      save();
+      var ok = await HCP.verifyParentRecord(state.chain[state.chain.length - 1], state.publicKeyJwk);
+      console.log('[parent] record appended at seq ' + P.record.seq + ', parent signature ' + (ok ? 'verified' : 'FAILED') + ', fp ' + P.stored.parentFp);
+      pkRowCaption(); pkRender();
+      toast('Parent key created');
+    } catch (e) {
+      console.log('[parent] create failed:', e.message);
+      pkMsg('Could not create the key: ' + e.message, true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Create parent key'; }
+    }
+  }
+  async function pkCheck() {
+    var pw = (document.getElementById('pk-check') || {}).value || '';
+    var st = pkState(); if (!st.stored) return;
+    var btn = document.getElementById('pk-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Checking\u2026'; }
+    try { await HCP.unlockParent(st.stored, pw); pkMsg('That is the right password.', false); console.log('[parent] unlock ok'); }
+    catch (e) { pkMsg('That is not the password.', true); console.log('[parent] unlock failed'); }
+    if (btn) { btn.disabled = false; btn.textContent = 'Check password'; }
+  }
+
   function mcOpen(k) {
     var el = document.getElementById('mc-sheet-' + k);
     if (!el) return;
@@ -1419,6 +1511,7 @@ const PAIR_CODE_LENGTH = 4;
     var idEl = document.getElementById('wallet-identity-panel');
     if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
     try { renderStandingTab(); } catch(e) { console.log('[wallet] Standing render failed:', e.message); }
+    try { pkRowCaption(); } catch (e) {}
     showModal('wallet');
   }
 
@@ -7132,6 +7225,7 @@ const PAIR_CODE_LENGTH = 4;
     // Scorched earth
     localStorage.removeItem(SK);
     localStorage.removeItem(SK + '_keys');
+    localStorage.removeItem(SK + '_parent');
     localStorage.removeItem('hcp_dev_install_dismissed');
 
     // Unregister service worker
@@ -13754,6 +13848,7 @@ function init() {
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
+    pkOpen, pkCreate, pkCheck,
     coopReceiveProposal, sessionCodeInput, sessionConnect, sessionConfirm, sessionReject, sendSessionProposal, sessionThreadTab,
     setProposalPath, scanConfirmation, parseExConfirmation, parseExConfirmationMsg,
     finishExchange, settleViaMessage, shareSettlement, copySettlement,

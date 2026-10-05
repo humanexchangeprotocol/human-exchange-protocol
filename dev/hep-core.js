@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.100.2';
+const APP_VERSION='2.101.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -126,7 +126,9 @@ const COMMITMENT_TEXT='This protocol is free, will never require payment, and ne
 const XP={SESSION:'session',QR:'qr',OFFLINE:'offline'}; // exchange_path values
 const RT_PING='ping'; // record type for genesis ping (not an exchange)
 const RT_GENESIS='genesis'; // record type for chain origin anchor
-function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS;}
+// Step 1 (v2.101.0): the parent key record. Not an exchange: no value, no direction.
+const RT_PARENT='parent';
+function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS&&r.type!==RT_PARENT;}
 const u8=new TextEncoder(),u8d=new TextDecoder();
 const bth=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
 const htb=h=>{const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a.buffer};
@@ -186,6 +188,44 @@ async function cg(f){
   if(f.pohSnapshot)r.pohSnapshot=f.pohSnapshot;
   if(typeof f.connectivityAvailable==='boolean')r.connectivityAvailable=f.connectivityAvailable;
   return r;
+}
+
+// --- Parent key (Step 1, v2.101.0) ---
+// A second key above the chain key. The parent signs the binding string
+// 'hp1|<chain key fingerprint>|<parent fingerprint>'; the chain key signs the
+// parent record itself (the normal record signature). The parent private key
+// is encrypted under a password the person sets and stays on this device.
+// Nothing about it goes to a server.
+const PARENT_PBKDF_I=600000;
+function parBind(chainFp,parentFp){return 'hp1|'+chainFp+'|'+parentFp}
+async function dkpI(pw,salt,iter){const km=await crypto.subtle.importKey('raw',u8.encode(pw),'PBKDF2',false,['deriveKey']);return await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},km,{name:AESN,length:AESL},false,['encrypt','decrypt'])}
+async function mkpar(chainPubJwk,password,hint){
+  if(!password)throw new Error('Password required');
+  const pair=await gkp();
+  const pubJ=await ek(pair.publicKey),privJ=await ek(pair.privateKey);
+  const chainFp=await kfp(chainPubJwk),parentFp=await kfp(pubJ);
+  const parentSig=btb(await crypto.subtle.sign(SALG,pair.privateKey,u8.encode(parBind(chainFp,parentFp))));
+  const salt=rb(SLL),iv=rb(IVL),key=await dkpI(password,salt,PARENT_PBKDF_I);
+  const ct=await crypto.subtle.encrypt({name:AESN,iv},key,u8.encode(JSON.stringify(privJ)));
+  return{
+    record:{serVersion:SV,type:RT_PARENT,value:0,energyState:'none',counterparty:'',counterpartyName:'',timestamp:now(),seq:null,prevHash:null,prevHash3:null,signature:null,parentKey:{crv:pubJ.crv,kty:pubJ.kty,x:pubJ.x,y:pubJ.y},parentSig:parentSig},
+    stored:{v:1,parentFp:parentFp,publicKey:{crv:pubJ.crv,kty:pubJ.kty,x:pubJ.x,y:pubJ.y},hint:hint||'',iter:PARENT_PBKDF_I,salt:btb(salt),iv:btb(iv),ciphertext:btb(ct),created:now()}
+  };
+}
+async function unpar(stored,password){
+  const key=await dkpI(password,new Uint8Array(btf(stored.salt)),stored.iter||PARENT_PBKDF_I);
+  let privJ;
+  try{privJ=JSON.parse(u8d.decode(await crypto.subtle.decrypt({name:AESN,iv:new Uint8Array(btf(stored.iv))},key,btf(stored.ciphertext))))}
+  catch(e){throw new Error('Wrong password')}
+  return await isk(privJ);
+}
+async function vpar(r,chainPubJwk){
+  try{
+    if(r.type!==RT_PARENT||!r.parentKey||!r.parentSig)return false;
+    const chainFp=await kfp(chainPubJwk),parentFp=await kfp(r.parentKey);
+    const pk=await ipk(r.parentKey);
+    return await crypto.subtle.verify(SALG,pk,btf(r.parentSig),u8.encode(parBind(chainFp,parentFp)));
+  }catch(e){return false}
 }
 
 // --- Ping record (proof-of-human heartbeat, no counterparty/value) ---
@@ -347,7 +387,12 @@ function ser(r){
       `pd:${r.photoData||''}`,
       `ah:${r.actHash||''}`,
       `cg:${r.counterpartySig||''}`
-    ].join('|');
+    ].concat(r.type===RT_PARENT?[
+      // Step 1 (v2.101.0): parent fields exist only on parent records, so
+      // every other SV7 record serializes exactly as before.
+      `pk:${r.parentKey?JSON.stringify({crv:r.parentKey.crv,kty:r.parentKey.kty,x:r.parentKey.x,y:r.parentKey.y}):''}`,
+      `pg:${r.parentSig||''}`
+    ]:[]).join('|');
   }
   throw new Error('Unsupported serVersion: '+r.serVersion);
 }
@@ -682,7 +727,7 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================

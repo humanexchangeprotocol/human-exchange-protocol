@@ -1590,6 +1590,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP works the way it does</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <div class="exs-cap mc-group">This phone</div>
       <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.pkOpen()"><div class="exs-rowmain"><div class="exs-body">Parent key (test)</div><div class="exs-cap" id="pk-row-cap">Not set</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
     <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
@@ -1670,6 +1671,12 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <p class="exs-cap" id="mc-r-unplaced" style="margin:0"></p>
       <p class="exs-cap" style="margin:4px 0 0">Locations come from phones and are not guaranteed.</p>
       <div class="mc-how"><div class="exs-body" style="font-weight:600">How this is drawn</div><p class="exs-cap">Reach is the distance between you and the person you exchanged with, at the time of the exchange. You are wherever you are; they may be across town or across the world. Only a rough distance is kept for each exchange, never a place.</p><p class="exs-cap">The rings are distances, not borders: nearby (under 25 km), your region (to 300 km), across your country (to 1,500 km), across your continent (to 5,000 km), and across the world. Marks are spread around each ring, so the picture shows distance only, never direction. No place names are drawn and there is no map.</p><p class="exs-cap">Older exchanges that carry only a typed town and state are placed when they match your usual town or state; ones farther away are counted but not drawn, because how far they were was not recorded.</p><p class="exs-cap">It is on your phone only and never shown to anyone you exchange with. Nothing on your chain changes.</p><p class="exs-cap"><b>Distance decay</b> (geography, the gravity model of interaction, Zipf 1946; Tobler's first law). Interaction falls off with distance. Here the fall-off is drawn and nothing is done with it: no catchment, no market area, no prediction.</p><p class="exs-cap"><b>Activity space</b> (urban geography and mobility studies). Used to describe and to track. Here names and direction are removed and the picture never leaves the phone.</p></div>
+    </div>
+    <!-- Parent key (Step 1, v2.101.0): dev test entry; replaced by "Add a device" in Step 3. Learn player frame for the pinned button (rule 3a). -->
+    <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-parent" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Parent key</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="lr-scroll" id="pk-body"></div>
+      <div class="lr-foot" id="pk-foot"></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
