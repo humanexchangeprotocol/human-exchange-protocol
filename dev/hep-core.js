@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.105.0';
+const APP_VERSION='2.105.1';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -134,7 +134,7 @@ function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS&&r.type!==RT_PARE
 const u8=new TextEncoder(),u8d=new TextDecoder();
 const bth=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
 const htb=h=>{const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a.buffer};
-const btb=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const btb=b=>{const a=new Uint8Array(b);let s='';for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode.apply(null,a.subarray(i,i+0x8000));return btoa(s);};
 const btf=s=>{const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a.buffer};
 const rb=n=>crypto.getRandomValues(new Uint8Array(n));
 const now=()=>new Date().toISOString();
