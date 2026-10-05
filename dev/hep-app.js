@@ -2515,6 +2515,7 @@ const PAIR_CODE_LENGTH = 4;
     mcOpen('recdev');
   }
   function recBkOpen() {
+    bkPrepare();
     var rm = recModel();
     document.getElementById('recbk-body').innerHTML = '<div class="exs-cap mc-group">Last backup</div><div class="exs-body">' + (rm.backupAt ? esc(recFmtD(rm.backupAt)) + (rm.unbacked ? '. ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</div>' +
       '<p class="exs-body" style="margin-top:16px">A backup is a copy of your record outside all your devices. If you ever lose every device, you can bring everything back from it.</p>' +
@@ -7823,15 +7824,25 @@ const PAIR_CODE_LENGTH = 4;
   // becomes the central place for backups, no server), and a copy is saved
   // to this phone. Share first, because it needs the tap; the local copy
   // follows when the panel closes, whether they shared or cancelled.
+  // v2.111.2: the backup is locked under the PIN (PBKDF2, slow on purpose). Browsers open
+  // the share panel only right after a tap, and the locking could outlast that window on a
+  // phone, so the share silently failed into a download. The Backup sheet now builds the
+  // file as it opens; the tap shares at once. Rebuilt if the chain changed meanwhile.
+  var _bkPrep = null;
+  async function bkBuild() {
+    var bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
+    bk.declarations = state.declarations;
+    bk.settings = state.settings;
+    var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
+    return { text: JSON.stringify(bk, null, 2), name: 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json', len: state.chain.length };
+  }
+  function bkPrepare() { _bkPrep = null; var len = state.chain.length; bkBuild().then(function(b) { if (state.chain.length === len) _bkPrep = b; }).catch(function(e) { console.log('[backup] prepare failed', e.message); }); }
+  function isDesktop() { return !(navigator.maxTouchPoints > 0) && !/Android|iPhone|iPad/.test(navigator.userAgent || ''); }
   async function exportBackupAction(mode) {
-    var bk, text, name;
+    var text, name;
     try {
-      bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
-      bk.declarations = state.declarations;
-      bk.settings = state.settings;
-      text = JSON.stringify(bk, null, 2);
-      var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
-      name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
+      var b = (_bkPrep && _bkPrep.len === state.chain.length) ? _bkPrep : await bkBuild();
+      text = b.text; name = b.name;
     } catch(e) { toast('Backup failed'); return; }
     function saveLocal() {
       try {
@@ -7851,10 +7862,23 @@ const PAIR_CODE_LENGTH = 4;
         else { var f2 = new File([text], name + '.txt', { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) shareFile = f2; }
       }
     } catch(e) { shareFile = null; }
-    var shared = false;
-    if (shareFile && mode !== 'save') {
-      try { await navigator.share({ files: [shareFile], title: 'HEP backup ' + new Date().toISOString().slice(0, 10), text: 'My HEP backup from ' + new Date().toLocaleDateString() + '. Keep this email: it can bring my record back if I lose my devices.' }); shared = true; } catch(e) { shared = false; }
+    var shared = false, cancelled = false;
+    // On a computer the share panel rarely holds an email program, so save the file and
+    // open the email program with the subject and a note naming the file to attach.
+    if (mode === 'mail' && isDesktop()) {
+      if (!saveLocal()) { toast('Backup failed'); return; }
+      markBackedUp(); renderBrowserStorageBanner();
+      var body = 'My HEP backup from ' + new Date().toLocaleDateString() + '.\n\nAttach the file ' + name + ' from your Downloads folder before sending. Keep this email: it can bring my record back if I lose my devices.';
+      try { window.location.href = 'mailto:?subject=' + encodeURIComponent('HEP backup ' + new Date().toISOString().slice(0, 10)) + '&body=' + encodeURIComponent(body); } catch (e) {}
+      toast('Backup saved. Attach it to the email that opens.');
+      console.log('[backup] desktop: saved ' + name + ', opened mail');
+      return;
     }
+    if (shareFile && mode !== 'save') {
+      try { await navigator.share({ files: [shareFile], title: 'HEP backup ' + new Date().toISOString().slice(0, 10), text: 'My HEP backup from ' + new Date().toLocaleDateString() + '. Keep this email: it can bring my record back if I lose my devices.' }); shared = true; }
+      catch(e) { shared = false; cancelled = e && e.name === 'AbortError'; console.log('[backup] share failed: ' + (e && e.name) + ' ' + (e && e.message)); }
+    } else if (mode === 'mail') console.log('[backup] this browser cannot share a file; saving instead');
+    if (cancelled) return; // the person closed the share panel: nothing saved, nothing marked
     var saved = mode === 'mail' && shared ? true : saveLocal();
     if (shared || saved) { markBackedUp(); renderBrowserStorageBanner(); }
     toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
@@ -12528,6 +12552,7 @@ function init() {
       return Date.now() - ts;
     }
     var pendingRecords = ex.filter(function(r) {
+      if (r.type === HCP.RECORD_TYPE_REPAIR) return false; // v2.111.2: a copy from another device is never in flight
       if (!r.witnessAttestation) return true;
       return recordAgeMs(r) < IN_FLIGHT_HOLD_MS;
     });
