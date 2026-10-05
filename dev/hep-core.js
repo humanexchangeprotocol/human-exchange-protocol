@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.106.0';
+const APP_VERSION='2.107.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -582,7 +582,10 @@ async function ewp(data,pin){const salt=rb(SLL),iv=rb(IVL),key=await dkp(pin,sal
 async function dwp(enc,pin){const key=await dkp(pin,new Uint8Array(btf(enc.salt)));return JSON.parse(u8d.decode(await crypto.subtle.decrypt({name:AESN,iv:new Uint8Array(btf(enc.iv))},key,btf(enc.ciphertext))))}
 
 // --- Backup ---
-async function xb(c,pj,sj,pin){return{hcpVersion:PV,serVersion:SV,exportedAt:now(),fingerprint:await kfp(pj),keys:await ewp({publicKey:pj,privateKey:sj},pin),chain:c,chainLength:c.length,balance:wb(c),density:cd(c)}}
+// v2.107.0 (Step 3b): on an attached device pj is the chain's root key and sj the device's private key;
+// dpj (the device public key) rides inside the encrypted keys so a restore keeps signing as that device.
+// rootPublicKey sits beside the keys so a reader can verify the chain without the PIN.
+async function xb(c,pj,sj,pin,dpj){const k={publicKey:pj,privateKey:sj};if(dpj)k.devicePublicKey=dpj;const o={hcpVersion:PV,serVersion:SV,exportedAt:now(),fingerprint:await kfp(pj),rootPublicKey:{crv:pj.crv,kty:pj.kty,x:pj.x,y:pj.y},keys:await ewp(k,pin),chain:c,chainLength:c.length,balance:wb(c),density:cd(c)};if(dpj)o.attachedDevice=true;return o}
 async function ib(bk,pin){const keys=await dwp(bk.keys,pin),pk=await ipk(keys.publicKey),sk=await isk(keys.privateKey),v=await vc(bk.chain,pk);
   // Step 3 prep (v2.102.1): multi-key verifier runs beside single-key vc, logged. vc stays the decision for every chain without
   // device records; a chain holding device records (Step 3 onward) is accepted only if vcm passes.
@@ -590,7 +593,11 @@ async function ib(bk,pin){const keys=await dwp(bk.keys,pin),pk=await ipk(keys.pu
   const hasDev=bk.chain.some(r=>r&&r.type===RT_DEVICE);
   if(m)console.log('[chain-multi] import: single-key '+(v.valid?'valid':'invalid')+', multi-key '+(m.valid?'valid':'INVALID: '+m.errors.slice(0,3).join('; '))+', devices '+m.devices.length);
   const ok=v.valid||(hasDev&&m&&m.valid);
-  if(!ok)throw new Error('Chain verification failed');return{chain:bk.chain,publicKey:pk,privateKey:sk,publicKeyJwk:keys.publicKey,privateKeyJwk:keys.privateKey}}
+  if(!ok)throw new Error('Chain verification failed');
+  // v2.107.0: a device backup must hold a certificate for its device key, or the restored device could not sign.
+  let dpj=keys.devicePublicKey||null;
+  if(dpj&&!(m&&m.valid&&bk.chain.some(r=>r&&r.type===RT_DEVICE&&r.deviceKey&&r.deviceKey.x===dpj.x&&r.deviceKey.y===dpj.y)))throw new Error('This backup is from an added device whose certificate is missing');
+  return{chain:bk.chain,publicKey:pk,privateKey:sk,publicKeyJwk:keys.publicKey,privateKeyJwk:keys.privateKey,devicePublicKeyJwk:dpj}}
 
 // --- Handshake payloads ---
 // --- Payload signing ---

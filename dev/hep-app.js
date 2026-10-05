@@ -1258,7 +1258,7 @@ const PAIR_CODE_LENGTH = 4;
     AT.connecting = true;
     var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
     try {
-      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: state.publicKeyJwk, role: 'attach-old' });
+      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: mySigningKeyJwk(), role: 'attach-old' });
     } catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
     AT.connecting = false;
     var h = atHead('Add a device', true, 'atOldEnter');
@@ -2636,6 +2636,8 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function generateProposal() {
+    // Shared by the offline code and the live session; refuse only the offline path on an attached device.
+    if (state.devicePublicKeyJwk && !(exFlowActive && sessionPartner && sessionCode)) { toast('Offline codes work from your first phone for now. Use Start or Join here.'); console.log('[bind] offline code refused on an attached device (no paperwork in that path yet)'); return; }
     const val = parseFloat(document.getElementById('ex-value').value);
     if (isNaN(val) || val < 0) { toast('Enter a valid value'); return; }
     const desc = document.getElementById('ex-desc').value.trim();
@@ -2806,7 +2808,7 @@ const PAIR_CODE_LENGTH = 4;
       description: pp.details.description,
       category: pp.details.category || '',
       duration: pp.details.duration || 0,
-      public_key: state.publicKeyJwk,
+      public_key: mySigningKeyJwk(),
       fingerprint: state.fingerprint,
       timestamp: new Date().toISOString(),
       city: pp.city || '',
@@ -3061,16 +3063,47 @@ const PAIR_CODE_LENGTH = 4;
   let sessionCode = null;
   let sessionTheirCode = null;
   let sessionPartner = null;
+  // v2.107.0 (Step 3b): the key this device signs with. An attached device holds
+  // its own device key; the chain's root key (state.publicKeyJwk) stays its identity.
+  function mySigningKeyJwk() { return state.devicePublicKeyJwk || state.publicKeyJwk; }
+  // The paperwork an attached device carries so the other phone can see that its
+  // device key speaks for the chain: root key, parent record, the certificate for
+  // this key (the latest one, if repeated attach attempts left several). Synchronous,
+  // read from the chain, never awaited on the propose/confirm path.
+  function buildDeviceProof() {
+    try {
+      var dk = state.devicePublicKeyJwk;
+      if (!dk || !state.publicKeyJwk) return null;
+      var parent = null, device = null;
+      for (var i = 0; i < state.chain.length; i++) {
+        var r = state.chain[i];
+        if (r.type === HCP.RECORD_TYPE_PARENT && !parent) parent = r;
+        if (r.type === HCP.RECORD_TYPE_DEVICE && r.deviceKey && r.deviceKey.x === dk.x && r.deviceKey.y === dk.y) device = r;
+      }
+      if (!parent || !device) { console.log('[bind] no paperwork on this device (parent ' + !!parent + ', certificate ' + !!device + ')'); return null; }
+      var rk = state.publicKeyJwk;
+      return { root: { crv: rk.crv, kty: rk.kty, x: rk.x, y: rk.y }, parent: parent, device: device };
+    } catch (e) { console.log('[bind] proof build failed:', e.message); return null; }
+  }
   // Step 3b (v2.103.0): does the partner's key speak for the fingerprint they
   // claim? Fire and forget, log only, once per partner key. Never awaited.
+  // v2.107.0: the paperwork (device_proof) travels in the encrypted snapshot, which
+  // arrives after the partner first appears. A key that is not the fingerprint is
+  // therefore checked again when the snapshot lands, not marked done on first sight.
   var bindLogged = {};
   function logPartnerBinding(p) {
     try {
       if (!p || !p.public_key || !p.fingerprint) return;
       var k = p.fingerprint + ':' + (p.public_key.x || '');
-      if (bindLogged[k]) return; bindLogged[k] = true;
-      var proof = (p.thread_snapshot && p.thread_snapshot.device_proof) || null;
+      if (bindLogged[k]) return;
+      var ts = p.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch (_) { ts = null; } }
+      var proof = (ts && ts.device_proof) || null;
+      var snapIn = !!(ts && typeof ts === 'object');
       HCP.verifyKeyBinding(p.fingerprint, p.public_key, proof).then(function(r) {
+        if (!r.ok && r.mode === 'unbound' && !snapIn) { console.log('[bind] key is not the fingerprint; waiting for the snapshot, ' + p.fingerprint.substring(0, 12)); return; }
+        if (bindLogged[k]) return; bindLogged[k] = true;
+        if (sessionPartner && sessionPartner.fingerprint === p.fingerprint) sessionPartner._bind = r;
         console.log('[bind] ' + (r.ok ? (r.mode === 'device' ? 'device proof ok' : 'key matches fingerprint') : 'UNBOUND (observe only): ' + r.mode + (r.error ? ', ' + r.error : '')) + ', ' + p.fingerprint.substring(0, 12));
       }).catch(function(e) { console.log('[bind] check failed:', e.message); });
     } catch (e) { console.log('[bind] check failed:', e.message); }
@@ -3213,6 +3246,10 @@ const PAIR_CODE_LENGTH = 4;
     if (extras && threadSnap) {
       Object.keys(extras).forEach(function(k) { threadSnap[k] = extras[k]; });
     }
+    if (threadSnap && state.devicePublicKeyJwk) {
+      var dp = buildDeviceProof();
+      if (dp) threadSnap.device_proof = dp;
+    }
     // Attach counterparty-visible POH verdict. Computed on this device using
     // this device's capabilities and this chain's records — the same POH.rollup
     // the Standing tab renders for the owner. Broadcast-safe (no raw capture
@@ -3273,6 +3310,7 @@ const PAIR_CODE_LENGTH = 4;
             sessionPartner.thread_snapshot = decrypted;
             sessionPartner._snapshotDecrypted = true;
             console.log('[session] Partner snapshot decrypted');
+            logPartnerBinding(sessionPartner);
             if (onReceived) onReceived(decrypted);
           }).catch(function(de) {
             console.error('[session] Decrypt partner snapshot failed:', de);
@@ -3283,6 +3321,7 @@ const PAIR_CODE_LENGTH = 4;
           sessionPartner.thread_snapshot = data.partner.thread_snapshot;
           sessionPartner._snapshotDecrypted = true;
           console.log('[session] Partner snapshot received (plaintext fallback)');
+          logPartnerBinding(sessionPartner);
           if (onReceived) onReceived(data.partner.thread_snapshot);
         }
       }).catch(function(e) {});
@@ -3401,7 +3440,7 @@ const PAIR_CODE_LENGTH = 4;
           my_code: sessionCode,
           their_code: sessionTheirCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
+          public_key: mySigningKeyJwk(),
         }),
       });
 
@@ -5448,6 +5487,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function confirmAndSign() {
+    if (state.devicePublicKeyJwk) { toast('Offline codes work from your first phone for now. Use Start or Join here.'); console.log('[bind] offline code refused on an attached device (no paperwork in that path yet)'); return; }
     if (!state.pendingProposal) return;
     const parsed = state.pendingProposal;
 
@@ -6689,8 +6729,11 @@ const PAIR_CODE_LENGTH = 4;
     try {
       const witnessUrl = witnessUrlOverride || getWitnessUrl();
       if (!witnessUrl) return false;
-      const mintHash = await HCP.computeMintHash(state.publicKeyJwk, counterpartyPub, record.timestamp, record.actHash || undefined);
-      const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(state.publicKeyJwk)))));
+      // v2.107.0: the key this device signed with (the device key on an attached device),
+      // matching what the other phone received as this side's public_key.
+      const myKey = mySigningKeyJwk();
+      const mintHash = await HCP.computeMintHash(myKey, counterpartyPub, record.timestamp, record.actHash || undefined);
+      const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(myKey)))));
       const pubB = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(counterpartyPub)))));
       const rttStart = Date.now();
       const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none', witnessUrl, record.actHash || undefined);
@@ -7453,7 +7496,7 @@ const PAIR_CODE_LENGTH = 4;
   async function exportBackupAction() {
     var bk, text, name;
     try {
-      bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin);
+      bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
       bk.declarations = state.declarations;
       bk.settings = state.settings;
       text = JSON.stringify(bk, null, 2);
@@ -7509,6 +7552,8 @@ const PAIR_CODE_LENGTH = 4;
       const r = await HCP.importBackup(bk, pin);
       state.chain = r.chain; state.publicKey = r.publicKey; state.privateKey = r.privateKey;
       state.publicKeyJwk = r.publicKeyJwk; state.privateKeyJwk = r.privateKeyJwk;
+      // v2.107.0: a backup made on an attached device restores as that device.
+      state.devicePublicKeyJwk = r.devicePublicKeyJwk || null;
       state.fingerprint = await HCP.keyFingerprint(r.publicKeyJwk);
       if (bk.declarations) state.declarations = Object.assign(state.declarations, bk.declarations);
       if (bk.settings) state.settings = Object.assign(state.settings, bk.settings);
@@ -7740,7 +7785,7 @@ const PAIR_CODE_LENGTH = 4;
         body: JSON.stringify({
           pipe_code: pipeCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
+          public_key: mySigningKeyJwk(),
           name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
           max_redemptions: (cap === undefined ? 1 : cap), // 1 = single invite, 0 = uncapped room
         }),
@@ -8146,7 +8191,7 @@ const PAIR_CODE_LENGTH = 4;
         body: JSON.stringify({
           redeemer_code: redeemerCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
+          public_key: mySigningKeyJwk(),
           name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
         }),
         signal: AbortSignal.timeout(8000),
@@ -9170,13 +9215,13 @@ function init() {
           my_code: myCode,
           their_code: theirCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
+          public_key: mySigningKeyJwk(),
           role: exInitiatorRole || null,
       };
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
         my_code: myCode, their_code: theirCode,
         fingerprint: (state.fingerprint || '').substring(0, 16) + '...',
-        has_pubkey: !!state.publicKeyJwk,
+        has_pubkey: !!mySigningKeyJwk(), device_key: !!state.devicePublicKeyJwk,
         role: exInitiatorRole || null,
       }));
 
