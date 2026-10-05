@@ -12424,6 +12424,8 @@ function init() {
     }
 
     el.innerHTML = html;
+    // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
+    try { renderBrowserStorageBanner(); } catch (e) {}
   }
 
   // Home-tab filter — matches the History-tab pattern but scoped to
