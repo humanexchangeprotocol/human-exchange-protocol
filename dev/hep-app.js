@@ -1359,18 +1359,27 @@ const PAIR_CODE_LENGTH = 4;
     return (labels[state.fingerprint] && labels[state.fingerprint].label) || 'Your first device';
   }
   function syMyFp() { return (state.settings && state.settings.thisDeviceFp) || state.fingerprint; }
-  function syncStart(i) {
+  // v2.111.1 (Michael, Oct 5): one Sync now button, then a plain choice of which side
+  // this device takes. X on the code and enter screens goes back to this choice (rule 2a).
+  function syncChoose(i) {
     var d = recModel().others[i]; if (!d) return;
-    atStopPoll(); AT = { role: 'sync-show', rowFp: d.fp, label: d.label, idx: i };
-    syncShowCode();
+    atStopPoll(); AT = { role: 'sync-choose', rowFp: d.fp, label: d.label, idx: i };
+    syncChooseScreen();
   }
-  function syncEnterStart(i) {
-    var d = recModel().others[i]; if (!d) return;
-    atStopPoll(); AT = { role: 'sync-enter', rowFp: d.fp, label: d.label, idx: i };
-    syncEnterScreen();
+  function syncChooseScreen() {
+    var L = esc(AT.label);
+    var h = atHead('Sync with ' + AT.label, false, 'atClose');
+    h += '<p class="exs-body" style="margin:4px 0 18px;">Have ' + L + ' with you. One device shows a code, the other enters it.</p>';
+    h += '<button class="exs-row" onclick="App.syncPick(\'show\')"><div class="exs-rowmain"><div class="exs-body">Show a code here</div><div class="exs-cap">Then enter it on ' + L + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    h += '<button class="exs-row" onclick="App.syncPick(\'enter\')"><div class="exs-rowmain"><div class="exs-body">Enter a code from ' + L + '</div><div class="exs-cap">If ' + L + ' is already showing one</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    atShow(h);
   }
-  function syncToEnter() { if (!AT) return; atClose2Keep(); AT.role = 'sync-enter'; syncEnterScreen(); }
-  function syncToShow() { if (!AT) return; atClose2Keep(); AT.role = 'sync-show'; syncShowCode(); }
+  function syncPick(side) {
+    if (!AT) return;
+    if (side === 'show') { AT.role = 'sync-show'; syncShowCode(); }
+    else { AT.role = 'sync-enter'; syncEnterScreen(); }
+  }
+  function syncBack() { if (!AT) return; atClose2Keep(); AT.role = 'sync-choose'; AT.connecting = false; syncChooseScreen(); }
   // Leave a half-open session cleanly before switching sides (cancel it on the witness).
   function atClose2Keep() {
     atStopPoll();
@@ -1379,26 +1388,25 @@ const PAIR_CODE_LENGTH = 4;
   }
   async function syncShowCode() {
     AT.url = getWitnessUrl();
-    if (!AT.url) { toast('No witness reachable. Check your connection.'); return; }
+    if (!AT.url) { AT.role = 'sync-choose'; toast('No witness reachable. Check your connection.'); return; }
     AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code);
     try { await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: syMyFp(), public_key: mySigningKeyJwk(), role: 'sync-show' }); }
-    catch (e) { console.log('[sync] join failed', e.message); toast('Could not reach the witness: ' + e.message); AT = null; return; }
-    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    catch (e) { console.log('[sync] join failed', e.message); AT.code = null; AT.role = 'sync-choose'; toast('Could not reach the witness. Check your connection and try again.'); return; }
+    var h = atHead('Sync with ' + AT.label, true, 'syncBack');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
-    h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Type this code on ' + esc(AT.label) + '</div>';
-    h += '<div class="exs-cap">Account, Record keeping, ' + esc(syMyName()) + ', then Enter a code</div></div>';
-    h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Waiting for ' + esc(AT.label) + '</span></div>';
-    h += atPin('<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncToEnter()">Enter a code from ' + esc(AT.label) + ' instead</button></div>');
+    h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Enter this code on ' + esc(AT.label) + '</div>';
+    h += '<div class="exs-cap">Record keeping, ' + esc(syMyName()) + ', Sync now</div></div>';
+    h += '<div class="exs-grow"></div><div class="exs-wait" style="padding-bottom:24px;"><i></i><span>Waiting for ' + esc(AT.label) + '</span></div>';
     atShow(h);
     console.log('[sync] show: code ' + AT.code);
     AT.poll = setInterval(syncPoll, 2000);
   }
   function syncEnterScreen() {
-    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    var h = atHead('Sync with ' + AT.label, true, 'syncBack');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
     h += '<input class="exs-box-in" id="at-code" maxlength="4" enterkeyhint="go" oninput="App.syncCodeInput(this)" onkeydown="if(event.key===\'Enter\')App.syncConnect()" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:200px;text-align:center;font-family:var(--font-mono);font-size:var(--fs-display);font-weight:600;letter-spacing:10px;text-transform:uppercase;color:var(--accent);">';
     h += '<div class="exs-body">Enter the code shown on ' + esc(AT.label) + '</div><p class="exs-cap" id="at-msg"></p></div>';
-    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.syncConnect()">Connect</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncToShow()">Show a code here instead</button></div>');
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.syncConnect()">Connect</button>');
     atShow(h);
     setTimeout(function() { var i = document.getElementById('at-code'); if (i) i.focus(); }, 50);
   }
@@ -1508,16 +1516,30 @@ const PAIR_CODE_LENGTH = 4;
       AT.finished = true;
       console.log('[sync] done: ' + reps.length + ' came here, ' + went + ' went to ' + AT.partnerFp.slice(0, 12) + ', head seq ' + mark.mySeq);
       try { chainMultiObserve(); refreshHome(); renderHistoryTab(); recRender(); renderBrowserStorageBanner(); } catch (e) {}
-      syncDone(reps.length, went);
+      var wentReps = await HCP.mergeFrom(theirs, state.chain, null);
+      syncDone(reps.length, went, HCP.walletBalance(state.chain), HCP.walletBalance(theirs.concat(wentReps)));
     } catch (e) { console.log('[sync] receive failed', e.message); atProblem('Could not finish syncing: ' + e.message); }
   }
-  function syncDone(came, went) {
+  // v2.111.1 (Michael, Oct 5): Done leads with the standing both devices now show.
+  // Says "on both devices" only when the other device's standing, computed here from
+  // its chain plus what it is copying, is the same number.
+  function syncDone(came, went, st, theirSt) {
     var lab = AT.label, part = AT.partnerFp, row = AT.rowFp;
-    var sub = (went === 0 && came === 0) ? 'Both devices already had the same exchanges.' : 'Both devices now have the same exchanges. ' + went + ' went to ' + lab + ', ' + came + ' came here.';
+    var both = st === theirSt;
+    var side = st > 0 ? ' mc-blue' : (st < 0 ? ' mc-amber' : '');
+    var num = st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below');
+    var moved = (went === 0 && came === 0) ? 'Nothing was missing on either device.' : came + ' came here, ' + went + ' went to ' + lab + '.';
     var next = -1, nextLab = '';
     recModel().others.forEach(function(d, i) { if (next < 0 && d.fp !== part && d.fp !== row && (d.count > 0 || !d.synced)) { next = i; nextLab = d.label; } });
-    var h = atCheckDone('Synced', sub, 'atClose', 'Done');
+    var h = '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">'
+      + '<div style="width:112px;height:112px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;"><svg width="54" height="54" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+      + '<div class="exs-t">Synced</div>'
+      + '<div class="mc-display' + side + '" style="margin-top:8px;">' + num + '</div>'
+      + '<div class="exs-body" style="color:var(--text-dim);">' + (both ? 'Your standing on both devices' : 'Your standing on this device') + '</div>'
+      + '<div class="exs-cap">' + esc(moved) + '</div></div>'
+      + '<div class="exs-grow"></div><button class="btn btn-primary" style="width:100%;" onclick="App.atClose()">Done</button>';
     if (next >= 0) h += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncNext(' + next + ')">Sync with ' + esc(nextLab) + ' next</button></div>';
+    if (!both) console.log('[sync] standing differs after sync: here ' + st + ', other ' + theirSt);
     atShow(h);
   }
   function syncNext(i) { AT = null; var o = document.getElementById('attach-ov'); if (o) o.style.display = 'none'; recDev(i); }
@@ -2489,7 +2511,7 @@ const PAIR_CODE_LENGTH = 4;
       '<div class="exs-cap mc-group">Since then</div><div class="exs-body">' + (d.count ? d.count + (d.count === 1 ? ' exchange here is' : ' exchanges here are') + ' not on ' + esc(d.label) + ' yet' : esc(d.label) + ' has everything from here') + '</div>' +
       '<div class="exs-cap mc-group">Device key</div><div class="exs-cap" style="font-family:var(--font-mono)">' + esc(fp) + '</div>' +
       '<p class="exs-cap" style="margin-top:16px">Put both devices side by side. Each copies over the exchanges the other is missing.</p>';
-    document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" onclick="App.mcClose();App.syncStart(' + i + ')">Sync now</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.mcClose();App.syncEnterStart(' + i + ')">Enter a code</button></div>';
+    document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" onclick="App.mcClose();App.syncChoose(' + i + ')">Sync now</button>';
     mcOpen('recdev');
   }
   function recBkOpen() {
@@ -14599,7 +14621,7 @@ function init() {
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
-    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, atCodeInput, atPwToggle, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd, syncStart, syncEnterStart, syncToEnter, syncToShow, syncCodeInput, syncConnect, syncMatch, syncNext,
+    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, atCodeInput, atPwToggle, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd, syncChoose, syncPick, syncBack, syncCodeInput, syncConnect, syncMatch, syncNext,
     coopReceiveProposal, sessionCodeInput, sessionConnect, sessionConfirm, sessionReject, sendSessionProposal, sessionThreadTab,
     setProposalPath, scanConfirmation, parseExConfirmation, parseExConfirmationMsg,
     finishExchange, settleViaMessage, shareSettlement, copySettlement,
