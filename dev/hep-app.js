@@ -303,6 +303,12 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Chain append (handles genesis protocol commitment) ---
   async function appendRecord(record) {
+    // Same-owner rule (v2.108.0, protocol): a chain never records an exchange
+    // with itself, whichever path produced the record (session, pipe, offline).
+    if (HCP.isAct(record) && record.counterparty && record.counterparty === state.fingerprint) {
+      console.log('[self] refused to write an exchange with this chain\'s own fingerprint');
+      throw new Error('A chain cannot exchange with itself');
+    }
     // Duplicate guard: reject if last record matches counterparty + value + timestamp within 30s.
     // v2.101.0: acts only. A parent record has value 0 and no counterparty, like a ping,
     // and would otherwise be dropped silently after a recent ping.
@@ -1361,6 +1367,8 @@ const PAIR_CODE_LENGTH = 4;
       var has = state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_PARENT || r.type === HCP.RECORD_TYPE_DEVICE; });
       if (!has || !state.publicKeyJwk) return;
       HCP.verifyChainMulti(state.chain, state.publicKeyJwk).then(function(v) {
+        state.myParentFp = v.parentFp || null;
+        if (v.selfActs && v.selfActs.length) console.log('[chain-multi] records exchanging with this chain itself (observe only): seq ' + v.selfActs.join(', '));
         console.log('[chain-multi] ' + (v.valid ? 'valid' : 'INVALID (observe only): ' + v.errors.slice(0, 3).join('; ')) + ', parent ' + (v.parentFp || 'none') + ', devices ' + v.devices.length);
       }).catch(function(e) { console.log('[chain-multi] check failed:', e.message); });
     } catch (e) {}
@@ -3091,8 +3099,27 @@ const PAIR_CODE_LENGTH = 4;
   // arrives after the partner first appears. A key that is not the fingerprint is
   // therefore checked again when the snapshot lands, not marked done on first sight.
   var bindLogged = {};
+  // Same-owner rule (v2.108.0, protocol): the other side is this same chain
+  // (same root fingerprint) or shows the same parent key. Checked on first sight
+  // of the partner and again when their snapshot lands with its _parentFp.
+  function exSelfGuard(p) {
+    try {
+      if (!p || !p.fingerprint || p._self) return !!(p && p._self);
+      var ts = p.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch (_) { ts = null; } }
+      var theirs = { fp: p.fingerprint, parentFp: (ts && typeof ts._parentFp === 'string') ? ts._parentFp : null };
+      var mine = { fp: state.fingerprint, parentFp: state.myParentFp || null };
+      if (!HCP.sameOwner(mine, theirs)) return false;
+      p._self = true;
+      console.log('[self] partner is this same chain (' + (theirs.fp === mine.fp ? 'same root' : 'same parent') + '); ending the exchange');
+      try { exStopConnectPoll(); } catch (_) {}
+      exShowEnded('self');
+      return true;
+    } catch (e) { console.log('[self] check failed:', e.message); return false; }
+  }
   function logPartnerBinding(p) {
     try {
+      if (exSelfGuard(p)) return;
       if (!p || !p.public_key || !p.fingerprint) return;
       var k = p.fingerprint + ':' + (p.public_key.x || '');
       if (bindLogged[k]) return;
@@ -3246,6 +3273,7 @@ const PAIR_CODE_LENGTH = 4;
     if (extras && threadSnap) {
       Object.keys(extras).forEach(function(k) { threadSnap[k] = extras[k]; });
     }
+    if (threadSnap && state.myParentFp) threadSnap._parentFp = state.myParentFp;
     if (threadSnap && state.devicePublicKeyJwk) {
       var dp = buildDeviceProof();
       if (dp) threadSnap.device_proof = dp;
@@ -3751,6 +3779,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function onSessionConnected() {
+    if (sessionPartner && sessionPartner._self) return;
     document.getElementById('session-status-line').textContent = 'Connected';
     const content = document.getElementById('session-content');
     content.style.display = 'block';
@@ -4635,13 +4664,15 @@ const PAIR_CODE_LENGTH = 4;
   function exEndedHTML() {
     var n = esc(_exRV.endedName || 'The other person');
     var line;
-    if (_exEndedByMe) line = 'You cancelled the exchange';
+    var sub = 'Nothing was recorded.';
+    if (_exEndedBy === 'self') { line = 'This is your own chain'; sub = 'A chain cannot exchange with itself, even from another device. Nothing was recorded.'; }
+    else if (_exEndedByMe) line = 'You cancelled the exchange';
     else line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
     var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
     h += '<div class="exs-grow"></div>';
     h += '<div class="exs-settle-check exs-ended-x"><svg viewBox="0 0 24 24" width="48" height="48"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>';
     h += '<div class="exs-t" style="margin-top:22px">' + line + '</div>';
-    h += '<div class="exs-body" style="margin-top:8px; color:var(--text-faint)">Nothing was recorded.</div>';
+    h += '<div class="exs-body" style="margin-top:8px; color:var(--text-faint)">' + sub + '</div>';
     h += '<div class="exs-grow" style="flex:1.2"></div>';
     h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button></div>';
     h += '</div>';
@@ -9331,7 +9362,7 @@ function init() {
 
   async function exOnConnected() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
-    if (!sessionPartner) return;
+    if (!sessionPartner || sessionPartner._self) return;
     sessionSetState('connected');
     // The pipe exists from here, so listen for the other side ending it
     // from here too, not only once Verify is confirmed (ruled Oct 2).

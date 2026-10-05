@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.107.0';
+const APP_VERSION='2.108.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -279,6 +279,19 @@ async function vbind(fp,pubJwk,proof){
     if(!await vr(proof.device,rk))return{ok:false,mode:'proof',error:'device record not signed by root'};
     return{ok:true,mode:'device'};
   }catch(e){return{ok:false,mode:'error',error:e.message}}
+}
+
+// --- Same-owner rule (protocol, Oct 5 2026) ---
+// Two chains with the same owner cannot exchange. Same owner: the same root
+// fingerprint, or both sides show a parent key and the parent fingerprints
+// match (the parent key is the decider across devices). Inputs are
+// {fp, parentFp}; parentFp may be null when a side has no parent or did not
+// show it, and then only the root comparison applies.
+function sown(a,b){
+  if(!a||!b)return false;
+  if(a.fp&&b.fp&&a.fp===b.fp)return true;
+  if(a.parentFp&&b.parentFp&&a.parentFp===b.parentFp)return true;
+  return false;
 }
 
 // --- Ping record (proof-of-human heartbeat, no counterparty/value) ---
@@ -537,9 +550,11 @@ async function vc(c,k){
 // a trusted key, parent signature bound to the root key) sets the parent; a
 // device record signed by a trusted key and carrying a valid parent
 // signature adds that device's key. Only one parent per chain. Passthrough:
-// the app logs the result; nothing is rejected on it yet.
+// the app logs the result; nothing is rejected on it yet. selfActs lists acts
+// whose counterparty is this chain's own root (same-owner rule, Oct 5 2026);
+// reported apart from errors until Step 0b enforcement.
 async function vcm(c,rootPubJwk){
-  const e=[],signers=[],devices=[];
+  const e=[],signers=[],devices=[],selfActs=[];
   const rootFp=await kfp(rootPubJwk);
   const trusted=[{fp:rootFp,key:await ipk(rootPubJwk)}];
   let parentJwk=null,parentFp=null;
@@ -552,6 +567,7 @@ async function vcm(c,rootPubJwk){
       if(r.prevHash!==await hr(c[i-1]))e.push(`Record ${i}: SHA-256 hash mismatch`);
       if(r.serVersion!==SV_LEGACY&&r.prevHash3&&r.prevHash3!==hr3(c[i-1]))e.push(`Record ${i}: SHA3 hash mismatch`);
     }
+    if(isAct(r)&&r.counterparty&&r.counterparty===rootFp)selfActs.push(i);
     let signer=null;
     for(const t of trusted){if(await vr(r,t.key)){signer=t.fp;break;}}
     signers.push(signer);
@@ -569,7 +585,7 @@ async function vcm(c,rootPubJwk){
       }else e.push(`Record ${i}: device certificate invalid`);
     }
   }
-  return{valid:e.length===0,errors:e,signers:signers,rootFp:rootFp,parentFp:parentFp,devices:devices};
+  return{valid:e.length===0,errors:e,signers:signers,rootFp:rootFp,parentFp:parentFp,devices:devices,selfActs:selfActs};
 }
 function cd(c){const ex=c.filter(isAct);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
 function wb(c){let b=0;for(const r of c){if(!isAct(r))continue;if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
@@ -840,7 +856,7 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================
