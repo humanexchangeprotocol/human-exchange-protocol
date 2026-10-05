@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.102.0';
+const APP_VERSION='2.102.1';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -555,7 +555,14 @@ async function dwp(enc,pin){const key=await dkp(pin,new Uint8Array(btf(enc.salt)
 
 // --- Backup ---
 async function xb(c,pj,sj,pin){return{hcpVersion:PV,serVersion:SV,exportedAt:now(),fingerprint:await kfp(pj),keys:await ewp({publicKey:pj,privateKey:sj},pin),chain:c,chainLength:c.length,balance:wb(c),density:cd(c)}}
-async function ib(bk,pin){const keys=await dwp(bk.keys,pin),pk=await ipk(keys.publicKey),sk=await isk(keys.privateKey),v=await vc(bk.chain,pk);if(!v.valid)throw new Error('Chain verification failed');return{chain:bk.chain,publicKey:pk,privateKey:sk,publicKeyJwk:keys.publicKey,privateKeyJwk:keys.privateKey}}
+async function ib(bk,pin){const keys=await dwp(bk.keys,pin),pk=await ipk(keys.publicKey),sk=await isk(keys.privateKey),v=await vc(bk.chain,pk);
+  // Step 3 prep (v2.102.1): multi-key verifier runs beside single-key vc, logged. vc stays the decision for every chain without
+  // device records; a chain holding device records (Step 3 onward) is accepted only if vcm passes.
+  let m=null;try{m=await vcm(bk.chain,keys.publicKey)}catch(x){console.log('[chain-multi] import check failed:',x.message)}
+  const hasDev=bk.chain.some(r=>r&&r.type===RT_DEVICE);
+  if(m)console.log('[chain-multi] import: single-key '+(v.valid?'valid':'invalid')+', multi-key '+(m.valid?'valid':'INVALID: '+m.errors.slice(0,3).join('; '))+', devices '+m.devices.length);
+  const ok=v.valid||(hasDev&&m&&m.valid);
+  if(!ok)throw new Error('Chain verification failed');return{chain:bk.chain,publicKey:pk,privateKey:sk,publicKeyJwk:keys.publicKey,privateKeyJwk:keys.privateKey}}
 
 // --- Handshake payloads ---
 // --- Payload signing ---
