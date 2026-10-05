@@ -116,7 +116,7 @@ const HEP_SEEDS = [
   },
 ];
 const HCP=(()=>{'use strict';
-const PV='2.0.0',SV=6,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5;
+const PV='2.0.0',SV=7,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5,SV_V6=6;
 const SCALE_MAX=1000000;
 const MAX_PHOTO_BYTES=100000;
 const CURVE={name:'ECDSA',namedCurve:'P-256'},SALG={name:'ECDSA',hash:'SHA-256'},HALG='SHA-256';
@@ -166,6 +166,9 @@ function cr(f){
   if(typeof f.clockSkew==='number')r.clockSkew=f.clockSkew;
   if(f.chainMerkleRoot)r.chainMerkleRoot=f.chainMerkleRoot;
   if(f.counterpartyDeviceHash)r.counterpartyDeviceHash=f.counterpartyDeviceHash;
+  // Countersignature (SV=7): the shared act hash and the other person's signature over it
+  if(f.actHash)r.actHash=f.actHash;
+  if(f.counterpartySig)r.counterpartySig=f.counterpartySig;
   // Proof of Human snapshot (null for regular records, populated on PoH ping)
   if(f.pohSnapshot)r.pohSnapshot=f.pohSnapshot;
   return r;
@@ -290,7 +293,7 @@ function ser(r){
       `cd:${r.counterpartyDeviceHash||''}`
     ].join('|');
   }
-  if(r.serVersion===SV){
+  if(r.serVersion===SV_V6){
     return[
       `sv:${r.serVersion}`,`ty:${r.type}`,`va:${r.value}`,`es:${r.energyState}`,
       `cp:${r.counterparty}`,`cn:${r.counterpartyName||''}`,
@@ -313,6 +316,37 @@ function ser(r){
       `co:${typeof r.connectivityAvailable==='boolean'?r.connectivityAvailable?1:0:''}`,
       `cd:${r.counterpartyDeviceHash||''}`,
       `pd:${r.photoData||''}`
+    ].join('|');
+  }
+  // SV=7 (v2.100.0, Oct 5 2026, Step 0 of the countersignature build): the
+  // act hash both phones computed and the counterparty's signature over it
+  // are inside the hash, so the record's content cannot change without the
+  // other person's key. Empty on genesis, pings, and offline/QR records.
+  if(r.serVersion===SV){
+    return[
+      `sv:${r.serVersion}`,`ty:${r.type}`,`va:${r.value}`,`es:${r.energyState}`,
+      `cp:${r.counterparty}`,`cn:${r.counterpartyName||''}`,
+      `du:${r.duration!==undefined?r.duration:''}`,
+      `de:${r.description||''}`,`ca:${r.category||''}`,
+      `st:${r.street||''}`,`ci:${r.city||''}`,`sa:${r.state||''}`,
+      `ts:${r.timestamp}`,`sq:${r.seq}`,
+      `ph:${r.prevHash||'genesis'}`,
+      `p3:${r.prevHash3||'genesis'}`,
+      `ge:${r.geo?JSON.stringify(r.geo):''}`,
+      `dv:${r.device?JSON.stringify(r.device):''}`,
+      `sh:${r.sensorHash||''}`,
+      `ep:${r.entropyPrev||''}`,
+      `xp:${r.exchangePath||''}`,
+      `cs:${typeof r.clockSkew==='number'?r.clockSkew:''}`,
+      `mr:${r.chainMerkleRoot||''}`,
+      `po:${r.pohSnapshot?JSON.stringify(r.pohSnapshot):''}`,
+      `pc:${r.protocolCommitment||''}`,
+      `pt:${r.photoHash||''}`,
+      `co:${typeof r.connectivityAvailable==='boolean'?r.connectivityAvailable?1:0:''}`,
+      `cd:${r.counterpartyDeviceHash||''}`,
+      `pd:${r.photoData||''}`,
+      `ah:${r.actHash||''}`,
+      `cg:${r.counterpartySig||''}`
     ].join('|');
   }
   throw new Error('Unsupported serVersion: '+r.serVersion);
@@ -381,7 +415,7 @@ async function vc(c,k){
       if(c[i].prevHash!==null)e.push('Record 0: should be genesis');
     }else{
       if(c[i].prevHash!==await hr(c[i-1]))e.push(`Record ${i}: SHA-256 hash mismatch`);
-      if((c[i].serVersion===SV||c[i].serVersion===SV_V5||c[i].serVersion===SV_V4||c[i].serVersion===SV_V3||c[i].serVersion===SV_V2)&&c[i].prevHash3){
+      if((c[i].serVersion===SV||c[i].serVersion===SV_V6||c[i].serVersion===SV_V5||c[i].serVersion===SV_V4||c[i].serVersion===SV_V3||c[i].serVersion===SV_V2)&&c[i].prevHash3){
         if(c[i].prevHash3!==hr3(c[i-1]))e.push(`Record ${i}: SHA3 hash mismatch`);
       }
     }
@@ -538,7 +572,16 @@ function cs(c){
 async function gcp(pj,c,proposal,privKey,deviceHash){const ex=c.filter(isAct);const o={h:PV,a:'cf',p:{c:pj.crv,k:pj.kty,x:pj.x,y:pj.y},f:await kfp(pj),d:cd(c),n:ex.length,o:proposal.fp,z:now()};if(deviceHash)o.dh=deviceHash;if(privKey)return await spld(o,privKey);return JSON.stringify(o)}
 function pcp(j){const d=JSON.parse(j);if(d.a!=='cf'&&d.action!=='confirmation')throw new Error('Not a confirmation');const pub=d.p||d.pub;if(!pub||!pub.x)throw new Error('Missing key');const origFp=d.o||d.originalFp;if(!origFp)throw new Error('Missing original fingerprint');return{pub:{crv:pub.c||pub.crv,kty:pub.k||pub.kty,x:pub.x,y:pub.y},fp:d.f||d.fp,density:d.d!==undefined?d.d:(d.density||0),chainLen:d.n!==undefined?d.n:(d.chainLen||0),originalFp:origFp,ts:d.z||d.ts,sig:d.sig||null,deviceHash:d.dh||null}}
 async function gsp(pj,confirmFp,privKey){const o={h:PV,a:'st',f:await kfp(pj),o:confirmFp,z:now()};if(privKey)return await spld(o,privKey);return JSON.stringify(o)}
-async function cmh(iPub,cPub,ts){const s=iPub.x+':'+iPub.y+':'+cPub.x+':'+cPub.y+':'+ts;return bth(await crypto.subtle.digest(HALG,u8.encode(s)))}
+// Mint hash. v2.100.0: when the record carries an act hash, it is folded in,
+// so the witness attestation locks content and time together, not only who and when.
+async function cmh(iPub,cPub,ts,ah){const s=iPub.x+':'+iPub.y+':'+cPub.x+':'+cPub.y+':'+ts+(ah?':'+ah:'');return bth(await crypto.subtle.digest(HALG,u8.encode(s)))}
+// --- Act hash and countersignature (Step 0, Oct 5 2026) ---
+// Both phones compute the same hash from the proposal as the proposer stated
+// it (direction is the proposer's energyState), the two fingerprints, and the
+// proposal's device timestamp, which the witness returns to both sides.
+async function cah(f){const s=['ah1',f.proposerFp||'',f.confirmerFp||'',f.value,f.direction||'',f.description||'',f.category||'',f.duration||0,f.proposalTs||''].join('|');return bth(await crypto.subtle.digest(HALG,u8.encode(s)))}
+async function sah(ah,privKey){return btb(await crypto.subtle.sign(SALG,privKey,u8.encode(ah)))}
+async function vah(ah,sig,pubJwk){try{const pk=await ipk(pubJwk);return await crypto.subtle.verify(SALG,pk,btf(sig),u8.encode(ah))}catch(e){return false}}
 async function chi(iPub,cPub,ts){return await cmh(iPub,cPub,ts)}
 function psp(j){const d=JSON.parse(j);if(d.a!=='st')throw new Error('Not a settlement');if(!d.f||!d.o)throw new Error('Missing fingerprints');return{fp:d.f,confirmFp:d.o,ts:d.z}}
 
@@ -639,7 +682,7 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================

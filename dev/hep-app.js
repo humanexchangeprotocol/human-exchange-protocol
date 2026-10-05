@@ -1764,6 +1764,7 @@ const PAIR_CODE_LENGTH = 4;
     detailHtml += '<div class="rd-row"><span class="rd-label">Timestamp</span><span class="rd-val">' + new Date(r.timestamp).toLocaleString() + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Sequence</span><span class="rd-val">#' + r.seq + '</span></div>';
     if (r.witnessAttestation) detailHtml += '<div class="rd-row"><span class="rd-label">Witnessed</span><span class="rd-val" style="color:var(--green);">\u2713 Server attested</span></div>';
+    if (r.counterpartySig) detailHtml += '<div class="rd-row"><span class="rd-label">Countersigned</span><span class="rd-val" style="color:var(--green);">\u2713 Signed by both</span></div>';
     detailHtml += '</div>';
 
     card.innerHTML = `<div class="dir ${r.energyState}">${icon}</div><div class="info"><div class="desc">${esc(desc)}</div>${cpDescHtml}<div class="meta">${esc(name)} \u00b7 ${ds}${r.duration ? ' \u00b7 ' + formatDuration(r.duration) : ''}</div>${detailHtml}</div><div class="val ${r.energyState}">${r.energyState === 'received' ? '\u2212' : '+'}${r.value}</div>`;
@@ -2588,6 +2589,10 @@ const PAIR_CODE_LENGTH = 4;
   let sessionTheirCode = null;
   let sessionPartner = null;
   let sessionProposal = null;
+  // Step 0 countersignature (v2.100.0): the act hash both phones compute for
+  // this session and the other person's signature over it. Cleared with the session.
+  let sessionActHash = null;
+  let sessionCpActSig = null;
   let sessionActiveTab = 'texture';
   let sessionSharedKey = null; // ECDH-derived AES key for encrypted relay
   let sessionSASHash = null; // 16-byte SAS hash for automatic collision detection
@@ -3377,6 +3382,14 @@ const PAIR_CODE_LENGTH = 4;
         body.photo = exchangeContent.photo;
       }
 
+      // Countersignature, proposer side: hash the act as stated, sign it, and
+      // send both so the confirmer can check and countersign the same hash.
+      try {
+        sessionActHash = await HCP.computeActHash({ proposerFp: state.fingerprint, confirmerFp: sessionPartner ? sessionPartner.fingerprint : '', value: exchangeContent.value, direction: exchangeContent.direction, description: exchangeContent.description, category: exchangeContent.category, duration: exchangeContent.duration, proposalTs: body.device_ts });
+        body.act_hash = sessionActHash;
+        body.act_sig = await HCP.signActHash(sessionActHash, state.privateKey);
+      } catch(ahErr) { console.log('[countersig] proposer act hash failed:', ahErr.message); sessionActHash = null; }
+
       const resp = await serverFetch(url + '/session/' + sessionCode + '/propose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3656,10 +3669,25 @@ const PAIR_CODE_LENGTH = 4;
     try {
         var confirmPhotoHash = '';
         try { if (state.declarations.photo) confirmPhotoHash = await sensorSha256(state.declarations.photo); } catch(ph) {}
+        // Countersignature, confirmer side. Passthrough (observe before enforce):
+        // a mismatch or a bad proposer signature is logged, never blocks.
+        var confirmActSig = '';
+        try {
+          if (sessionProposal) {
+            sessionActHash = await HCP.computeActHash({ proposerFp: sessionPartner ? sessionPartner.fingerprint : '', confirmerFp: state.fingerprint, value: sessionProposal.value, direction: sessionProposal.direction, description: sessionProposal.description, category: sessionProposal.category || '', duration: sessionProposal.duration || 0, proposalTs: sessionProposal.device_ts });
+            if (sessionProposal.act_hash && sessionProposal.act_hash !== sessionActHash) console.warn('[countersig] act hash mismatch: theirs ' + sessionProposal.act_hash.slice(0, 12) + ' mine ' + sessionActHash.slice(0, 12));
+            if (sessionProposal.proposer_act_sig && sessionPartner && sessionPartner.public_key) {
+              var okSig = await HCP.verifyActSig(sessionActHash, sessionProposal.proposer_act_sig, sessionPartner.public_key);
+              console.log('[countersig] proposer signature ' + (okSig ? 'verified' : 'FAILED (passthrough)'));
+              sessionCpActSig = sessionProposal.proposer_act_sig;
+            }
+            confirmActSig = await HCP.signActHash(sessionActHash, state.privateKey);
+          }
+        } catch(csErr) { console.log('[countersig] confirmer failed:', csErr.message); }
         const resp = await serverFetch(url + '/session/' + sessionCode + '/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmed: true, device_ts: Date.now(), sensor_hash: _cachedDeviceHash, platform: navigator.platform, geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '', device_hash: _cachedDeviceHash, photo: state.declarations.photo || '', photo_hash: confirmPhotoHash }),
+        body: JSON.stringify({ confirmed: true, act_sig: confirmActSig, device_ts: Date.now(), sensor_hash: _cachedDeviceHash, platform: navigator.platform, geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '', device_hash: _cachedDeviceHash, photo: state.declarations.photo || '', photo_hash: confirmPhotoHash }),
       });
 
       if (!resp.ok) {
@@ -3813,6 +3841,22 @@ const PAIR_CODE_LENGTH = 4;
 
     console.log('[diag-write] role=' + role + ' desc=' + JSON.stringify(p.description) + ' value=' + p.value + ' direction=' + myDirection + ' cpName=' + JSON.stringify(cpName) + ' myDeclName=' + JSON.stringify(state.declarations && state.declarations.name));
 
+    // Countersignature: the other person's signature over the shared act hash.
+    // Proposer reads the confirmer's signature from the session; the confirmer
+    // kept the proposer's at confirm time. Verified in passthrough, logged only.
+    var cpActSig;
+    try {
+      if (role === 'proposer') {
+        cpActSig = (data.proposal && data.proposal.confirmer_act_sig) || (data.confirmer && data.confirmer.act_sig) || undefined;
+        if (cpActSig && sessionActHash && counterpartyKey) {
+          var okCp = await HCP.verifyActSig(sessionActHash, cpActSig, counterpartyKey);
+          console.log('[countersig] confirmer signature ' + (okCp ? 'verified' : 'FAILED (passthrough)'));
+        }
+      } else {
+        cpActSig = sessionCpActSig || undefined;
+      }
+    } catch(cpErr) { console.log('[countersig] read failed:', cpErr.message); }
+
     const record = HCP.createRecord({
       type: 'exchange',
       value: p.value,
@@ -3823,6 +3867,8 @@ const PAIR_CODE_LENGTH = 4;
       category: p.category || undefined,
       duration: p.duration || undefined,
       counterpartyDeviceHash: cpDeviceHash,
+      actHash: sessionActHash || undefined,
+      counterpartySig: cpActSig,
     });
 
     // Capture sensor data and attach to record
@@ -3924,6 +3970,8 @@ const PAIR_CODE_LENGTH = 4;
     stopSessionPoll();
     sessionPartner = null;
     sessionProposal = null;
+    sessionActHash = null;
+    sessionCpActSig = null;
 
     // Remove from pending — save code before clearing
     const codeForCleanup = sessionCode;
@@ -6094,14 +6142,14 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
-  async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
+  async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride, actHash) {
     const url = urlOverride || getWitnessUrl();
     if (!url) return null;
     try {
       const resp = await serverFetch(url + '/witness', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mint_hash: mintHash, pubkey_a: pubkeyA, pubkey_b: pubkeyB, device_timestamp: deviceTs, chain_sig: chainSig }),
+        body: JSON.stringify({ mint_hash: mintHash, pubkey_a: pubkeyA, pubkey_b: pubkeyB, device_timestamp: deviceTs, chain_sig: chainSig, act_hash: actHash || undefined }),
       });
       if (!resp.ok) return null;
       return await resp.json();
@@ -6154,11 +6202,11 @@ const PAIR_CODE_LENGTH = 4;
     try {
       const witnessUrl = witnessUrlOverride || getWitnessUrl();
       if (!witnessUrl) return false;
-      const mintHash = await HCP.computeMintHash(state.publicKeyJwk, counterpartyPub, record.timestamp);
+      const mintHash = await HCP.computeMintHash(state.publicKeyJwk, counterpartyPub, record.timestamp, record.actHash || undefined);
       const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(state.publicKeyJwk)))));
       const pubB = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(counterpartyPub)))));
       const rttStart = Date.now();
-      const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none', witnessUrl);
+      const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none', witnessUrl, record.actHash || undefined);
       const rttMs = Date.now() - rttStart;
       if (attestation && attestation.witnessed) {
         // === PHASE C.1: VERIFY THE WITNESS SIGNATURE ===
