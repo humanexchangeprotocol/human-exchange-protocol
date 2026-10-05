@@ -2260,12 +2260,14 @@ const PAIR_CODE_LENGTH = 4;
     var myCert = null; devs.forEach(function(d) { if (d.fp === me) myCert = d; });
     var list = [];
     if (me !== state.fingerprint) list.push({ fp: state.fingerprint, label: (labels[state.fingerprint] && labels[state.fingerprint].label) || 'Your first device', base: myCert ? myCert.seq : 0, at: myCert ? myCert.certTs : '' });
-    var byLabel = {};
+    var byLabel = {}, nk = function(x) { return String(x || '').trim().replace(/\s+/g, ' ').toLowerCase(); };
+    var myKey = labels[me] && labels[me].label ? nk(labels[me].label) : null; // leftover certificates under this device's own name are this device
     devs.forEach(function(d) {
       if (d.fp === me) return;
       var lab = labels[d.fp] && labels[d.fp].label; if (!lab) return; // a certificate with no label never finished attaching
       var e = { fp: d.fp, label: lab, seq: d.seq, base: myCert ? myCert.seq : d.seq, at: myCert ? myCert.certTs : d.certTs };
-      if (!byLabel[lab] || byLabel[lab].seq < d.seq) byLabel[lab] = e; // repeated attach attempts: the latest certificate stands
+      var key = nk(lab); if (key === myKey) return; // "My PC" and "my pc " are one device
+      if (!byLabel[key] || byLabel[key].seq < d.seq) byLabel[key] = e; // repeated attach attempts: the latest certificate stands
     });
     Object.keys(byLabel).forEach(function(k) { list.push(byLabel[k]); });
     list.forEach(function(d) {
@@ -2306,7 +2308,7 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('recdev-title').textContent = d.label;
     var fp = d.fp.replace(/(.{4})/g, '$1 ').trim();
     document.getElementById('recdev-body').innerHTML = '<div class="exs-cap mc-group">Last synced</div><div class="exs-body">' + esc(d.at ? new Date(d.at).toLocaleString() : 'When it was added') + '</div>' +
-      '<div class="exs-cap mc-group">Since then</div><div class="exs-body">' + (d.count ? d.count + (d.count === 1 ? ' exchange' : ' exchanges') + ' made on this device' : 'Nothing new from this device') + '</div>' +
+      '<div class="exs-cap mc-group">Since then</div><div class="exs-body">' + (d.count ? d.count + (d.count === 1 ? ' exchange here is' : ' exchanges here are') + ' not on ' + esc(d.label) + ' yet' : esc(d.label) + ' has everything from here') + '</div>' +
       '<div class="exs-cap mc-group">Device key</div><div class="exs-cap" style="font-family:var(--font-mono)">' + esc(fp) + '</div>' +
       '<p class="exs-cap" style="margin-top:16px">Put both devices side by side. Each copies over the exchanges the other is missing.</p>';
     document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" disabled>Sync now</button><p class="exs-cap" style="text-align:center;margin-top:6px">Syncing arrives in the next dev update.</p>';
