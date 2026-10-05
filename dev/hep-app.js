@@ -244,11 +244,17 @@ const PAIR_CODE_LENGTH = 4;
     if (window.location.pathname.indexOf('/dev/') !== 0) return prodKey;
     var devKey = 'hep_devbuild_data';
     try {
-      if (localStorage.getItem(devKey) === null && localStorage.getItem(prodKey) !== null) {
+      // v2.104.1: remember the copy so it happens once ever. Before this, deleting
+      // the dev chain and reloading copied production's chain straight back in.
+      // A dev store that already exists counts as copied.
+      var copiedFlag = 'hep_devbuild_copied';
+      if (localStorage.getItem(devKey) !== null) localStorage.setItem(copiedFlag, '1');
+      if (localStorage.getItem(copiedFlag) === null && localStorage.getItem(devKey) === null && localStorage.getItem(prodKey) !== null) {
         ['', '_keys', '_backup'].forEach(function(sfx) {
           var v = localStorage.getItem(prodKey + sfx);
           if (v !== null) localStorage.setItem(devKey + sfx, v);
         });
+        localStorage.setItem(copiedFlag, '1');
         console.log('[storage] dev build: copied chain from the shared key once');
       }
     } catch (e) { console.warn('[storage] dev key copy failed:', e && e.message); }
