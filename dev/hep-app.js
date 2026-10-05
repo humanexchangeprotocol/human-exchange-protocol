@@ -1343,6 +1343,184 @@ const PAIR_CODE_LENGTH = 4;
       if (btn) { btn.disabled = false; btn.textContent = 'Add this device'; }
     }
   }
+  // ==== Sync two of your own devices (Step 4, v2.111.0; spec writing/spec-4-...). ====
+  // Same plumbing as attach: a 4-letter code, the witness relays, ECDH between the
+  // two signing keys. A separate session type (roles sync-show / sync-enter), never
+  // the exchange handlers, so the same-owner guard does not fire and nothing awaits
+  // on the exchange path. No password (Ruling 2): both devices are unlocked and in
+  // hand. After the mark check each sends its chain encrypted; each, on its own,
+  // verifies the other under the same root, refuses an uncertified sender, appends
+  // repair records for what it lacked (mergeFrom), and records the meeting locally.
+  // Repairs go onto a draft with appendToChain, not appendRecord: the self-exchange
+  // guard and the duplicate guard there are for new exchanges, not copies.
+  function syMyName() {
+    var labels = (state.settings && state.settings.deviceLabels) || {}, me = state.settings && state.settings.thisDeviceFp;
+    if (me && labels[me] && labels[me].label) return labels[me].label;
+    return (labels[state.fingerprint] && labels[state.fingerprint].label) || 'Your first device';
+  }
+  function syMyFp() { return (state.settings && state.settings.thisDeviceFp) || state.fingerprint; }
+  function syncStart(i) {
+    var d = recModel().others[i]; if (!d) return;
+    atStopPoll(); AT = { role: 'sync-show', rowFp: d.fp, label: d.label, idx: i };
+    syncShowCode();
+  }
+  function syncEnterStart(i) {
+    var d = recModel().others[i]; if (!d) return;
+    atStopPoll(); AT = { role: 'sync-enter', rowFp: d.fp, label: d.label, idx: i };
+    syncEnterScreen();
+  }
+  function syncToEnter() { if (!AT) return; atClose2Keep(); AT.role = 'sync-enter'; syncEnterScreen(); }
+  function syncToShow() { if (!AT) return; atClose2Keep(); AT.role = 'sync-show'; syncShowCode(); }
+  // Leave a half-open session cleanly before switching sides (cancel it on the witness).
+  function atClose2Keep() {
+    atStopPoll();
+    if (AT && AT.code && AT.url && !AT.finished) serverFetch(AT.url + '/session/' + AT.code + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'cancelled' }) }).catch(function() {});
+    AT.code = null; AT.shared = null; AT.partnerPub = null; AT.partnerFp = null; AT.sent = false; AT.theirs = null;
+  }
+  async function syncShowCode() {
+    AT.url = getWitnessUrl();
+    if (!AT.url) { toast('No witness reachable. Check your connection.'); return; }
+    AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code);
+    try { await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: syMyFp(), public_key: mySigningKeyJwk(), role: 'sync-show' }); }
+    catch (e) { console.log('[sync] join failed', e.message); toast('Could not reach the witness: ' + e.message); AT = null; return; }
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
+    h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Type this code on ' + esc(AT.label) + '</div>';
+    h += '<div class="exs-cap">Account, Record keeping, ' + esc(syMyName()) + ', then Enter a code</div></div>';
+    h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Waiting for ' + esc(AT.label) + '</span></div>';
+    h += atPin('<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncToEnter()">Enter a code from ' + esc(AT.label) + ' instead</button></div>');
+    atShow(h);
+    console.log('[sync] show: code ' + AT.code);
+    AT.poll = setInterval(syncPoll, 2000);
+  }
+  function syncEnterScreen() {
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
+    h += '<input class="exs-box-in" id="at-code" maxlength="4" enterkeyhint="go" oninput="App.syncCodeInput(this)" onkeydown="if(event.key===\'Enter\')App.syncConnect()" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:200px;text-align:center;font-family:var(--font-mono);font-size:var(--fs-display);font-weight:600;letter-spacing:10px;text-transform:uppercase;color:var(--accent);">';
+    h += '<div class="exs-body">Enter the code shown on ' + esc(AT.label) + '</div><p class="exs-cap" id="at-msg"></p></div>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.syncConnect()">Connect</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncToShow()">Show a code here instead</button></div>');
+    atShow(h);
+    setTimeout(function() { var i = document.getElementById('at-code'); if (i) i.focus(); }, 50);
+  }
+  function syncCodeInput(el) { if (String(el.value || '').length === 4 && !(AT && AT.connecting)) syncConnect(); }
+  async function syncConnect() {
+    if (!AT || AT.connecting || AT.code) return;
+    var c = (((document.getElementById('at-code') || {}).value) || '').trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(c) || c.split('').some(function(ch) { return PAIR_CHARS.indexOf(ch) < 0; })) { atMsg('Enter the 4 letters shown on ' + AT.label + '.'); return; }
+    AT.url = getWitnessUrl();
+    if (!AT.url) { atMsg('No witness reachable. Check your connection.'); return; }
+    AT.connecting = true;
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
+    try { await atPost('/session/join', { my_code: deriveJoinCode(c), their_code: c, fingerprint: syMyFp(), public_key: mySigningKeyJwk(), role: 'sync-enter' }); }
+    catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
+    AT.connecting = false; AT.code = deriveJoinCode(c);
+    syncConnecting(false);
+    AT.poll = setInterval(syncPoll, 2000);
+  }
+  // Connecting state (registry C2): the lock and "Setting up a secure connection" until
+  // the key agreement has finished on this device; only then "Secure connection open".
+  function syncConnecting(open) {
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;">';
+    h += '<div style="width:72px;height:72px;border-radius:50%;background:' + (open ? 'var(--green)' : 'var(--surface-2, var(--border))') + ';display:flex;align-items:center;justify-content:center;transition:background .3s;' + (open ? '' : 'animation:pulse 1.5s infinite;') + '"><svg class="icon" width="30" height="30" style="color:' + (open ? '#fff' : 'var(--text-dim)') + '"><use href="#icon-lock"/></svg></div>';
+    h += '<div class="exs-body">' + (open ? 'Secure connection open' : 'Setting up a secure connection') + '</div></div><div class="exs-grow"></div>';
+    atShow(h);
+  }
+  async function syncPoll() {
+    if (!AT || (AT.role !== 'sync-show' && AT.role !== 'sync-enter') || AT.busy || !AT.code) return;
+    AT.busy = true;
+    try {
+      var r = await serverFetch(AT.url + '/session/' + AT.code); if (!r.ok) return;
+      var d = await r.json();
+      if (d.cancelled && !d.cancelled.by_me && !AT.finished) { atProblem(AT.label + ' stopped.'); return; }
+      if (!d.connected || !d.partner) return;
+      if (!AT.shared) {
+        var role = d.partner.role || '';
+        if (role && role.indexOf('sync-') !== 0) { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+        AT.partnerPub = d.partner.public_key; AT.partnerFp = await HCP.keyFingerprint(AT.partnerPub);
+        if (AT.partnerFp === syMyFp()) { atProblem('That code came from this device. Type it on ' + AT.label + '.'); return; }
+        if (AT.role === 'sync-show') syncConnecting(false);
+        AT.shared = await HCP.deriveSharedKey(state.privateKeyJwk, AT.partnerPub);
+        console.log('[sync] connected to ' + AT.partnerFp.slice(0, 12) + (AT.partnerFp !== AT.rowFp ? ' (row was ' + String(AT.rowFp).slice(0, 12) + ')' : ''));
+        syncConnecting(true);
+        atStopPoll();
+        var mark = await computeSAS(syMyFp(), AT.partnerFp);
+        setTimeout(function() { if (AT && AT.shared && !AT.sent) syncMark(mark.code); }, 700);
+        return;
+      }
+      if (AT.sent && !AT.theirs && d.partner.encrypted_snapshot) {
+        var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
+        if (p && p.t === 'sync-pack') { AT.theirs = p; atStopPoll(); await syncReceive(p); }
+      }
+    } catch (e) { console.log('[sync] poll error', e.message); }
+    finally { if (AT) AT.busy = false; }
+  }
+  function syncMark(code) {
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;">';
+    h += '<div class="exs-h" style="margin-bottom:6px;">Check ' + esc(AT.label) + ' shows this mark</div>';
+    h += '<div class="exs-m" style="margin-bottom:28px;">Both screens should show the same two letters.</div>';
+    h += '<div class="exs-mark"><svg class="icon"><use href="#icon-lock"/></svg><span>' + esc(code) + '</span></div></div>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.syncMatch()">It matches</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.atClose()">It does not match</button></div>');
+    atShow(h);
+  }
+  async function syncMatch() {
+    if (!AT || AT.sent) return;
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Sending\u2026'; }
+    try {
+      var enc = await HCP.encryptRelayPayload({ t: 'sync-pack', chain: state.chain, rootPublicKey: state.publicKeyJwk, deviceLabels: state.settings.deviceLabels || {} }, AT.shared);
+      await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: enc });
+      AT.sent = true;
+      console.log('[sync] sent ' + state.chain.length + ' records, ' + Math.round(enc.length / 1024) + ' kB');
+    } catch (e) { console.log('[sync] send failed', e.message); if (btn) { btn.disabled = false; btn.textContent = 'It matches'; } toast('Could not send: ' + e.message); return; }
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Comparing with ' + esc(AT.label) + '</span></div><div class="exs-grow"></div>';
+    atShow(h);
+    AT.poll = setInterval(syncPoll, 1500);
+    syncPoll();
+  }
+  async function syncReceive(p) {
+    try {
+      var theirs = p.chain;
+      if (!Array.isArray(theirs) || !theirs.length) { atProblem(AT.label + ' sent an empty record.'); return; }
+      if (!p.rootPublicKey || await HCP.keyFingerprint(p.rootPublicKey) !== state.fingerprint) { atProblem('This is a different chain. Sync only works between your own devices.'); return; }
+      var v = await HCP.verifyChainMulti(theirs, state.publicKeyJwk);
+      if (!v.valid) { console.log('[sync] their chain invalid', v.errors.slice(0, 3)); atProblem('The record on ' + AT.label + ' did not verify: ' + v.errors.slice(0, 2).join('; ')); return; }
+      var certified = AT.partnerFp === v.rootFp || v.devices.some(function(x) { return x.fp === AT.partnerFp; });
+      if (!certified) { atProblem('The other device is not one of your devices. Nothing was copied.'); return; }
+      var reps = await HCP.mergeFrom(state.chain, theirs, v.signers);
+      var went = (await HCP.mergeFrom(theirs, state.chain, null)).length;
+      var draft = state.chain.slice();
+      for (var i = 0; i < reps.length; i++) await HCP.appendToChain(draft, reps[i], state.privateKey);
+      if (reps.length) {
+        var vd = await HCP.verifyChainMulti(draft, state.publicKeyJwk);
+        if (!vd.valid) { console.log('[sync] draft invalid', vd.errors.slice(0, 3)); atProblem('Copying did not verify on this device: ' + vd.errors.slice(0, 2).join('; ')); return; }
+      }
+      state.chain = draft;
+      var labels = Object.assign({}, p.deviceLabels || {}, state.settings.deviceLabels || {});
+      state.settings.deviceLabels = labels;
+      var ds = Object.assign({}, state.settings.devSync || {});
+      var mark = { at: new Date().toISOString(), mySeq: draft.length - 1, theirSeq: theirs.length - 1 };
+      ds[AT.partnerFp] = mark;
+      if (AT.rowFp && AT.rowFp !== AT.partnerFp) ds[AT.rowFp] = mark; // the row this was opened from (collapsed leftover certificates)
+      state.settings.devSync = ds;
+      save();
+      AT.finished = true;
+      console.log('[sync] done: ' + reps.length + ' came here, ' + went + ' went to ' + AT.partnerFp.slice(0, 12) + ', head seq ' + mark.mySeq);
+      try { chainMultiObserve(); refreshHome(); renderHistoryTab(); recRender(); renderBrowserStorageBanner(); } catch (e) {}
+      syncDone(reps.length, went);
+    } catch (e) { console.log('[sync] receive failed', e.message); atProblem('Could not finish syncing: ' + e.message); }
+  }
+  function syncDone(came, went) {
+    var lab = AT.label, part = AT.partnerFp, row = AT.rowFp;
+    var sub = (went === 0 && came === 0) ? 'Both devices already had the same exchanges.' : 'Both devices now have the same exchanges. ' + went + ' went to ' + lab + ', ' + came + ' came here.';
+    var next = -1, nextLab = '';
+    recModel().others.forEach(function(d, i) { if (next < 0 && d.fp !== part && d.fp !== row && (d.count > 0 || !d.synced)) { next = i; nextLab = d.label; } });
+    var h = atCheckDone('Synced', sub, 'atClose', 'Done');
+    if (next >= 0) h += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncNext(' + next + ')">Sync with ' + esc(nextLab) + ' next</button></div>';
+    atShow(h);
+  }
+  function syncNext(i) { AT = null; var o = document.getElementById('attach-ov'); if (o) o.style.display = 'none'; recDev(i); }
   // ---- Parent key (Step 1, v2.101.0). Dev test entry under This phone; the
   // real entry point is "Add a device" (Step 3). The parent private key is
   // encrypted under the person's password and stored only here (SK + '_parent').
@@ -2311,7 +2489,7 @@ const PAIR_CODE_LENGTH = 4;
       '<div class="exs-cap mc-group">Since then</div><div class="exs-body">' + (d.count ? d.count + (d.count === 1 ? ' exchange here is' : ' exchanges here are') + ' not on ' + esc(d.label) + ' yet' : esc(d.label) + ' has everything from here') + '</div>' +
       '<div class="exs-cap mc-group">Device key</div><div class="exs-cap" style="font-family:var(--font-mono)">' + esc(fp) + '</div>' +
       '<p class="exs-cap" style="margin-top:16px">Put both devices side by side. Each copies over the exchanges the other is missing.</p>';
-    document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" disabled>Sync now</button><p class="exs-cap" style="text-align:center;margin-top:6px">Syncing arrives in the next dev update.</p>';
+    document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" onclick="App.mcClose();App.syncStart(' + i + ')">Sync now</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.mcClose();App.syncEnterStart(' + i + ')">Enter a code</button></div>';
     mcOpen('recdev');
   }
   function recBkOpen() {
@@ -2344,6 +2522,7 @@ const PAIR_CODE_LENGTH = 4;
     detailHtml += '<div class="rd-row"><span class="rd-label">Sequence</span><span class="rd-val">#' + r.seq + '</span></div>';
     if (r.witnessAttestation) detailHtml += '<div class="rd-row"><span class="rd-label">Witnessed</span><span class="rd-val" style="color:var(--green);">\u2713 Server attested</span></div>';
     if (r.counterpartySig) detailHtml += '<div class="rd-row"><span class="rd-label">Countersigned</span><span class="rd-val" style="color:var(--green);">\u2713 Signed by both</span></div>';
+    if (r.type === HCP.RECORD_TYPE_REPAIR) detailHtml += '<div class="rd-row"><span class="rd-label">Copied</span><span class="rd-val">From your other device</span></div>';
     detailHtml += '</div>';
 
     card.innerHTML = `<div class="dir ${r.energyState}">${icon}</div><div class="info"><div class="desc">${esc(desc)}</div>${cpDescHtml}<div class="meta">${esc(name)} \u00b7 ${ds}${r.duration ? ' \u00b7 ' + formatDuration(r.duration) : ''}</div>${detailHtml}</div><div class="val ${r.energyState}">${r.energyState === 'received' ? '\u2212' : '+'}${r.value}</div>`;
@@ -13876,7 +14055,8 @@ function init() {
   function renderHistoryTab() {
     var el = document.getElementById('tab-history-content');
     if (!el) return;
-    var ex = state.chain.filter(HCP.isAct).slice().reverse();
+    // v2.111.0: newest first by when it happened (copies from another device land at the end of the chain).
+    var ex = HCP.acts(state.chain).map(function(r, i) { return { r: r, i: i }; }).sort(function(a, b) { var d = new Date(b.r.timestamp) - new Date(a.r.timestamp); return d || b.i - a.i; }).map(function(x) { return x.r; });
     var html = '';
     if (ex.length === 0) {
       html += '<div style="text-align:center; padding:40px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
@@ -13925,6 +14105,7 @@ function init() {
       html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
       if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
       if (r.counterpartySig) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Countersigned by both</div>';
+      if (r.type === HCP.RECORD_TYPE_REPAIR) html += '<div><span style="color:var(--text-faint);">Copied from your other device</span></div>';
       html += '</div>';
       html += '</div>';
     });
@@ -14418,7 +14599,7 @@ function init() {
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
-    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, atCodeInput, atPwToggle, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd,
+    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, atCodeInput, atPwToggle, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd, syncStart, syncEnterStart, syncToEnter, syncToShow, syncCodeInput, syncConnect, syncMatch, syncNext,
     coopReceiveProposal, sessionCodeInput, sessionConnect, sessionConfirm, sessionReject, sendSessionProposal, sessionThreadTab,
     setProposalPath, scanConfirmation, parseExConfirmation, parseExConfirmationMsg,
     finishExchange, settleViaMessage, shareSettlement, copySettlement,
