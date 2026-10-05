@@ -943,6 +943,7 @@ const PAIR_CODE_LENGTH = 4;
         state.initialized = true;
         showScreen('home');
         refreshHome();
+        chainMultiObserve();
         showPendingUpdateBanner();
         checkForUpdates();
         handleIncomingPayload();
@@ -988,6 +989,18 @@ const PAIR_CODE_LENGTH = 4;
     }
     var match = !!(stored && rec && stored.publicKey && stored.publicKey.x === rec.parentKey.x && stored.publicKey.y === rec.parentKey.y);
     return { stored: match ? stored : null, rec: rec, orphan: !!(stored && !match) };
+  }
+  // Step 2 (v2.102.0): observe the multi-key verifier on real chains. Runs only
+  // when the chain holds a parent or device record; logs, never blocks, never
+  // awaited by anything (not on the session path).
+  function chainMultiObserve() {
+    try {
+      var has = state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_PARENT || r.type === HCP.RECORD_TYPE_DEVICE; });
+      if (!has || !state.publicKeyJwk) return;
+      HCP.verifyChainMulti(state.chain, state.publicKeyJwk).then(function(v) {
+        console.log('[chain-multi] ' + (v.valid ? 'valid' : 'INVALID (observe only): ' + v.errors.slice(0, 3).join('; ')) + ', parent ' + (v.parentFp || 'none') + ', devices ' + v.devices.length);
+      }).catch(function(e) { console.log('[chain-multi] check failed:', e.message); });
+    } catch (e) {}
   }
   function pkRowCaption() {
     var el = document.getElementById('pk-row-cap'); if (!el) return;

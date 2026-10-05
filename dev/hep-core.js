@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.101.0';
+const APP_VERSION='2.102.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -128,7 +128,9 @@ const RT_PING='ping'; // record type for genesis ping (not an exchange)
 const RT_GENESIS='genesis'; // record type for chain origin anchor
 // Step 1 (v2.101.0): the parent key record. Not an exchange: no value, no direction.
 const RT_PARENT='parent';
-function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS&&r.type!==RT_PARENT;}
+// Step 2 (v2.102.0): the device certificate record. Not an exchange either.
+const RT_DEVICE='device';
+function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS&&r.type!==RT_PARENT&&r.type!==RT_DEVICE;}
 const u8=new TextEncoder(),u8d=new TextDecoder();
 const bth=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
 const htb=h=>{const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a.buffer};
@@ -225,6 +227,29 @@ async function vpar(r,chainPubJwk){
     const chainFp=await kfp(chainPubJwk),parentFp=await kfp(r.parentKey);
     const pk=await ipk(r.parentKey);
     return await crypto.subtle.verify(SALG,pk,btf(r.parentSig),u8.encode(parBind(chainFp,parentFp)));
+  }catch(e){return false}
+}
+
+// --- Device certificate (Step 2, v2.102.0) ---
+// The parent signs a new device's public key, its label and the time:
+// JSON ['hd1', parentFp, deviceFp, label, certTs] (JSON so a label holding
+// any character cannot be confused with the separators). The record is
+// appended by whichever trusted key holds the chain; the parent signature is
+// what certifies the device. Readers accept records signed by a certified
+// device key (vcm). Revocation comes in Step 6.
+function devBind(parentFp,deviceFp,label,certTs){return JSON.stringify(['hd1',parentFp,deviceFp,label,certTs])}
+async function mkdev(parentPrivKey,parentPubJwk,devicePubJwk,label){
+  const parentFp=await kfp(parentPubJwk),deviceFp=await kfp(devicePubJwk),certTs=now(),lab=String(label||'').slice(0,60);
+  const deviceSig=btb(await crypto.subtle.sign(SALG,parentPrivKey,u8.encode(devBind(parentFp,deviceFp,lab,certTs))));
+  return{serVersion:SV,type:RT_DEVICE,value:0,energyState:'none',counterparty:'',counterpartyName:'',timestamp:now(),seq:null,prevHash:null,prevHash3:null,signature:null,
+    deviceKey:{crv:devicePubJwk.crv,kty:devicePubJwk.kty,x:devicePubJwk.x,y:devicePubJwk.y},deviceLabel:lab,deviceCertTs:certTs,deviceSig:deviceSig};
+}
+async function vdev(r,parentPubJwk){
+  try{
+    if(r.type!==RT_DEVICE||!r.deviceKey||!r.deviceSig||!parentPubJwk)return false;
+    const parentFp=await kfp(parentPubJwk),deviceFp=await kfp(r.deviceKey);
+    const pk=await ipk(parentPubJwk);
+    return await crypto.subtle.verify(SALG,pk,btf(r.deviceSig),u8.encode(devBind(parentFp,deviceFp,r.deviceLabel||'',r.deviceCertTs||'')));
   }catch(e){return false}
 }
 
@@ -392,6 +417,12 @@ function ser(r){
       // every other SV7 record serializes exactly as before.
       `pk:${r.parentKey?JSON.stringify({crv:r.parentKey.crv,kty:r.parentKey.kty,x:r.parentKey.x,y:r.parentKey.y}):''}`,
       `pg:${r.parentSig||''}`
+    ]:r.type===RT_DEVICE?[
+      // Step 2 (v2.102.0): device fields exist only on device records.
+      `dk:${r.deviceKey?JSON.stringify({crv:r.deviceKey.crv,kty:r.deviceKey.kty,x:r.deviceKey.x,y:r.deviceKey.y}):''}`,
+      `dl:${r.deviceLabel||''}`,
+      `dt:${r.deviceCertTs||''}`,
+      `dg:${r.deviceSig||''}`
     ]:[]).join('|');
   }
   throw new Error('Unsupported serVersion: '+r.serVersion);
@@ -471,6 +502,46 @@ async function vc(c,k){
     }
   }
   return{valid:e.length===0,errors:e};
+}
+// Multi-key chain verification (Step 2, v2.102.0). Same sequence and hash
+// checks as vc. Signatures may come from the chain's root key or from any
+// device key certified earlier in the chain: a valid parent record (signed by
+// a trusted key, parent signature bound to the root key) sets the parent; a
+// device record signed by a trusted key and carrying a valid parent
+// signature adds that device's key. Only one parent per chain. Passthrough:
+// the app logs the result; nothing is rejected on it yet.
+async function vcm(c,rootPubJwk){
+  const e=[],signers=[],devices=[];
+  const rootFp=await kfp(rootPubJwk);
+  const trusted=[{fp:rootFp,key:await ipk(rootPubJwk)}];
+  let parentJwk=null,parentFp=null;
+  for(let i=0;i<c.length;i++){
+    const r=c[i];
+    if(r.seq!==i)e.push(`Record ${i}: seq mismatch`);
+    if(i===0){
+      if(r.prevHash!==null)e.push('Record 0: should be genesis');
+    }else{
+      if(r.prevHash!==await hr(c[i-1]))e.push(`Record ${i}: SHA-256 hash mismatch`);
+      if(r.serVersion!==SV_LEGACY&&r.prevHash3&&r.prevHash3!==hr3(c[i-1]))e.push(`Record ${i}: SHA3 hash mismatch`);
+    }
+    let signer=null;
+    for(const t of trusted){if(await vr(r,t.key)){signer=t.fp;break;}}
+    signers.push(signer);
+    if(!signer){e.push(`Record ${i}: no trusted signer`);continue;}
+    if(r.type===RT_PARENT){
+      if(parentJwk)e.push(`Record ${i}: second parent record`);
+      else if(await vpar(r,rootPubJwk)){parentJwk=r.parentKey;parentFp=await kfp(r.parentKey);}
+      else e.push(`Record ${i}: parent signature invalid`);
+    }else if(r.type===RT_DEVICE){
+      if(!parentJwk)e.push(`Record ${i}: device record before any parent`);
+      else if(await vdev(r,parentJwk)){
+        const dfp=await kfp(r.deviceKey);
+        if(!trusted.some(t=>t.fp===dfp))trusted.push({fp:dfp,key:await ipk(r.deviceKey)});
+        devices.push({fp:dfp,label:r.deviceLabel||'',seq:i,certTs:r.deviceCertTs||''});
+      }else e.push(`Record ${i}: device certificate invalid`);
+    }
+  }
+  return{valid:e.length===0,errors:e,signers:signers,rootFp:rootFp,parentFp:parentFp,devices:devices};
 }
 function cd(c){const ex=c.filter(isAct);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
 function wb(c){let b=0;for(const r of c){if(!isAct(r))continue;if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
@@ -727,7 +798,7 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyChainMulti:vcm,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================
