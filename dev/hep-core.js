@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.103.0';
+const APP_VERSION='2.104.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -238,18 +238,25 @@ async function vpar(r,chainPubJwk){
 // what certifies the device. Readers accept records signed by a certified
 // device key (vcm). Revocation comes in Step 6.
 function devBind(parentFp,deviceFp,label,certTs){return JSON.stringify(['hd1',parentFp,deviceFp,label,certTs])}
+// Option B (Michael, Oct 5): the record carries only a salted hash of the
+// label. The readable label and its salt stay on the person's own devices
+// (returned as `local`), so counterparties who see the paperwork learn nothing.
+async function lblHash(label,salt){return bth(await crypto.subtle.digest(HALG,u8.encode('hl1|'+salt+'|'+label)))}
 async function mkdev(parentPrivKey,parentPubJwk,devicePubJwk,label){
   const parentFp=await kfp(parentPubJwk),deviceFp=await kfp(devicePubJwk),certTs=now(),lab=String(label||'').slice(0,60);
-  const deviceSig=btb(await crypto.subtle.sign(SALG,parentPrivKey,u8.encode(devBind(parentFp,deviceFp,lab,certTs))));
-  return{serVersion:SV,type:RT_DEVICE,value:0,energyState:'none',counterparty:'',counterpartyName:'',timestamp:now(),seq:null,prevHash:null,prevHash3:null,signature:null,
-    deviceKey:{crv:devicePubJwk.crv,kty:devicePubJwk.kty,x:devicePubJwk.x,y:devicePubJwk.y},deviceLabel:lab,deviceCertTs:certTs,deviceSig:deviceSig};
+  const salt=bth(rb(16)),lh=await lblHash(lab,salt);
+  const deviceSig=btb(await crypto.subtle.sign(SALG,parentPrivKey,u8.encode(devBind(parentFp,deviceFp,lh,certTs))));
+  return{record:{serVersion:SV,type:RT_DEVICE,value:0,energyState:'none',counterparty:'',counterpartyName:'',timestamp:now(),seq:null,prevHash:null,prevHash3:null,signature:null,
+    deviceKey:{crv:devicePubJwk.crv,kty:devicePubJwk.kty,x:devicePubJwk.x,y:devicePubJwk.y},deviceLabelHash:lh,deviceCertTs:certTs,deviceSig:deviceSig},
+    local:{deviceFp:deviceFp,label:lab,salt:salt,labelHash:lh}};
 }
+async function vlbl(r,label,salt){return !!r&&r.deviceLabelHash===await lblHash(String(label||''),salt||'')}
 async function vdev(r,parentPubJwk){
   try{
     if(r.type!==RT_DEVICE||!r.deviceKey||!r.deviceSig||!parentPubJwk)return false;
     const parentFp=await kfp(parentPubJwk),deviceFp=await kfp(r.deviceKey);
     const pk=await ipk(parentPubJwk);
-    return await crypto.subtle.verify(SALG,pk,btf(r.deviceSig),u8.encode(devBind(parentFp,deviceFp,r.deviceLabel||'',r.deviceCertTs||'')));
+    return await crypto.subtle.verify(SALG,pk,btf(r.deviceSig),u8.encode(devBind(parentFp,deviceFp,r.deviceLabelHash||'',r.deviceCertTs||'')));
   }catch(e){return false}
 }
 
@@ -441,7 +448,7 @@ function ser(r){
     ]:r.type===RT_DEVICE?[
       // Step 2 (v2.102.0): device fields exist only on device records.
       `dk:${r.deviceKey?JSON.stringify({crv:r.deviceKey.crv,kty:r.deviceKey.kty,x:r.deviceKey.x,y:r.deviceKey.y}):''}`,
-      `dl:${r.deviceLabel||''}`,
+      `dl:${r.deviceLabelHash||''}`,
       `dt:${r.deviceCertTs||''}`,
       `dg:${r.deviceSig||''}`
     ]:[]).join('|');
@@ -558,7 +565,7 @@ async function vcm(c,rootPubJwk){
       else if(await vdev(r,parentJwk)){
         const dfp=await kfp(r.deviceKey);
         if(!trusted.some(t=>t.fp===dfp))trusted.push({fp:dfp,key:await ipk(r.deviceKey)});
-        devices.push({fp:dfp,label:r.deviceLabel||'',seq:i,certTs:r.deviceCertTs||''});
+        devices.push({fp:dfp,labelHash:r.deviceLabelHash||'',seq:i,certTs:r.deviceCertTs||''});
       }else e.push(`Record ${i}: device certificate invalid`);
     }
   }
@@ -826,7 +833,7 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyChainMulti:vcm,verifyKeyBinding:vbind,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,isAct:isAct,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
 })();
 
 // ============================================================
