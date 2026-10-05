@@ -13260,6 +13260,7 @@ function init() {
       html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
       html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
       if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
+      if (r.counterpartySig) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Countersigned by both</div>';
       html += '</div>';
       html += '</div>';
     });
