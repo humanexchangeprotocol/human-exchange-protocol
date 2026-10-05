@@ -733,7 +733,7 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .exs-cell.on { border-color: var(--accent); }
 .exs-cell.empty { color: var(--text-faint); }
 /* Anchored to the screen bottom and extended behind the tab bar by its measured height (--tabbar-h, set below), so no page shows through or between the two. */
-.doors-strip { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; display: flex; gap: 10px; padding: 10px 16px calc(10px + var(--tabbar-h, 64px)); background: var(--bg-raised); border-top: 1px solid var(--border); }
+.doors-strip { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 16px calc(10px + var(--tabbar-h, 64px)); background: var(--bg-raised); border-top: 1px solid var(--border); }
 .doors-strip .btn { flex: 1; width: auto; padding: 13px; font-size: 17px; margin: 0; }
 .doors-strip .btn + .btn { margin-top: 0; }
 @keyframes exsShake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-9px); } 40%,80% { transform: translateX(9px); } }
@@ -1239,10 +1239,18 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="guidance" style="text-align:center; font-size:17px; line-height:1.6; color:var(--text); margin-bottom:32px;">
       An ancient practice, with a modern memory.
     </div>
-    <button class="btn btn-primary" onclick="App.goToInstallOrPin()">Get Started</button>
-    <!-- v2.97.0 (Michael, Oct 3): bringing in an existing chain is a first-class choice on first open, not a small link -->
-    <button class="btn btn-secondary" style="margin-top:12px;" onclick="App.importBackup()">I have a backup</button>
-    <div style="margin-top:8px; text-align:center; font-size:13px; color:var(--text-faint); line-height:1.5;">Used HEP before, on another phone or in the browser? Bring your chain in now.</div>
+    <!-- v2.105.0 (Michael, Oct 5): one door on arrival; the choice comes after it -->
+    <button class="btn btn-primary" onclick="App.setupChoose()">Get started</button>
+  </div>
+
+  <!-- CHOOSE (v2.105.0): new chain, attach this device, or restore a backup -->
+  <div id="setup-choose" class="step" style="text-align:left;">
+    <div class="exs-sheet-head" style="padding-top:0;"><span class="exs-t">Get started</span><button class="exs-x" onclick="App.setupStep('welcome1')" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button></div>
+    <button class="exs-door p" onclick="App.goToInstallOrPin()">Start a new chain</button>
+    <div class="exs-cap" style="margin:6px 2px 22px;">New to HEP? Start here.</div>
+    <button class="exs-door" style="font-size:15px; padding:13px 16px;" onclick="App.attachNewStart()">Attach this device to my chain</button>
+    <div class="exs-cap" style="margin:6px 2px 0;">Already using HEP on another phone or computer? Add this device to it.</div>
+    <button class="exs-quiet" style="margin-top:28px; font-size:13px;" onclick="App.importBackup()">Restore from a backup file</button>
   </div>
 
   <!-- INSTALL FIRST (any installable platform) -->
@@ -1534,6 +1542,8 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
   <div class="doors-strip" id="doors-strip">
     <button class="btn btn-primary" onclick="App.exStartProviding()">Start</button>
     <button class="btn btn-primary" onclick="App.exJoinExchange()">Join</button>
+    <!-- v2.105.0 (Michael, Oct 5): shows until the first device is added; then Add a device lives in Account only -->
+    <button class="exs-quiet" id="home-adddev" hidden style="flex-basis:100%; font-size:12px; padding:2px 0 0;" onclick="App.attachOldStart()">Use HEP on another device too</button>
   </div>
 
   <!-- Tab bar -->
@@ -1590,7 +1600,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP works the way it does</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <div class="exs-cap mc-group">This phone</div>
       <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.pkOpen()"><div class="exs-rowmain"><div class="exs-body">Parent key (test)</div><div class="exs-cap" id="pk-row-cap">Not set</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.attachOldStart()"><div class="exs-rowmain"><div class="exs-body">Add a device</div><div class="exs-cap">Put your chain on another phone or computer</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
     <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
