@@ -38,6 +38,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 12. One field style, used everywhere a person types: label above in caption size, a single quiet box (`--bg-input`, one border, `--radius-sm`), body text inside, accent border on focus. No field is styled per spot.
 13. Editing a value in place (a name, an amount in the flow) uses the same field, shown large enough to read and sized to its content, with the unit mark beside it. It never looks different from a field elsewhere.
+13a. A password field is the same field with the word Show at the right edge inside the box, caption size, faint; tapping it reveals the text and the word becomes Hide. A word, not an eye, per rule 15 (ruled Oct 5, Michael mistyped a device password with no way to see it).
 
 ## Icons
 

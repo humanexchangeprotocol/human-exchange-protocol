@@ -400,7 +400,24 @@ const PAIR_CODE_LENGTH = 4;
         nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size:14px; color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
       }
     }
-    if (step === 'pin') buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
+    if (step === 'pin') {
+      var pinStepEl = document.getElementById('setup-pin');
+      var gEl = pinStepEl && pinStepEl.querySelector('.guidance'), lEl = pinStepEl && pinStepEl.querySelector('.pin-label');
+      if (gEl && gEl.dataset.orig === undefined) { gEl.dataset.orig = gEl.innerHTML; lEl.dataset.orig = lEl.textContent; }
+      if (attachPendingPin && attachPinCheckData) {
+        if (gEl) gEl.textContent = 'Enter the PIN you use on your other device. It will be your PIN here too, so there is only one to remember.';
+        if (lEl) lEl.textContent = 'Your PIN';
+        buildNumpad('setup-numpad', 'setup-pin-display', 4, async (pin, reset, shake) => {
+          var c = await atPinCheck(pin, attachPinCheckData.salt);
+          if (c.hash === attachPinCheckData.hash) { attachFinishPin(pin); return; }
+          if (gEl) gEl.textContent = 'That is not the PIN from your other device. Try again.';
+          shake();
+        });
+      } else {
+        if (gEl && gEl.dataset.orig !== undefined) { gEl.innerHTML = gEl.dataset.orig; lEl.textContent = lEl.dataset.orig; }
+        buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
+      }
+    }
     else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { if (attachPendingPin) { attachFinishPin(pin); return; } state.pin = pin; setupStep(inviteOnboardingActive() ? 'name' : 'photo'); } else shake(); });
   }
 
@@ -1009,6 +1026,16 @@ const PAIR_CODE_LENGTH = 4;
     if (centered) return '<div class="exs-sheet-head" style="position:relative;justify-content:center;"><span class="exs-t">' + esc(title) + '</span><span style="position:absolute;right:0;top:16px;">' + (xFn ? x : '') + '</span></div>';
     return '<div class="exs-sheet-head"><span class="exs-t">' + esc(title) + '</span>' + x + '</div>';
   }
+  // v2.106.0: password field with Show/Hide (DESIGN rule 13a; the word, not an eye, per rule 15).
+  function atPwField(id, label, ac) {
+    return '<div class="exs-fl"><label for="' + id + '">' + esc(label) + '</label><div class="exs-pw"><input class="exs-box-in" type="password" id="' + id + '" autocomplete="' + ac + '"><button type="button" class="exs-pw-t" onclick="App.atPwToggle(\'' + id + '\', this)">Show</button></div></div>';
+  }
+  function atPwToggle(id, btn) {
+    var i = document.getElementById(id); if (!i) return;
+    var show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    btn.textContent = show ? 'Hide' : 'Show';
+  }
   function atPin(inner) { return '<div style="position:sticky;bottom:0;background:var(--bg);padding-top:12px;">' + inner + '</div>'; }
   function atShow(html) {
     var o = document.getElementById('attach-ov');
@@ -1128,6 +1155,15 @@ const PAIR_CODE_LENGTH = 4;
       atShow(atCheckDone('Your chain is on this device', nm, 'atNewContinue', 'Continue'));
     } catch (e) { console.log('[attach] new: receive failed', e.message); atProblem('Could not read what your other phone sent: ' + e.message); }
   }
+  // v2.106.0: one PIN per chain (ruled Oct 5). The phone sends a one-time check of its
+  // PIN inside the encrypted pack; the new device asks for that PIN, not a new one.
+  // The check is used once to catch a typo and never stored or written to the chain.
+  async function atPinCheck(pin, salt) {
+    salt = salt || HCP.bufToHex(crypto.getRandomValues(new Uint8Array(16)));
+    var h = HCP.bufToHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hp1|' + salt + '|' + pin)));
+    return { salt: salt, hash: h };
+  }
+  var attachPinCheckData = null;
   var attachPendingPin = false;
   async function atNewContinue() {
     var p = AT.pack;
@@ -1143,12 +1179,13 @@ const PAIR_CODE_LENGTH = 4;
     state.settings.thisDeviceFp = AT.devFp;
     state.settings.witnessUrl = DEFAULT_WITNESS_URL;
     var o = document.getElementById('attach-ov'); if (o) o.style.display = 'none';
+    attachPinCheckData = (p.pinCheck && p.pinCheck.salt && p.pinCheck.hash) ? p.pinCheck : null;
     AT = null;
     attachPendingPin = true;
     showScreen('setup'); setupStep('pin');
   }
   async function attachFinishPin(pin) {
-    attachPendingPin = false;
+    attachPendingPin = false; attachPinCheckData = null;
     state.pin = pin;
     await saveKeys(pin); save(); state.initialized = true;
     refreshHome(); showScreen('home');
@@ -1172,8 +1209,8 @@ const PAIR_CODE_LENGTH = 4;
   function atOldSetPw() {
     var h = atHead('Set a device password', false, 'atClose');
     h += '<p class="exs-body" style="color:var(--text-dim);margin-bottom:14px;">You enter this each time you add a device. It stays on this phone and nobody can reset it, so pick one you will remember.</p>';
-    h += '<div class="exs-fl"><label for="at-pw">Password</label><input class="exs-box-in" type="password" id="at-pw" autocomplete="new-password"></div>';
-    h += '<div class="exs-fl"><label for="at-pw2">Same password again</label><input class="exs-box-in" type="password" id="at-pw2" autocomplete="new-password"></div>';
+    h += atPwField('at-pw', 'Password', 'new-password');
+    h += atPwField('at-pw2', 'Same password again', 'new-password');
     h += '<div class="exs-fl"><label for="at-hint">Hint (optional)</label><input class="exs-box-in" type="text" id="at-hint" autocomplete="off"></div>';
     h += '<p class="exs-cap" id="at-msg"></p>';
     h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.atOldCreatePw()">Continue</button>');
@@ -1200,22 +1237,30 @@ const PAIR_CODE_LENGTH = 4;
     atStopPoll();
     var h = atHead('Add a device', true, 'atClose');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
-    h += '<input class="exs-box-in" id="at-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:200px;text-align:center;font-family:var(--font-mono);font-size:var(--fs-display);font-weight:600;letter-spacing:10px;text-transform:uppercase;color:var(--accent);">';
+    h += '<input class="exs-box-in" id="at-code" maxlength="4" enterkeyhint="go" oninput="App.atCodeInput(this)" onkeydown="if(event.key===\'Enter\')App.atOldConnect()" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:200px;text-align:center;font-family:var(--font-mono);font-size:var(--fs-display);font-weight:600;letter-spacing:10px;text-transform:uppercase;color:var(--accent);">';
     h += '<div class="exs-body">Enter the code on the other device</div><p class="exs-cap" id="at-msg"></p></div>';
     h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.atOldConnect()">Connect</button>');
     atShow(h);
     setTimeout(function() { var i = document.getElementById('at-code'); if (i) i.focus(); }, 50);
   }
+  // v2.106.0: connect on the 4th letter (the keyboard hides the button on a phone); Enter also works.
+  function atCodeInput(el) {
+    var c = String(el.value || '').toUpperCase();
+    if (c.length === 4 && !(AT && AT.connecting)) atOldConnect();
+  }
   async function atOldConnect() {
+    if (!AT || AT.connecting) return;
     var c = (((document.getElementById('at-code') || {}).value) || '').trim().toUpperCase();
     if (!/^[A-Z]{4}$/.test(c) || c.split('').some(function(ch) { return PAIR_CHARS.indexOf(ch) < 0; })) { atMsg('Enter the 4 letters shown on the other device.'); return; }
     AT.url = getWitnessUrl();
     if (!AT.url) { atMsg('No witness reachable. Check your connection.'); return; }
     AT.their = c; AT.code = deriveJoinCode(c); AT.shared = null; AT.hello = null;
+    AT.connecting = true;
     var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
     try {
       await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: state.publicKeyJwk, role: 'attach-old' });
-    } catch (e) { atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
+    } catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
+    AT.connecting = false;
     var h = atHead('Add a device', true, 'atOldEnter');
     h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Waiting for the other device</span></div><div class="exs-grow"></div>';
     atShow(h);
@@ -1251,7 +1296,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="exs-row" style="cursor:default;"><div class="exs-rowmain"><div class="exs-lab">Name</div></div><div class="exs-body">' + esc(String(AT.hello.label || '').slice(0, 60)) + '</div></div>';
     h += '<div class="exs-row" style="cursor:default;"><div class="exs-rowmain"><div class="exs-lab">Fingerprint</div></div><div class="exs-body" style="font-family:var(--font-mono);font-weight:600;letter-spacing:1px;">' + esc(atFp(AT.devFp)) + '</div></div>';
     h += '<p class="exs-cap" style="margin:8px 4px 18px;">The other device shows the same fingerprint. If it does not, stop here.</p>';
-    h += '<div class="exs-fl"><label for="at-pw">Device password</label><input class="exs-box-in" type="password" id="at-pw" autocomplete="current-password"></div>';
+    h += atPwField('at-pw', 'Device password', 'current-password');
     if (st.stored && st.stored.hint) h += '<p class="exs-cap" style="margin:-6px 0 0 2px;">Hint: ' + esc(st.stored.hint) + '</p>';
     h += '<p class="exs-cap" id="at-msg" style="margin-top:8px;"></p>';
     h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.atOldAdd()">Add this device</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.atClose()">Not my device</button></div>');
@@ -1267,15 +1312,23 @@ const PAIR_CODE_LENGTH = 4;
     catch (e) { atMsg('That password is not right.'); if (btn) { btn.disabled = false; btn.textContent = 'Add this device'; } return; }
     try {
       var m = await HCP.makeDeviceCert(parentPriv, st.stored.publicKey, AT.partnerPub, AT.hello.label);
-      await appendRecord(m.record);
-      state.settings.deviceLabels = state.settings.deviceLabels || {};
-      state.settings.deviceLabels[m.local.deviceFp] = { label: m.local.label, salt: m.local.salt };
+      // v2.106.0: send before write. Sign the certificate onto a copy of the chain,
+      // send that copy, and commit only after the send succeeds. A failed send
+      // leaves this chain untouched (Oct 5 walk left orphan certificates).
+      var draft = state.chain.slice();
+      await HCP.appendToChain(draft, m.record, state.privateKey);
+      var labels = Object.assign({}, state.settings.deviceLabels || {});
+      labels[m.local.deviceFp] = { label: m.local.label, salt: m.local.salt };
+      var pack = { t: 'attach-pack', chain: draft, rootPublicKey: state.publicKeyJwk, label: m.local.label, salt: m.local.salt, declarations: state.declarations, deviceLabels: labels };
+      if (state.pin) pack.pinCheck = await atPinCheck(state.pin);
+      var enc = await HCP.encryptRelayPayload(pack, AT.shared);
+      console.log('[attach] old: certificate signed at seq ' + m.record.seq + ', sending ' + Math.round(enc.length / 1024) + ' kB');
+      await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: enc });
+      state.chain = draft;
+      state.settings.deviceLabels = labels;
       if (!state.settings.thisDeviceLabel) state.settings.thisDeviceLabel = detectDeviceType();
       save();
-      var pack = { t: 'attach-pack', chain: state.chain, rootPublicKey: state.publicKeyJwk, label: m.local.label, salt: m.local.salt, declarations: state.declarations, deviceLabels: state.settings.deviceLabels };
-      var enc = await HCP.encryptRelayPayload(pack, AT.shared);
-      console.log('[attach] old: certificate appended at seq ' + m.record.seq + ', sending ' + Math.round(enc.length / 1024) + ' kB');
-      await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: enc });
+      console.log('[attach] old: sent, certificate committed');
       AT.finished = true;
       atShow(atCheckDone('Device added', m.local.label + ' can now exchange as you', 'atClose', 'Done'));
     } catch (e) {
@@ -14189,7 +14242,7 @@ function init() {
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
-    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd,
+    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, atCodeInput, atPwToggle, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd,
     coopReceiveProposal, sessionCodeInput, sessionConnect, sessionConfirm, sessionReject, sendSessionProposal, sessionThreadTab,
     setProposalPath, scanConfirmation, parseExConfirmation, parseExConfirmationMsg,
     finishExchange, settleViaMessage, shareSettlement, copySettlement,
