@@ -751,6 +751,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-sheet { position: absolute; inset: 0; background: var(--bg); padding: 0 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; overflow-y: auto; }
 .exs-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 10px; }
 .exs-sheet-head .exs-h { font-size: 18px; }
+.rec-hd { font-weight: 600; margin: 18px 0 6px; }
 .exs-x { background: none; border: none; width: 40px; height: 40px; margin-right: -8px; border-radius: 50%; color: var(--text-dim); font-size: 22px; line-height: 1; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; }
 .exs-lines { font-size: 15px; color: var(--text-dim); line-height: 1.9; }
 .exs-lines b { color: var(--text); font-weight: 600; }
@@ -1598,13 +1599,13 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <button class="exs-row" onclick="App.mcOpen('reach')"><div class="exs-rowmain"><div class="exs-body">Reach</div><div class="exs-cap">How far your exchanges reach</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyTextureFromWallet()"><div class="exs-rowmain"><div class="exs-body">As others see it</div><div class="exs-cap">Your texture, the way a counterparty sees it</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <div class="exs-cap mc-group">Your record</div>
+      <button class="exs-row" onclick="App.recOpen()"><div class="exs-rowmain"><div class="exs-body">Record keeping</div><div class="exs-cap" id="rec-acct-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openChainViewerFromWallet()"><div class="exs-rowmain"><div class="exs-body">Exchange history</div><div class="exs-cap">Every recorded act</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <div class="exs-cap mc-group">Learn</div>
       <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP works the way it does</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <div class="exs-cap mc-group">This phone</div>
       <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.attachOldStart()"><div class="exs-rowmain"><div class="exs-body">Add a device</div><div class="exs-cap">Put your chain on another phone or computer</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
     <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
@@ -1691,6 +1692,31 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <div class="exs-sheet-head"><div class="exs-h">Parent key</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div class="lr-scroll" id="pk-body"></div>
       <div class="lr-foot" id="pk-foot"></div>
+    </div>
+    <!-- Record keeping (v2.110.0, Step 4, Michael Oct 5): two states, caught up or new exchanges; housekeeping, no red. Spec writing/spec-4-device-sync-and-repair.md. -->
+    <div class="exs-sheet mc-sheet" id="mc-sheet-record" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Record keeping</div><button class="exs-x" aria-label="Close" onclick="App.recClose()">&#215;</button></div>
+      <div id="rec-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-recwhy" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Why this matters</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-body">Your record lives on each of your devices.</p>
+      <div class="exs-body rec-hd">Syncing your devices</div>
+      <p class="exs-body">When you make an exchange on one device, your other devices can't know about it until you sync them. If you lose that device first, the exchange is gone from your side.</p>
+      <p class="exs-body" style="margin-top:10px">Syncing gives your devices a copy of each other's exchanges, so losing one doesn't lose anything. Your devices end up with the same exchanges, the way two watches end up showing the same time.</p>
+      <div class="exs-body rec-hd">Backing up</div>
+      <p class="exs-body">A backup keeps one more copy outside all your devices, for the day you lose every one of them. Emailing it to yourself is the simplest way.</p>
+      <p class="exs-body" style="margin-top:10px">Nothing is wrong when you have new exchanges. It is a little housekeeping, like putting things away after a busy day.</p>
+    </div>
+    <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-recdev" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="recdev-title">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="lr-scroll" id="recdev-body"></div>
+      <div class="lr-foot" id="recdev-foot"></div>
+    </div>
+    <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-recbk" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Back up</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="lr-scroll" id="recbk-body"></div>
+      <div class="lr-foot"><button class="btn btn-primary" style="width:100%;" onclick="App.recBackup('mail')">Email yourself a backup</button><button class="exs-quiet" style="width:100%;" onclick="App.recBackup('save')">Save to this device instead</button></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>

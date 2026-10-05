@@ -1368,6 +1368,8 @@ const PAIR_CODE_LENGTH = 4;
       if (!has || !state.publicKeyJwk) return;
       HCP.verifyChainMulti(state.chain, state.publicKeyJwk).then(function(v) {
         state.myParentFp = v.parentFp || null;
+        state.recDevs = v.devices || [];
+        try { renderBrowserStorageBanner(); recRender(); } catch (e) {}
         if (v.selfActs && v.selfActs.length) console.log('[chain-multi] records exchanging with this chain itself (observe only): seq ' + v.selfActs.join(', '));
         console.log('[chain-multi] ' + (v.valid ? 'valid' : 'INVALID (observe only): ' + v.errors.slice(0, 3).join('; ')) + ', parent ' + (v.parentFp || 'none') + ', devices ' + v.devices.length);
       }).catch(function(e) { console.log('[chain-multi] check failed:', e.message); });
@@ -2198,7 +2200,7 @@ const PAIR_CODE_LENGTH = 4;
   // and says how many. Saving a backup (or restoring one) records the act
   // count in SK_backup; the line returns when a new exchange lands.
   function backupMarker() { try { return JSON.parse(localStorage.getItem(SK + '_backup') || 'null'); } catch(e) { return null; } }
-  function markBackedUp() { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, at: new Date().toISOString() })); } catch(e) {} }
+  function markBackedUp() { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, seq: state.chain.length - 1, at: new Date().toISOString() })); } catch(e) {} }
   function renderBrowserStorageBanner() {
     var existing = document.getElementById('browser-storage-banner');
     if (existing) existing.remove();
@@ -2208,6 +2210,18 @@ const PAIR_CODE_LENGTH = 4;
     var acts = state.chain.filter(HCP.isAct).length;
     var m = backupMarker();
     var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
+    var rm = recModel();
+    if (rm.others.length) {
+      // v2.110.0 (Michael, Oct 5): with other devices, one neutral line, no icon, one button into Record keeping.
+      var cap = rm.syncN > 0 ? rm.syncN + (rm.syncN === 1 ? ' new exchange' : ' new exchanges') + ' since you last synced' : (unbacked > 0 ? unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up' : '');
+      if (!cap) return;
+      var hero2 = document.querySelector('#tab-home-content .home-hero');
+      if (!hero2) return;
+      var b2 = document.createElement('div'); b2.id = 'browser-storage-banner'; b2.className = 'home-backup';
+      b2.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') + '<div class="exs-cap">' + cap + '</div></div><button class="exs-save" onclick="App.recOpenHome()">Keep your record in order</button>';
+      hero2.appendChild(b2);
+      return;
+    }
     if (unbacked <= 0) return;
     var hero = document.querySelector('#tab-home-content .home-hero');
     if (!hero) return;
@@ -2224,6 +2238,88 @@ const PAIR_CODE_LENGTH = 4;
   // v2.93.0: the warning sheet behind the amber icon (Michael, Oct 3).
   function openBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) { el.hidden = false; el.scrollTop = 0; } }
   function closeBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) el.hidden = true; }
+
+  // ---- Record keeping (v2.110.0, Step 4, Michael Oct 5) ----
+  // A device knows only what it has that another device has not seen. For each
+  // other device: the seq on this chain where they last matched (a recorded
+  // sync, else the moment the copy was made: that device's certificate on the
+  // first phone, this device's own certificate on an attached one). New since
+  // = exchanges written on this device after that point (repairs came from
+  // elsewhere, so they never count).
+  var _recFromHome = false;
+  function recFmtD(ts) { try { var d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
+  function recModel() {
+    var m = backupMarker();
+    var acts = state.chain.filter(HCP.isAct).length;
+    var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
+    var out = { others: [], syncN: 0, unbacked: Math.max(0, unbacked), backupAt: m && m.at ? m.at : null };
+    var devs = state.recDevs || [];
+    if (!devs.length) return out;
+    var me = (state.settings && state.settings.thisDeviceFp) || state.fingerprint;
+    var labels = (state.settings && state.settings.deviceLabels) || {}, ds = (state.settings && state.settings.devSync) || {};
+    var myCert = null; devs.forEach(function(d) { if (d.fp === me) myCert = d; });
+    var list = [];
+    if (me !== state.fingerprint) list.push({ fp: state.fingerprint, label: (labels[state.fingerprint] && labels[state.fingerprint].label) || 'Your first device', base: myCert ? myCert.seq : 0, at: myCert ? myCert.certTs : '' });
+    var byLabel = {};
+    devs.forEach(function(d) {
+      if (d.fp === me) return;
+      var lab = labels[d.fp] && labels[d.fp].label; if (!lab) return; // a certificate with no label never finished attaching
+      var e = { fp: d.fp, label: lab, seq: d.seq, base: myCert ? myCert.seq : d.seq, at: myCert ? myCert.certTs : d.certTs };
+      if (!byLabel[lab] || byLabel[lab].seq < d.seq) byLabel[lab] = e; // repeated attach attempts: the latest certificate stands
+    });
+    Object.keys(byLabel).forEach(function(k) { list.push(byLabel[k]); });
+    list.forEach(function(d) {
+      if (ds[d.fp] && typeof ds[d.fp].mySeq === 'number') { d.base = ds[d.fp].mySeq; d.at = ds[d.fp].at; d.synced = true; }
+      d.count = state.chain.filter(function(r, i) { return i > d.base && HCP.isAct(r) && r.type !== HCP.RECORD_TYPE_REPAIR; }).length;
+      if (d.count > out.syncN) out.syncN = d.count;
+    });
+    out.others = list;
+    return out;
+  }
+  function recCaption(rm) {
+    if (rm.syncN > 0) return rm.syncN + (rm.syncN === 1 ? ' new exchange' : ' new exchanges') + ' since you last synced';
+    if (rm.unbacked > 0) return rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up';
+    return 'Your record is in order';
+  }
+  function recRow(word, cap, on) { return '<button class="exs-row" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>'; }
+  function recRender() {
+    var el = document.getElementById('rec-body'); if (!el) return;
+    var rm = recModel(), h = '<p class="exs-cap" style="margin:2px 0 14px">Steps to keep your record complete on all your devices.</p>';
+    if (rm.others.length && rm.syncN > 0) h += '<p class="exs-body">You\u2019ve made ' + rm.syncN + (rm.syncN === 1 ? ' exchange' : ' exchanges') + ' on this device since your other devices last synced. Next time you\u2019re near them, take a minute to sync.</p>';
+    else if (rm.others.length && rm.unbacked > 0) h += '<p class="exs-body">Your other devices have everything from this one. One more copy outside your devices keeps it safe if you lose them all.</p>';
+    else if (rm.others.length || rm.unbacked <= 0) h += '<div style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><p class="exs-body" style="margin:0">Your record is in order. ' + (rm.others.length ? 'Your other devices have everything from this one, and it is backed up.' : 'Everything on this device is backed up.') + '</p></div>';
+    else h += '<p class="exs-body">You\u2019ve made ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since your last backup. A backup keeps a copy outside this device.</p>';
+    h += '<p class="mc-link" style="margin:10px 0 0"><a href="#" onclick="App.mcOpen(\'recwhy\');return false">Why this matters</a></p>';
+    h += '<div class="exs-cap mc-group">Your other devices</div>';
+    rm.others.forEach(function(d, i) { h += recRow(d.label, 'Last synced ' + (recFmtD(d.at) || 'when it was added'), 'App.recDev(' + i + ')'); });
+    h += recRow('Add a device', 'Put your record on another phone or computer', 'App.attachOldStart()');
+    h += '<div class="exs-cap mc-group">Backup</div>';
+    h += recRow('Back up', rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '') : 'Not backed up yet', 'App.recBkOpen()');
+    el.innerHTML = h;
+    var c = document.getElementById('rec-acct-cap'); if (c) c.textContent = recCaption(rm);
+  }
+  function recOpen() { _recFromHome = false; recRender(); mcOpen('record'); }
+  function recOpenHome() { _recFromHome = true; openWallet(); recRender(); mcOpen('record'); }
+  function recClose() { mcClose(); if (_recFromHome) { _recFromHome = false; closeModal('wallet'); } }
+  function recDev(i) {
+    var d = recModel().others[i]; if (!d) return;
+    document.getElementById('recdev-title').textContent = d.label;
+    var fp = d.fp.replace(/(.{4})/g, '$1 ').trim();
+    document.getElementById('recdev-body').innerHTML = '<div class="exs-cap mc-group">Last synced</div><div class="exs-body">' + esc(d.at ? new Date(d.at).toLocaleString() : 'When it was added') + '</div>' +
+      '<div class="exs-cap mc-group">Since then</div><div class="exs-body">' + (d.count ? d.count + (d.count === 1 ? ' exchange' : ' exchanges') + ' made on this device' : 'Nothing new from this device') + '</div>' +
+      '<div class="exs-cap mc-group">Device key</div><div class="exs-cap" style="font-family:var(--font-mono)">' + esc(fp) + '</div>' +
+      '<p class="exs-cap" style="margin-top:16px">Put both devices side by side. Each copies over the exchanges the other is missing.</p>';
+    document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" disabled>Sync now</button><p class="exs-cap" style="text-align:center;margin-top:6px">Syncing arrives in the next dev update.</p>';
+    mcOpen('recdev');
+  }
+  function recBkOpen() {
+    var rm = recModel();
+    document.getElementById('recbk-body').innerHTML = '<div class="exs-cap mc-group">Last backup</div><div class="exs-body">' + (rm.backupAt ? esc(recFmtD(rm.backupAt)) + (rm.unbacked ? '. ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</div>' +
+      '<p class="exs-body" style="margin-top:16px">A backup is a copy of your record outside all your devices. If you ever lose every device, you can bring everything back from it.</p>' +
+      '<p class="exs-body" style="margin-top:10px">The simplest place to keep it is your own email. Send it to yourself and it is there whenever you need it.</p>';
+    mcOpen('recbk');
+  }
+  async function recBackup(mode) { await exportBackupAction(mode); mcClose(); recRender(); renderBrowserStorageBanner(); }
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -7524,7 +7620,7 @@ const PAIR_CODE_LENGTH = 4;
   // becomes the central place for backups, no server), and a copy is saved
   // to this phone. Share first, because it needs the tap; the local copy
   // follows when the panel closes, whether they shared or cancelled.
-  async function exportBackupAction() {
+  async function exportBackupAction(mode) {
     var bk, text, name;
     try {
       bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
@@ -7553,10 +7649,10 @@ const PAIR_CODE_LENGTH = 4;
       }
     } catch(e) { shareFile = null; }
     var shared = false;
-    if (shareFile) {
-      try { await navigator.share({ files: [shareFile], title: 'HEP backup' }); shared = true; } catch(e) { shared = false; }
+    if (shareFile && mode !== 'save') {
+      try { await navigator.share({ files: [shareFile], title: 'HEP backup ' + new Date().toISOString().slice(0, 10), text: 'My HEP backup from ' + new Date().toLocaleDateString() + '. Keep this email: it can bring my record back if I lose my devices.' }); shared = true; } catch(e) { shared = false; }
     }
-    var saved = saveLocal();
+    var saved = mode === 'mail' && shared ? true : saveLocal();
     if (shared || saved) { markBackedUp(); renderBrowserStorageBanner(); }
     toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
   }
@@ -14343,7 +14439,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
+    exportBackup: exportBackupAction, recOpen, recOpenHome, recClose, recDev, recBkOpen, recBackup, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
