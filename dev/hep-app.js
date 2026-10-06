@@ -2173,13 +2173,13 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="sec-hd">' + exShieldSVG(sh.color, 26) + '<div class="exs-body">Your device</div></div>';
     h += '<p class="exs-body" style="margin:0">' + esc(sh.title.replace('This phone', 'Your phone')) + '</p>';
     h += '<p class="exs-cap" style="margin:4px 0 0">The shield reads the phone. It never reads the person.</p>';
-    h += '<p class="mc-link" style="margin:8px 0 2px"><a href="#" onclick="App.secSignals();return false">What your phone contributes</a></p>';
     h += stSwitchRow('Motion sensors', 'Proves a real hand holds a real phone', state.settings.sensorMotion, 'switch-motion-tab', 'App.toggleMotionTab()');
     h += stSwitchRow('Location', 'Proves your chain spans real places over time', state.settings.locationAuto, 'switch-location-tab', 'App.toggleLocationTab()');
     var parts = [];
     if (_sensor.battery) parts.push('battery'); if (_sensor.network) parts.push('network');
     if (_sensor.light !== null) parts.push('light'); if (_sensor.pressure !== null) parts.push('pressure');
-    h += '<p class="exs-cap" style="margin:8px 0 0">' + (parts.length ? 'Also captured automatically: ' + parts.join(', ') + '. ' : '') + 'Only hashes are stored. Raw data never leaves your device.</p>';
+    h += '<p class="exs-cap" style="margin:8px 0 6px">' + (parts.length ? 'Also captured automatically: ' + parts.join(', ') + '. ' : '') + 'Only hashes are stored. Raw data never leaves your device.</p>';
+    h += stRow('What your phone contributes', 'The signals behind your shield, and how each one reads', 'App.secSignals()');
     // Keys
     h += '<div class="exs-cap mc-group">Your key</div>';
     h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="font-family:var(--mono);font-size:13px">' + esc((state.fingerprint || '').substring(0, 16)) + '</div><div class="exs-cap">Your chain\u2019s fingerprint</div></div></div>';
@@ -2187,7 +2187,89 @@ const PAIR_CODE_LENGTH = 4;
     el.innerHTML = h;
   }
   function secOpen() { secRender(); mcOpen('security'); }
-  function secSignals() { try { renderStandingTab(); } catch (e) {} mcOpen('signals'); }
+  // v2.116.0 (Michael, Oct 6): the signal reading in the current design. Base reading first (the shield,
+  // and how many sources each place gives), then the full breakdown, one signal, and its technical details,
+  // each a reading sheet over the last. Colours per rules 8a and 16: green for a signal that reads normal,
+  // red only for alarming, nothing amber. The old card (renderPOHVerdict) stays for the exchange flow.
+  var SIG_ORIGINS = [
+    ['device', 'From this phone', 'Hardware on your phone adds to each record.'],
+    ['external', 'From others and the witness', 'What reaches you from the people you exchange with and from the witness.'],
+    ['chain', 'From your chain over time', 'Patterns that show as your chain grows.']
+  ];
+  var _sigV = null;
+  function sigTxt(t) { return String(t || '').replace(/\s*\u2014\s*/g, ': '); } // the registry's lines use em dashes; none on screen
+  function sigRollup() { _sigV = null; try { _sigV = POH.rollup({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() }); } catch (e) { console.log('[signals] rollup failed:', e.message); } return _sigV; }
+  function sigState(x) {
+    if (x.presence === 'absent') return x.expected ? 'Not yet' : 'Not on this phone';
+    if (x.behavior === 'alarming') return 'Unusual';
+    if (x.behavior === 'worth-noting') return 'Worth a look';
+    return '';
+  }
+  function secSignals() {
+    var v = sigRollup(), ts = secSnapshot(), sh = exShieldRead(ts), h = '';
+    h += '<div style="display:flex;justify-content:center;margin:6px 0 12px">' + exShieldSVG(sh.color, 48) + '</div>';
+    h += '<p class="exs-body" style="margin:0">' + esc(sh.title.replace('This phone', 'Your phone')) + '</p>';
+    h += '<p class="exs-cap" style="margin:6px 0 0">' + esc(sh.body.replace('This phone', 'Your phone')) + '</p>';
+    if (!v) { document.getElementById('sig-base').innerHTML = h + '<p class="exs-cap" style="margin-top:16px">Nothing to read yet. The reading starts with your first exchange.</p>'; mcOpen('signals'); return; }
+    var pres = Math.min(v.countPresentExpected || 0, v.totalAvailable);
+    h += '<div class="exs-cap mc-group">Where the reading comes from</div>';
+    SIG_ORIGINS.forEach(function(o) {
+      var b = v.byOrigin[o[0]]; if (!b || !b.expected) return;
+      h += '<div class="exs-row mc-vrow st-row"><div class="exs-rowmain"><div class="exs-body">' + o[1] + '</div><div class="exs-cap">' + o[2] + '</div></div><div class="exs-rowval">' + b.contributing + ' of ' + b.expected + '</div></div>';
+    });
+    h += '<p class="exs-cap" style="margin:10px 0 6px">' + pres + ' of ' + v.totalAvailable + ' expected sources are giving a reading' + (v.countBonus ? ', plus ' + v.countBonus + ' this phone gives beyond those' : '') + '.' + (v.countAlarming ? ' ' + v.countAlarming + ' ' + (v.countAlarming === 1 ? 'reads' : 'read') + ' unusually.' : (v.countWorthNoting ? ' ' + v.countWorthNoting + ' ' + (v.countWorthNoting === 1 ? 'is' : 'are') + ' worth a look.' : '')) + '</p>';
+    h += stRow('Full breakdown', 'Every signal, what it means, and what your phone shows', 'App.sigAll()');
+    document.getElementById('sig-base').innerHTML = h;
+    mcOpen('signals');
+  }
+  function sigAll() {
+    var v = _sigV || sigRollup(); if (!v) return;
+    var order = { device: 0, external: 1, chain: 2 }, h = '';
+    var sorted = v.signals.slice().sort(function(a, b) { var d = (order[a.origin] || 9) - (order[b.origin] || 9); if (d) return d; var p = (a.presence === 'present' ? 0 : 1) - (b.presence === 'present' ? 0 : 1); return p || (b.tier || 0) - (a.tier || 0); });
+    SIG_ORIGINS.forEach(function(o, gi) {
+      var list = sorted.filter(function(x) { return x.origin === o[0]; }); if (!list.length) return;
+      h += '<div class="exs-cap' + (gi ? ' mc-group' : '') + '"' + (gi ? '' : ' style="margin-top:4px"') + '>' + o[1] + '</div>';
+      list.forEach(function(x) {
+        var st = sigState(x), col = x.behavior === 'alarming' && x.presence !== 'absent' ? 'var(--red)' : 'var(--text-faint)';
+        var mark = (x.presence === 'present' && x.behavior === 'normal') ? '<svg width="16" height="16" style="color:var(--green);flex:none" aria-label="Reads normal"><use href="#icon-check"/></svg>' : '';
+        h += '<button class="exs-row' + (x.presence === 'absent' ? ' off' : '') + '" style="cursor:pointer" onclick="App.sigOne(\'' + esc(x.id) + '\')"><div class="exs-rowmain"><div class="exs-body">' + esc(x.humanName) + (!x.expected && x.presence === 'present' ? '<span class="exs-cap"> \u00b7 extra</span>' : '') + '</div><div class="exs-cap">' + esc(sigTxt(x.summary)) + '</div></div>' +
+          (st ? '<span class="exs-cap" style="color:' + col + ';flex:none">' + st + '</span>' : mark) + '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+      });
+    });
+    document.getElementById('sig-all').innerHTML = h;
+    mcOpen('sigall');
+  }
+  function sigOne(id) {
+    var v = _sigV || sigRollup(); if (!v) return;
+    var x = v.signals.find(function(q) { return q.id === id; }); if (!x) return;
+    document.getElementById('sig-one-title').textContent = x.humanName;
+    var h = '', st = sigState(x);
+    if (st) h += '<p class="exs-cap" style="margin:0 0 4px' + (x.behavior === 'alarming' && x.presence !== 'absent' ? ';color:var(--red)' : '') + '">' + st + '</p>';
+    if (x.summary) h += '<p class="exs-body" style="margin:0">' + esc(sigTxt(x.summary)) + '</p>';
+    var hasCopy = x.copy && x.copy.whatItMeans && x.copy.whatItMeans !== 'TODO';
+    if (hasCopy) h += '<div class="exs-body sig-hd">What it means</div><p class="exs-body" style="margin:0">' + esc(sigTxt(x.copy.whatItMeans)) + '</p>';
+    h += '<div class="exs-body sig-hd">What your phone shows</div><div class="sig-data">' + sigTxt(renderPOHSignalData(x).replace(/ \u2013 /g, ' to ')) + '</div>';
+    if (hasCopy && x.copy.whyItMatters) h += '<div class="exs-body sig-hd">Why it matters</div><p class="exs-body" style="margin:0">' + esc(sigTxt(x.copy.whyItMatters)) + '</p>';
+    if (!hasCopy) h += '<p class="exs-cap" style="margin-top:14px">A fuller explanation of this signal is still to be written.</p>';
+    h += '<div style="height:14px"></div>' + stRow('Technical details', 'How this signal is weighed, and the raw reading', "App.sigTech('" + esc(x.id) + "')");
+    document.getElementById('sig-one').innerHTML = h;
+    mcOpen('sigone');
+  }
+  function sigTech(id) {
+    var v = _sigV || sigRollup(); if (!v) return;
+    var x = v.signals.find(function(q) { return q.id === id; }), sig = (POH.SIGNALS || {})[id]; if (!x || !sig) return;
+    var tier = sig.tier === 3 ? 'Critical' : sig.tier === 2 ? 'Supporting' : 'Enrichment';
+    function r(k, val, mono) { return '<div class="exs-row mc-vrow st-row"><div class="exs-rowmain"><div class="exs-body">' + k + '</div></div><div class="exs-rowval" style="font-weight:400' + (mono ? ';font-family:var(--mono);font-size:12px' : '') + '">' + esc(String(val)) + '</div></div>'; }
+    var h = '<div class="exs-cap" style="margin-top:4px">How it is weighed</div>';
+    h += r('Signal', sig.id, true) + r('Weight', tier + ' (' + sig.tier + ')') + r('Expected on', (sig.expectedOn || []).join(', ')) + r('This device', v.deviceClass) + r('Expected here', x.expected ? 'Yes' : 'No');
+    h += '<div class="exs-cap mc-group">How it reads</div>';
+    h += r('Presence', x.presence) + r('Behaviour', x.behavior) + r('Adds to the reading', x.contribution);
+    h += '<div class="exs-cap mc-group">Raw reading on this device</div>';
+    h += '<div class="sig-data" style="margin-top:6px">' + (x.raw ? '<pre>' + esc(JSON.stringify(x.raw, null, 2)) + '</pre>' : 'No reading captured yet.') + '</div>';
+    h += '<p class="exs-cap" style="margin-top:14px">This is the raw readout for this signal, as worked out on this phone from your device and your chain. It stays on this phone.</p>';
+    document.getElementById('sig-tech').innerHTML = h;
+    mcOpen('sigtech');
+  }
 
   function showMyPhotos() {
     var genesis = null;
@@ -14733,7 +14815,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, secSignals, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,

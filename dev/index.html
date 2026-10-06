@@ -522,6 +522,10 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .sec-hd .exs-body { font-weight: 600; }
 .sec-lines { margin: 0 0 4px 0; }
 .sec-lines div { padding: 3px 0; }
+.sig-data { background: var(--bg-input); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 13px; line-height: 1.6; color: var(--text); }
+.sig-data strong { font-weight: 600; }
+.sig-data pre { margin: 0; white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
+.sig-hd { font-weight: 600; margin: 20px 0 6px; }
 .st-row { cursor: default; }
 .st-row .exs-rowmain { flex: 1; min-width: 0; }
 .st-danger .exs-body { color: var(--red); }
@@ -1642,10 +1646,23 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <div class="exs-sheet-head"><div class="exs-h">Security</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="sec-body"></div>
     </div>
+    <!-- v2.116.0 (Michael, Oct 6): the signal reading rebuilt as reading sheets (rules 2, 7b, 10, 11): base reading, full breakdown, one signal, technical details. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-signals" hidden>
       <div class="exs-sheet-head"><div class="exs-h">What your phone contributes</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
-      <div id="wallet-identity-panel" hidden></div>
-      <div id="wallet-standing-content"></div>
+      <div id="sig-base"></div>
+      <div hidden><div id="wallet-identity-panel"></div><div id="wallet-standing-content"></div></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-sigall" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Full breakdown</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="sig-all"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-sigone" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="sig-one-title"></div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="sig-one"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-sigtech" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Technical details</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="sig-tech"></div>
     </div>
     <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
