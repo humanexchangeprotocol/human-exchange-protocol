@@ -2114,6 +2114,7 @@ const PAIR_CODE_LENGTH = 4;
     set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M);
     var ast = document.getElementById('mc-a-st'); if (ast) { ast.className = 'exs-rowval' + (side ? ' ' + side : ''); ast.innerHTML = mcStandWords(st) + M; }
     try { recRender(); } catch (e) {}
+    try { ofAcctCap(); } catch (e) {}
     var nst = document.getElementById('mc-n-st'); nst.className = 'exs-rowval mc-big' + (side ? ' ' + side : ''); nst.innerHTML = mcStandWords(st) + M;
     set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
     set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
@@ -2187,6 +2188,86 @@ const PAIR_CODE_LENGTH = 4;
     el.innerHTML = h;
   }
   function secOpen() { secRender(); mcOpen('security'); }
+  // v2.117.0 (Michael, Oct 6): What you offer, piece 1. The same list the exchange flow reads
+  // (state.declarations.services, local, never a record). Each item: description (its name),
+  // about (optional), price ('fixed' | 'time' | 'unit'), unit ('hour' | 'day' | typed), value
+  // (the price, or the rate per unit). Older entries without price read as fixed.
+  var _ofEd = null; // { i: index or -1, price, unit }
+  function ofPriceLine(it) {
+    var v = mcFmt(Number(it.value) || 0) + ' ' + exMarkSVG(12);
+    if (it.price === 'time') return v + ' per ' + esc(it.unit || 'hour');
+    if (it.price === 'unit') return v + ' per ' + esc(it.unit || 'unit');
+    return v;
+  }
+  function ofAcctCap() {
+    var n = exServices().length, c = document.getElementById('of-acct-cap');
+    if (c) c.textContent = n ? n + (n === 1 ? ' thing listed' : ' things listed') : 'Services and products, with a usual price';
+  }
+  function ofRender() {
+    var el = document.getElementById('of-body'); if (!el) return;
+    var list = exServices(), h = '';
+    h += '<p class="exs-cap" style="margin:0 0 6px">The things you offer, each with a usual price. When you exchange, pick one and the details fill in. The price can always change in the moment.</p>';
+    list.forEach(function(it, i) {
+      h += '<button class="exs-row" onclick="App.ofEdit(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(it.description || 'Untitled') + '</div>' + (it.about ? '<div class="exs-cap">' + esc(it.about.length > 70 ? it.about.slice(0, 68) + '\u2026' : it.about) + '</div>' : '') + '</div><span class="exs-rowval" style="font-weight:400">' + ofPriceLine(it) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    if (!list.length) h += '<p class="exs-body" style="margin:14px 0 4px">Nothing listed yet. A meal, a ride, a dozen eggs, an hour of help: anything you do or make for others.</p>';
+    h += stRow(list.length ? 'Add something else' : 'Add something you offer', '', 'App.ofEdit(-1)');
+    el.innerHTML = h;
+    ofAcctCap();
+  }
+  function ofOpen() { ofRender(); mcOpen('offer'); }
+  function ofEdit(i) {
+    var it = i >= 0 ? exServices()[i] : null;
+    _ofEd = { i: i, price: (it && it.price) || 'fixed', unit: (it && it.unit) || (it && it.price === 'time' ? 'hour' : '') };
+    document.getElementById('of-ed-title').textContent = it ? 'Edit' : 'Add something you offer';
+    var h = '';
+    h += '<div class="exs-fl"><label for="of-name">What you offer</label><input class="exs-box-in" id="of-name" placeholder="A meal, a dozen eggs, a ride" value="' + esc(it ? it.description || '' : '') + '"></div>';
+    h += '<div class="exs-fl"><label for="of-about">Description (optional)</label><textarea class="exs-box-in" id="of-about" placeholder="What is included, what you need from the other person">' + esc(it ? it.about || '' : '') + '</textarea></div>';
+    h += '<div class="exs-fl" style="margin-bottom:6px"><label>How you price it</label></div>';
+    h += '<div class="mc-seg of-seg" id="of-price">' + [['fixed', 'Fixed price'], ['time', 'By time'], ['unit', 'By the unit']].map(function(o) { return '<button data-v="' + o[0] + '" aria-pressed="' + (_ofEd.price === o[0]) + '" onclick="App.ofPrice(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += '<div id="of-price-fields"></div>';
+    if (it) h += '<button class="of-rm" onclick="App.ofRemove()">Remove</button>';
+    document.getElementById('of-ed-body').innerHTML = h;
+    ofPriceFields(it ? it.value : '');
+    mcOpen('ofedit');
+  }
+  function ofPriceFields(val) {
+    var host = document.getElementById('of-price-fields'); if (!host) return;
+    var cur = document.getElementById('of-value'); if (val === undefined && cur) val = cur.value;
+    var p = _ofEd.price, h = '';
+    if (p === 'time') {
+      if (_ofEd.unit !== 'hour' && _ofEd.unit !== 'day') _ofEd.unit = 'hour';
+      h += '<div class="mc-seg of-seg" id="of-tunit">' + [['hour', 'Per hour'], ['day', 'Per day']].map(function(o) { return '<button aria-pressed="' + (_ofEd.unit === o[0]) + '" onclick="App.ofTimeUnit(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>';
+    }
+    if (p === 'unit') h += '<div class="exs-fl"><label for="of-unit">Per what</label><input class="exs-box-in" id="of-unit" placeholder="dozen, pound, kilo, litre" value="' + esc(_ofEd.unit === 'hour' || _ofEd.unit === 'day' ? '' : _ofEd.unit || '') + '" oninput="App.ofUnitField(this.value)"></div>';
+    var lab = p === 'fixed' ? 'Usual price' : (p === 'time' ? 'Usual rate, per ' + _ofEd.unit : 'Usual price, per ' + (_ofEd.unit || 'unit'));
+    h += '<div class="exs-fl"><label for="of-value" id="of-value-lab">' + esc(lab) + '</label><div class="exs-bigrow"><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="of-value" placeholder="0" value="' + esc(val === null || val === undefined ? '' : String(val)) + '">' + exMarkSVG(16) + '</div></div>';
+    host.innerHTML = h;
+  }
+  function ofPrice(p) {
+    _ofEd.price = p; if (p === 'fixed') _ofEd.unit = ''; else if (p === 'time') _ofEd.unit = 'hour'; else if (_ofEd.unit === 'hour' || _ofEd.unit === 'day') _ofEd.unit = '';
+    document.querySelectorAll('#of-price button').forEach(function(b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === p)); });
+    ofPriceFields();
+  }
+  function ofTimeUnit(u) { _ofEd.unit = u; ofPriceFields(); }
+  function ofUnitField(v) { _ofEd.unit = v.trim(); var l = document.getElementById('of-value-lab'); if (l) l.textContent = 'Usual price, per ' + (_ofEd.unit || 'unit'); }
+  function ofSave() {
+    var name = (document.getElementById('of-name').value || '').trim();
+    if (!name) { toast('Say what you offer first'); return; }
+    var about = (document.getElementById('of-about').value || '').trim();
+    var value = parseFloat(document.getElementById('of-value').value) || 0;
+    if (_ofEd.price === 'unit' && !_ofEd.unit) { toast('Say what the price is per'); return; }
+    var list = exServices(), prev = _ofEd.i >= 0 ? list[_ofEd.i] : {};
+    var entry = Object.assign({}, prev, { description: name, about: about, price: _ofEd.price, unit: _ofEd.price === 'fixed' ? '' : _ofEd.unit, value: value });
+    if (_ofEd.i >= 0) list[_ofEd.i] = entry; else list.push(entry);
+    save(); mcClose(); ofRender();
+  }
+  function ofRemove() {
+    if (_ofEd.i < 0) return;
+    var it = exServices()[_ofEd.i];
+    if (!confirm('Remove "' + (it.description || 'this') + '" from what you offer? Past exchanges are not affected.')) return;
+    exServices().splice(_ofEd.i, 1); save(); mcClose(); ofRender();
+  }
   // v2.116.0 (Michael, Oct 6): the signal reading in the current design. Base reading first (the shield,
   // and how many sources each place gives), then the full breakdown, one signal, and its technical details,
   // each a reading sheet over the last. Colours per rules 8a and 16: green for a signal that reads normal,
@@ -11709,6 +11790,7 @@ function init() {
   function exItemParts(kind, it) {
     if (kind === 'services') {
       var sm = (it.category !== undefined || it.dur !== undefined) ? { category: it.category || '', duration: it.dur || '' } : exSplitMeta(it.meta || '');
+      if (it.price === 'time' || it.price === 'unit') sm.category = sm.category || ('per ' + (it.unit || 'unit')); // v2.117.0: piece 2 asks the quantity
       return { task: it.description || '', kind: sm.category, dur: sm.duration, value: it.value, ts: null };
     }
     return { task: it.description || '', kind: it.category || '', dur: it.duration ? formatDuration(it.duration) : '', value: it.value, ts: it.timestamp || null };
@@ -14815,7 +14897,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
