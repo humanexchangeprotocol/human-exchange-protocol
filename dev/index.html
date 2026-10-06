@@ -49,7 +49,7 @@
   /* Typography */
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
   /* DESIGN.md rule 5: the five sizes. New and converted surfaces use only these. */
-  --fs-caption: 12px; --fs-label: 13px; --fs-body: 15px; --fs-title: 18px; --fs-display: 32px;
+  --fs-caption: 13px; --fs-label: 14px; --fs-body: 15px; --fs-title: 18px; --fs-display: 32px; /* v2.121.1: caption 12 to 13, label 13 to 14 (Michael, Oct 6: the small text needs to be more readable) */
   /* Radius + fonts */
   --radius: 10px;
   --radius-sm: 6px;
@@ -513,7 +513,9 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 /* v2.80.0: the person block is centred above the list (rule 7a); the standing is a raised panel; rows sit under three group captions. */
 .mc-id { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 12px 0 24px; }
 .mc-edit { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; background: none; border: none; padding: 6px 10px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; }
-.mc-group { margin: 26px 0 2px; }
+/* v2.121.1: a group heading is a heading, not a caption (Michael, Oct 6: the heading looked like the text under it). Label size, semibold, dim, a little room above. */
+.mc-group { margin: 28px 0 4px; }
+.exs-cap.mc-group { font-size: var(--fs-label); font-weight: 600; color: var(--text-dim); }
 .mc-acct { margin-top: 18px; }
 .mc-idctl { display: flex; justify-content: center; gap: 4px; }
 .mc-idctl .mc-edit { margin-top: 10px; }
@@ -830,14 +832,14 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 @keyframes exsLand { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
 /* Batch 1 (Oct 2 surface rulings, v2.69.0): DESIGN.md sizes 12/13/15/18/32,
    one field style, Cancel exchange bottom left, list rows with chevron. */
-.exs-cap { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
-.exs-lab { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
-.exs-body { font-size: 15px; color: var(--text); line-height: 1.4; }
-.exs-t { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.exs-cap { font-size: var(--fs-caption); color: var(--text-faint); line-height: 1.5; }
+.exs-lab { font-size: var(--fs-label); color: var(--text-dim); line-height: 1.5; }
+.exs-body { font-size: var(--fs-body); color: var(--text); line-height: 1.4; }
+.exs-t { font-size: var(--fs-title); font-weight: 600; color: var(--text); line-height: 1.3; }
 .exs-disp { font-size: 32px; font-weight: 600; color: var(--text); line-height: 1.15; display: flex; align-items: center; gap: 6px; }
 .exs-mark { color: var(--text-faint); flex-shrink: 0; }
 .exs-cancelrow { display: flex; justify-content: flex-start; padding-top: 12px; }
-.exs-cancel { background: none; border: none; padding: 10px 0; font-size: 12px; color: var(--text-faint); opacity: .8; cursor: pointer; font-family: inherit; text-align: left; }
+.exs-cancel { background: none; border: none; padding: 10px 0; font-size: var(--fs-caption); color: var(--text-faint); opacity: .8; cursor: pointer; font-family: inherit; text-align: left; }
 .exs-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 4px; background: none; border: none; border-bottom: 1px solid var(--border); text-align: left; cursor: pointer; font-family: inherit; }
 .exs-row.off { cursor: default; }
 .exs-row.off .exs-body { color: var(--text-dim); }
@@ -847,7 +849,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-caprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .exs-switch { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 12px; color: var(--text-dim); cursor: pointer; font-family: inherit; }
 .exs-fl { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
-.exs-fl label { font-size: 12px; color: var(--text-faint); }
+.exs-fl label { font-size: var(--fs-caption); color: var(--text-faint); }
 .exs-fl2 { display: flex; gap: 10px; }
 .exs-fl2 .exs-fl { flex: 1; }
 .exs-box-in { width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 15px; color: var(--text); font-family: inherit; outline: none; }

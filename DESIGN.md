@@ -18,7 +18,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 
 ## Text
 
-5. Five sizes, no others: caption 12, label 13, body 15, title 18, display 32 (`--fs-caption` to `--fs-display`). A number that is the moment (an agreed value, a standing) may use display.
+5. Five sizes, no others: caption 13, label 14, body 15, title 18, display 32 (`--fs-caption` to `--fs-display`). A number that is the moment (an agreed value, a standing) may use display. (Ruled Oct 6, v2.121.1: caption was 12 and label 13; Michael: the small text needs to be more readable.) 5a. A group heading over a set of rows (Standing, Your devices, Packages, Skills and qualifications: `.exs-cap.mc-group`) is label size, semibold, dim, with more room above than below; it is never the same weight and colour as the caption under it.
 6. Two weights: regular and semibold. Mono is for keys and hashes only.
 7. Center for moments, left for reading. A question, a name, a number, a one-line sentence may be centered. Anything a person reads as prose, any list, and anything that wraps past two lines is left-aligned. Centered and left-aligned text never share a screen; reading lives in a reading sheet.
 7a. One exception (ruled Oct 3): on a screen about one person, the person block (photo, name, caption, and an Edit control under it) may sit centred above a left-aligned reading list. Nothing else on that screen is centred.
