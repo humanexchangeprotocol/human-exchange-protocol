@@ -1716,7 +1716,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-recbk" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Back up</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div class="lr-scroll" id="recbk-body"></div>
-      <div class="lr-foot"><button class="btn btn-primary" style="width:100%;" onclick="App.recBackup('mail')">Email yourself a backup</button><button class="exs-quiet" style="width:100%;" onclick="App.recBackup('save')">Save to this device instead</button></div>
+      <div class="lr-foot"><button class="btn btn-primary" id="bk-go" style="width:100%;" disabled onclick="App.recBackup('share')">Preparing your backup&#8230;</button><button class="exs-quiet" id="bk-save" style="width:100%;" onclick="App.recBackup('save')">Save to this device instead</button></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>

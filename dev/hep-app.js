@@ -2451,7 +2451,7 @@ const PAIR_CODE_LENGTH = 4;
     b.className = 'home-backup';
     b.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') +
       '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div></div>' +
-      '<button class="exs-save" onclick="App.recBkOpen()">Back up now</button>';
+      '<button class="exs-save" onclick="App.bkOpenHome()">Back up now</button>';
     hero.appendChild(b);
   }
 
@@ -2523,6 +2523,8 @@ const PAIR_CODE_LENGTH = 4;
   }
   function recOpen() { _recFromHome = false; recRender(); mcOpen('record'); }
   function recOpenHome() { _recFromHome = true; openWallet(); recRender(); mcOpen('record'); }
+  // v2.112.0: sheets live inside the account panel, so from Home open Record keeping first, Backup on top (X returns to Record keeping).
+  function bkOpenHome() { recOpenHome(); recBkOpen(); }
   function recClose() { mcClose(); if (_recFromHome) { _recFromHome = false; closeModal('wallet'); } }
   function recDev(i) {
     var d = recModel().others[i]; if (!d) return;
@@ -2540,10 +2542,12 @@ const PAIR_CODE_LENGTH = 4;
     var rm = recModel();
     document.getElementById('recbk-body').innerHTML = '<div class="exs-cap mc-group">Last backup</div><div class="exs-body">' + (rm.backupAt ? esc(recFmtD(rm.backupAt)) + (rm.unbacked ? '. ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</div>' +
       '<p class="exs-body" style="margin-top:16px">A backup is a copy of your record outside all your devices. If you ever lose every device, you can bring everything back from it.</p>' +
-      '<p class="exs-body" style="margin-top:10px">The simplest place to keep it is your own email. Send it to yourself and it is there whenever you need it.</p>';
+      '<p class="exs-body" style="margin-top:10px" id="bk-how"></p>' +
+      '<p class="exs-cap" style="margin-top:10px">It is locked with your PIN. To bring it back, open HEP on a new device and choose Restore from a backup file.</p>';
     mcOpen('recbk');
+    bkButton();
   }
-  async function recBackup(mode) { await exportBackupAction(mode); mcClose(); recRender(); renderBrowserStorageBanner(); }
+  async function recBackup(mode) { var ok = await exportBackupAction(mode); if (!ok) return; mcClose(); recRender(); renderBrowserStorageBanner(); }
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -7850,59 +7854,80 @@ const PAIR_CODE_LENGTH = 4;
   // phone, so the share silently failed into a download. The Backup sheet now builds the
   // file as it opens; the tap shares at once. Rebuilt if the chain changed meanwhile.
   var _bkPrep = null;
+  // v2.112.0 (Michael, Oct 5): one backup action, the device's share panel (email, Drive,
+  // messages, files: whatever the device offers). Browsers open the share panel only right
+  // after a tap, so the locked file is built as the Backup sheet opens and the button stays
+  // disabled until it is ready; the tap then calls navigator.share with nothing awaited first.
+  // Where a browser cannot share a file, the button saves it instead and the sheet says so.
   async function bkBuild() {
     var bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
     bk.declarations = state.declarations;
     bk.settings = state.settings;
     var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
-    return { text: JSON.stringify(bk, null, 2), name: 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json', len: state.chain.length };
-  }
-  function bkPrepare() { _bkPrep = null; var len = state.chain.length; bkBuild().then(function(b) { if (state.chain.length === len) _bkPrep = b; }).catch(function(e) { console.log('[backup] prepare failed', e.message); }); }
-  function isDesktop() { return !(navigator.maxTouchPoints > 0) && !/Android|iPhone|iPad/.test(navigator.userAgent || ''); }
-  async function exportBackupAction(mode) {
-    var text, name;
-    try {
-      var b = (_bkPrep && _bkPrep.len === state.chain.length) ? _bkPrep : await bkBuild();
-      text = b.text; name = b.name;
-    } catch(e) { toast('Backup failed'); return; }
-    function saveLocal() {
-      try {
-        var blob = new Blob([text], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
-        return true;
-      } catch(e) { return false; }
-    }
-    // Some browsers (Chrome on Android) refuse to share .json files, so fall back to a .txt copy of the same file.
-    var shareFile = null;
+    var text = JSON.stringify(bk, null, 2), name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
+    // Chrome on Android shares only some file types and .json is not one; .txt is. Import accepts both.
+    var file = null;
     try {
       if (navigator.share && navigator.canShare) {
         var f1 = new File([text], name, { type: 'application/json' });
-        if (navigator.canShare({ files: [f1] })) shareFile = f1;
-        else { var f2 = new File([text], name + '.txt', { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) shareFile = f2; }
+        if (navigator.canShare({ files: [f1] })) file = f1;
+        else { var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) file = f2; }
       }
-    } catch(e) { shareFile = null; }
-    var shared = false, cancelled = false;
-    // On a computer the share panel rarely holds an email program, so save the file and
-    // open the email program with the subject and a note naming the file to attach.
-    if (mode === 'mail' && isDesktop()) {
-      if (!saveLocal()) { toast('Backup failed'); return; }
-      markBackedUp(); renderBrowserStorageBanner();
-      var body = 'My HEP backup from ' + new Date().toLocaleDateString() + '.\n\nAttach the file ' + name + ' from your Downloads folder before sending. Keep this email: it can bring my record back if I lose my devices.';
-      try { window.location.href = 'mailto:?subject=' + encodeURIComponent('HEP backup ' + new Date().toISOString().slice(0, 10)) + '&body=' + encodeURIComponent(body); } catch (e) {}
-      toast('Backup saved. Attach it to the email that opens.');
-      console.log('[backup] desktop: saved ' + name + ', opened mail');
-      return;
+    } catch (e) { file = null; }
+    return { text: text, name: name, file: file, len: state.chain.length };
+  }
+  function bkButton() {
+    var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
+    if (!b) return;
+    if (!_bkPrep) { b.disabled = true; b.textContent = 'Preparing your backup\u2026'; return; }
+    b.disabled = false;
+    if (_bkPrep.file) {
+      b.textContent = 'Share a backup';
+      if (sv) sv.style.display = '';
+      if (note) note.textContent = 'Share a backup opens this device\u2019s share panel. Choose email and send it to yourself, or Google Drive, or anywhere else you keep files outside this device.';
+    } else {
+      b.textContent = 'Save a backup';
+      if (sv) sv.style.display = 'none';
+      if (note) note.textContent = 'This browser cannot open a share panel, so the backup saves as a file, usually to Downloads. Then move it somewhere outside this device, like your email or Google Drive.';
     }
-    if (shareFile && mode !== 'save') {
-      try { await navigator.share({ files: [shareFile], title: 'HEP backup ' + new Date().toISOString().slice(0, 10), text: 'My HEP backup from ' + new Date().toLocaleDateString() + '. Keep this email: it can bring my record back if I lose my devices.' }); shared = true; }
-      catch(e) { shared = false; cancelled = e && e.name === 'AbortError'; console.log('[backup] share failed: ' + (e && e.name) + ' ' + (e && e.message)); }
-    } else if (mode === 'mail') console.log('[backup] this browser cannot share a file; saving instead');
-    if (cancelled) return; // the person closed the share panel: nothing saved, nothing marked
-    var saved = mode === 'mail' && shared ? true : saveLocal();
-    if (shared || saved) { markBackedUp(); renderBrowserStorageBanner(); }
-    toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
+  }
+  function bkPrepare() {
+    _bkPrep = null; bkButton();
+    var len = state.chain.length;
+    bkBuild().then(function(b) { if (state.chain.length === len) { _bkPrep = b; bkButton(); console.log('[backup] ready, ' + (b.file ? 'share ' + b.file.name : 'no share panel, save only')); } })
+      .catch(function(e) { console.log('[backup] prepare failed', e.message); toast('Backup failed: ' + e.message); });
+  }
+  function bkSaveLocal(text, name) {
+    try {
+      var blob = new Blob([text], { type: 'application/json' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
+      return true;
+    } catch (e) { return false; }
+  }
+  // mode 'share' (the Backup sheet's button): share panel if this browser has one, else save.
+  // mode 'save': save the file. No mode (delete-chain's safety copy): save.
+  async function exportBackupAction(mode) {
+    var b = _bkPrep && _bkPrep.len === state.chain.length ? _bkPrep : null;
+    if (mode === 'share' && b && b.file) {
+      try {
+        await navigator.share({ files: [b.file], title: 'HEP backup ' + new Date().toISOString().slice(0, 10) });
+        markBackedUp(); renderBrowserStorageBanner(); toast('Backup shared');
+        console.log('[backup] shared ' + b.file.name);
+        return true;
+      } catch (e) {
+        console.log('[backup] share failed: ' + (e && e.name) + ' ' + (e && e.message));
+        if (e && e.name === 'AbortError') return false; // the panel was closed: nothing sent, nothing marked
+        toast('The share panel did not open. Saving the backup instead.');
+      }
+    }
+    try { if (!b) b = await bkBuild(); } catch (e) { toast('Backup failed'); return false; }
+    if (!bkSaveLocal(b.text, b.name)) { toast('Backup failed'); return false; }
+    markBackedUp(); renderBrowserStorageBanner();
+    toast('Backup saved to this device. Move it somewhere outside this device too.');
+    console.log('[backup] saved ' + b.name);
+    return true;
   }
 
   // v2.95.0 (Michael, Oct 3): import replaces this phone's chain (there is no
@@ -7916,7 +7941,7 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeImportSheet() { var el = document.getElementById('import-sheet'); if (el) el.hidden = true; }
   function importChooseFile() { closeImportSheet(); document.getElementById('import-file').click(); }
-  function importBackUpFirst() { closeImportSheet(); recBkOpen(); } // v2.111.4: the one Backup sheet, with the email choice
+  function importBackUpFirst() { closeImportSheet(); bkOpenHome(); } // v2.111.4: the one Backup sheet, with the email choice
 
   async function handleImportFile(event) {
     const file = event.target.files[0]; if (!file) return;
@@ -14694,7 +14719,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: exportBackupAction, recOpen, recOpenHome, recClose, recDev, recBkOpen, recBackup, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
+    exportBackup: exportBackupAction, recOpen, recOpenHome, recClose, recDev, recBkOpen, bkOpenHome, recBackup, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
