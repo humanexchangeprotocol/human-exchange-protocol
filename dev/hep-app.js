@@ -13226,7 +13226,10 @@ function init() {
     }
 
     // v2.111.5 (Michael, Oct 5): the version, tucked at the bottom of Home, caption size, faintest grey.
-    html += '<div class="exs-cap" style="text-align:center; color:var(--text-faint); padding:28px 0 8px;">v' + APP_VERSION + (/\/dev\//.test(location.pathname) ? ' dev' : '') + '</div>';
+    // v2.123.4 (dev only): the type sizes this browser is actually using, so a stale stylesheet shows on screen (proof is on the device, not in the sandbox).
+    var isDev = /\/dev\//.test(location.pathname), typeNote = '';
+    if (isDev) { try { var cs = getComputedStyle(document.documentElement); typeNote = ' \u00b7 type ' + (cs.getPropertyValue('--fs-caption') || '?').trim() + ' / ' + (cs.getPropertyValue('--fs-body') || '?').trim() + ' \u00b7 ' + (navigator.serviceWorker && navigator.serviceWorker.controller ? 'sw on' : 'sw off'); } catch (e) {} }
+    html += '<div class="exs-cap" style="text-align:center; color:var(--text-faint); padding:28px 0 8px;">v' + APP_VERSION + (isDev ? ' dev' : '') + typeNote + '</div>';
     el.innerHTML = html;
     // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
     try { renderBrowserStorageBanner(); } catch (e) {}
