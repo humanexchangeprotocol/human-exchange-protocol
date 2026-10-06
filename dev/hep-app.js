@@ -9935,6 +9935,20 @@ function init() {
     else if (navigator.clipboard) { navigator.clipboard.writeText(open.inviteUrl).then(function() { toast('Invite link copied'); }).catch(function() {}); }
   }
 
+  // v2.124.0 (Michael, Oct 6, twenty-fifth session): one Exchange tab in the bar. Tapping it asks the one
+  // question Start and Join used to answer with two buttons: are you starting, or joining with a code?
+  // A moment screen (rule 7): centred, two primary-sized choices with a one-line caption each, X back.
+  function exDoorsOpen() {
+    var h = atHead('Exchange', true, 'rsClose');
+    h += '<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px;padding-bottom:40px;">';
+    h += '<button class="btn btn-primary" style="width:100%;margin:0" onclick="App.rsClose();App.exStartProviding()">Start</button>';
+    h += '<p class="exs-cap" style="text-align:center;margin:0 0 14px">You will get a code to share with the other person.</p>';
+    h += '<button class="btn btn-primary" style="width:100%;margin:0" onclick="App.rsClose();App.exJoinExchange()">Join</button>';
+    h += '<p class="exs-cap" style="text-align:center;margin:0">You have a code from the other person.</p>';
+    if (state.initialized && !state.devicePublicKeyJwk && !state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_DEVICE; })) h += '<button class="exs-quiet" style="margin-top:24px;font-size:var(--fs-caption)" onclick="App.rsClose();App.attachOldStart()">Use HEP on another device too</button>';
+    h += '</div>';
+    rsShow(h, 'exdoors');
+  }
   function exStartProviding() {
     exInitiatorRole = 'provider';
     exBeginStart();
@@ -15190,7 +15204,7 @@ function init() {
 
   return {
     init, setupStep, completeSetup: completeSetupWrapped, goToInstallOrPin,
-    switchTab, histFilter, rsClose, exListOpen, exFilterOpen, exFilterSet, exDetailOpen, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
+    switchTab, histFilter, rsClose, exDoorsOpen, exListOpen, exFilterOpen, exFilterSet, exDetailOpen, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,

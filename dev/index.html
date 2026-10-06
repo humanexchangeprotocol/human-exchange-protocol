@@ -90,7 +90,7 @@ input, textarea, select { font-family: var(--font); font-size: 17px; outline: no
 .tab-bar-item .tab-label { font-size: var(--fs-caption); font-weight: 500; letter-spacing: 0.2px; }
 .tab-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; }
 .tab-content.active { display: block; }
-.tab-content-inner { padding: 0 20px 150px; }
+.tab-content-inner { padding: 0 20px calc(24px + var(--tabbar-h, 64px)); }
 
 /* === FAB (Floating Action Button) === */
 .fab-bar { position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 20px; z-index: 99; display: flex; gap: 12px; align-items: center; }
@@ -1572,18 +1572,17 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
   <!-- Home doors strip (ruled Oct 2, twelfth session): two equal
        buttons just above the tab bar, always there on the main tabs.
        Replaces the floating plus and recycle buttons. -->
-  <div class="doors-strip" id="doors-strip">
-    <button class="btn btn-primary" onclick="App.exStartProviding()">Start</button>
-    <button class="btn btn-primary" onclick="App.exJoinExchange()">Join</button>
-    <!-- v2.105.0 (Michael, Oct 5): shows until the first device is added; then Add a device lives in Account only -->
-    <button class="exs-quiet" id="home-adddev" hidden style="flex-basis:100%; font-size: var(--fs-caption); padding:2px 0 0;" onclick="App.attachOldStart()">Use HEP on another device too</button>
-  </div>
+  <!-- v2.124.0 (Michael, Oct 6): Start and Join left the strip above the bar; one Exchange tab in the bar asks which (see #ex-doors). -->
 
   <!-- Tab bar -->
   <div class="tab-bar" id="main-tab-bar">
     <div class="tab-bar-item active" onclick="App.switchTab('home')" data-tab="home">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 12 L12 4 L21 12 V19 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 z" fill="currentColor"/></svg>
       <span class="tab-label">Home</span>
+    </div>
+    <div class="tab-bar-item" onclick="App.exDoorsOpen()" data-tab="exchange">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M4 8h15M15 4l4 4-4 4"/><path d="M20 16H5M9 12l-4 4 4 4"/></g></svg>
+      <span class="tab-label">Exchange</span>
     </div>
     <div class="tab-bar-item" onclick="App.switchTab('share')" data-tab="share">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="11" x2="16" y2="6.5"/><line x1="8" y1="13" x2="16" y2="17.5"/></g><g fill="currentColor"><circle cx="17.5" cy="5.5" r="3"/><circle cx="6.5" cy="12" r="3"/><circle cx="17.5" cy="18.5" r="3"/></g></svg>
