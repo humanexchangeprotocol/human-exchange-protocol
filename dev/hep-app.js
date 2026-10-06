@@ -1505,6 +1505,18 @@ const PAIR_CODE_LENGTH = 4;
         if (!vd.valid) { console.log('[sync] draft invalid', vd.errors.slice(0, 3)); atProblem('Copying did not verify on this device: ' + vd.errors.slice(0, 2).join('; ')); return; }
       }
       state.chain = draft;
+      try {
+        var need = {}; draft.forEach(function(r) { if (r.type === HCP.RECORD_TYPE_REPAIR && r.originalHash && !r.city && !r.state) need[r.originalHash] = 1; });
+        if (Object.keys(need).length) {
+          var info = copyInfo(), filled = 0;
+          for (var k = 0; k < theirs.length; k++) {
+            var o = theirs[k]; if (!HCP.isAct(o) || !(o.city || o.state || o.street || o.geo)) continue;
+            var oh = o.type === HCP.RECORD_TYPE_REPAIR ? o.originalHash : await HCP.hashRecord(o);
+            if (need[oh]) { info[oh] = { street: o.street || '', city: o.city || '', state: o.state || '', geo: o.geo || null }; filled++; }
+          }
+          if (filled) { localStorage.setItem(COPY_INFO_KEY, JSON.stringify(info)); console.log('[sync] filled location for ' + filled + ' earlier copies'); }
+        }
+      } catch (e) { console.log('[sync] copy info failed', e.message); }
       var labels = Object.assign({}, p.deviceLabels || {}, state.settings.deviceLabels || {});
       state.settings.deviceLabels = labels;
       var ds = Object.assign({}, state.settings.devSync || {});
@@ -1677,8 +1689,17 @@ const PAIR_CODE_LENGTH = 4;
   function mcEl(t, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', t); for (var k in a) e.setAttribute(k, a[k]); return e; }
   function mcText(svg, x, y, txt, anchor) { var t = mcEl('text', { x: x, y: y, 'font-size': '12', fill: 'var(--text-faint)', 'text-anchor': anchor || 'start' }); t.textContent = txt; svg.appendChild(t); }
   // The chain as the drawings need it: time in days from the first exchange.
+  // v2.111.3: copies made before v2.111.3 carry no location. At each sync the other device's
+  // originals fill a local, display-only table (originalHash -> street/city/state/geo); readers
+  // fall back to it. Never written to the chain; the chain record stays as it was signed.
+  var COPY_INFO_KEY = SK + '_copyinfo';
+  function copyInfo() { try { return JSON.parse(localStorage.getItem(COPY_INFO_KEY) || '{}'); } catch (e) { return {}; } }
+  function withCopyInfo(r) {
+    if (r.type !== HCP.RECORD_TYPE_REPAIR || r.city || r.state || !r.originalHash) return r;
+    var c = copyInfo()[r.originalHash]; return c ? Object.assign({}, r, c) : r;
+  }
   function mcActs() {
-    var ex = state.chain.filter(HCP.isAct).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
+    var ex = HCP.acts(state.chain).map(withCopyInfo).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
     if (!ex.length) return { list: [], span: 1 };
     var t0 = new Date(ex[0].timestamp).getTime();
     var list = ex.map(function(r) {
