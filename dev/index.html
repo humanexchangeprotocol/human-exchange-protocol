@@ -527,6 +527,8 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .sig-data pre { margin: 0; white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
 .sig-hd { font-weight: 600; margin: 20px 0 6px; }
 .of-seg { margin-bottom: 14px; }
+.mc-add { display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 0; background: none; border: none; padding: 6px 2px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; }
+.of-pickrow-on .exs-body { font-weight: 600; }
 textarea.exs-box-in { min-height: 72px; resize: vertical; line-height: 1.45; }
 .of-rm { display: block; margin: 18px auto 0; background: none; border: none; font-family: inherit; font-size: 12px; color: var(--text-faint); cursor: pointer; padding: 8px; }
 .st-row { cursor: default; }
@@ -1229,6 +1231,9 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <symbol id="icon-shield" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 3 L20 6 V12 c0 5 -4 8 -8 9 c-4 -1 -8 -4 -8 -9 V6 z"/>
     </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
     <symbol id="icon-eye" viewBox="0 0 24 24" fill="currentColor">
       <path fill-rule="evenodd" d="M12 5c5 0 8.6 3.6 10 7-1.4 3.4-5 7-10 7S3.4 15.4 2 12c1.4-3.4 5-7 10-7zm0 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/>
     </symbol>
@@ -1672,6 +1677,10 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="exs-sheet mc-sheet" id="mc-sheet-offer" hidden>
       <div class="exs-sheet-head"><div class="exs-h">What you offer</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="of-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-ofpick" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="of-pick-title"></div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="of-pick-body"></div>
     </div>
     <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-ofedit" hidden>
       <div class="exs-sheet-head"><div class="exs-h" id="of-ed-title">Add something you offer</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>

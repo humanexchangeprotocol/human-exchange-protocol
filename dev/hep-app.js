@@ -2207,18 +2207,79 @@ const PAIR_CODE_LENGTH = 4;
     var el = document.getElementById('of-body'); if (!el) return;
     var list = exServices(), h = '';
     h += '<p class="exs-cap" style="margin:0 0 6px">The things you offer, each with a usual price. When you exchange, pick one and the details fill in. The price can always change in the moment.</p>';
-    list.forEach(function(it, i) {
+    var groups = ofGroups();
+    list.forEach(function(it, i) { it._i = i; });
+    [''].concat(groups).forEach(function(g, gi) {
+      var inG = list.filter(function(it) { return (it.group || '') === g; });
+      if (!inG.length) return;
+      if (g) h += '<div class="exs-cap mc-group">' + esc(g) + '</div>';
+      inG.forEach(function(it) { var i = it._i;
       h += '<button class="exs-row" onclick="App.ofEdit(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(it.description || 'Untitled') + '</div>' + (it.about ? '<div class="exs-cap">' + esc(it.about.length > 70 ? it.about.slice(0, 68) + '\u2026' : it.about) + '</div>' : '') + '</div><span class="exs-rowval" style="font-weight:400">' + ofPriceLine(it) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+      });
     });
+    list.forEach(function(it) { delete it._i; });
     if (!list.length) h += '<p class="exs-body" style="margin:14px 0 4px">Nothing listed yet. A meal, a ride, a dozen eggs, an hour of help: anything you do or make for others.</p>';
-    h += stRow(list.length ? 'Add something else' : 'Add something you offer', '', 'App.ofEdit(-1)');
+    h += ofAddCtl('Add something you offer', 'App.ofEdit(-1)');
     el.innerHTML = h;
     ofAcctCap();
   }
   function ofOpen() { ofRender(); mcOpen('offer'); }
+  // Rule 11b: the add control (plus and words, accent, under the list).
+  function ofAddCtl(words, on) { return '<button class="mc-add" onclick="' + on + '"><svg width="16" height="16" aria-hidden="true"><use href="#icon-plus"/></svg>' + esc(words) + '</button>'; }
+  function ofEnc(x) { return encodeURIComponent(x).replace(/'/g, '%27'); }
+  function ofGroups() { var seen = {}, out = []; exServices().forEach(function(it) { var g = (it.group || '').trim(); if (g && !seen[g]) { seen[g] = 1; out.push(g); } }); return out; }
+  var OF_UNITS = [['Count', ['each', 'dozen']], ['Weight', ['lb', 'oz', 'kg', 'g']], ['Volume', ['cup', 'fl oz', 'litre', 'gallon']]];
+  // One picker sheet for the unit, the group, and skills and education (rule 10: no drop-downs).
+  function ofPick(kind) {
+    var t = document.getElementById('of-pick-title'), b = document.getElementById('of-pick-body'), h = '';
+    var row = function(word, on, sel) { return '<button class="exs-row' + (sel ? ' of-pickrow-on' : '') + '" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div></div>' + (sel ? '<svg width="18" height="18" style="color:var(--accent)"><use href="#icon-check"/></svg>' : '') + '</button>'; };
+    if (kind === 'unit') {
+      t.textContent = 'Priced per';
+      OF_UNITS.forEach(function(g, gi) {
+        h += '<div class="exs-cap' + (gi ? ' mc-group' : '') + '"' + (gi ? '' : ' style="margin-top:4px"') + '>' + g[0] + '</div>';
+        g[1].forEach(function(u) { h += row(u, "App.ofPickSet('unit','" + u + "')", _ofEd.unit === u); });
+      });
+      var known = OF_UNITS.some(function(g) { return g[1].indexOf(_ofEd.unit) >= 0; });
+      h += '<div class="exs-cap mc-group">Other</div><div class="exs-fl" style="margin-top:6px"><input class="exs-box-in" id="of-pick-other" placeholder="window, ride, bundle, metre" value="' + esc(known ? '' : _ofEd.unit || '') + '"></div>';
+      h += '<button class="btn btn-primary" style="width:100%" onclick="App.ofPickSet(\'unit\', document.getElementById(\'of-pick-other\').value)">Use this</button>';
+    } else if (kind === 'group') {
+      t.textContent = 'Group';
+      h += '<p class="exs-cap" style="margin:0 0 4px">Groups keep your list tidy, like sections on a menu. They have no price of their own.</p>';
+      h += row('No group', "App.ofPickSet('group','')", !_ofEd.group);
+      ofGroups().forEach(function(g) { h += row(g, "App.ofPickSet('group', decodeURIComponent('" + ofEnc(g) + "'))", _ofEd.group === g); });
+      h += '<div class="exs-cap mc-group">New group</div><div class="exs-fl" style="margin-top:6px"><input class="exs-box-in" id="of-pick-other" placeholder="Carpentry, eggs and meat, rides"></div>';
+      h += '<button class="btn btn-primary" style="width:100%" onclick="App.ofPickSet(\'group\', document.getElementById(\'of-pick-other\').value)">Use this</button>';
+    } else if (kind === 'decl') {
+      t.textContent = 'Skills and education';
+      var d = state.declarations || {}, sk = Array.isArray(d.skills) ? d.skills : [], ed = Array.isArray(d.education) ? d.education : [];
+      h += '<p class="exs-cap" style="margin:0 0 4px">Tick the skills and education behind this offering. They stay on your phone with it.</p>';
+      if (!sk.length && !ed.length) h += '<p class="exs-body" style="margin-top:12px">You have not listed any skills or education yet. Add them with Edit on your profile, then tick them here.</p>';
+      [['Skills and qualifications', sk, 'skills'], ['Education', ed, 'edu']].forEach(function(g) {
+        if (!g[1].length) return;
+        h += '<div class="exs-cap mc-group">' + g[0] + '</div>';
+        g[1].forEach(function(x) { var on = _ofEd[g[2]].indexOf(x) >= 0; h += row(x, "App.ofPickDecl('" + g[2] + "', decodeURIComponent('" + ofEnc(x) + "'))", on); });
+      });
+    }
+    b.innerHTML = h;
+    var open = document.getElementById('mc-sheet-ofpick'); if (open.hidden) mcOpen('ofpick');
+  }
+  function ofPickSet(kind, v) {
+    v = String(v || '').trim();
+    if (kind === 'unit') { if (!v) { toast('Type what the price is per'); return; } _ofEd.unit = v; mcClose(); ofPriceFields(); }
+    else if (kind === 'group') { _ofEd.group = v; mcClose(); ofEdMetaRows(); }
+  }
+  function ofPickDecl(which, x) {
+    var a = _ofEd[which], k = a.indexOf(x); if (k >= 0) a.splice(k, 1); else a.push(x);
+    ofPick('decl'); ofEdMetaRows();
+  }
+  function ofEdMetaRows() {
+    var el = document.getElementById('of-ed-meta'); if (!el) return;
+    var n = _ofEd.skills.length + _ofEd.edu.length;
+    el.innerHTML = stRow('Group', _ofEd.group || 'No group', "App.ofPick('group')") + stRow('Skills and education', n ? n + ' attached' : 'None attached', "App.ofPick('decl')");
+  }
   function ofEdit(i) {
     var it = i >= 0 ? exServices()[i] : null;
-    _ofEd = { i: i, price: (it && it.price) || 'fixed', unit: (it && it.unit) || (it && it.price === 'time' ? 'hour' : '') };
+    _ofEd = { i: i, price: (it && it.price) || 'fixed', unit: (it && it.unit) || (it && it.price === 'time' ? 'hour' : ''), group: (it && it.group) || '', skills: (it && Array.isArray(it.skills) ? it.skills : []).slice(), edu: (it && Array.isArray(it.edu) ? it.edu : []).slice() };
     document.getElementById('of-ed-title').textContent = it ? 'Edit' : 'Add something you offer';
     var h = '';
     h += '<div class="exs-fl"><label for="of-name">What you offer</label><input class="exs-box-in" id="of-name" placeholder="A meal, a dozen eggs, a ride" value="' + esc(it ? it.description || '' : '') + '"></div>';
@@ -2226,9 +2287,11 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="exs-fl" style="margin-bottom:6px"><label>How you price it</label></div>';
     h += '<div class="mc-seg of-seg" id="of-price">' + [['fixed', 'Fixed price'], ['time', 'By time'], ['unit', 'By the unit']].map(function(o) { return '<button data-v="' + o[0] + '" aria-pressed="' + (_ofEd.price === o[0]) + '" onclick="App.ofPrice(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>';
     h += '<div id="of-price-fields"></div>';
+    h += '<div id="of-ed-meta" style="margin-top:6px"></div>';
     if (it) h += '<button class="of-rm" onclick="App.ofRemove()">Remove</button>';
     document.getElementById('of-ed-body').innerHTML = h;
     ofPriceFields(it ? it.value : '');
+    ofEdMetaRows();
     mcOpen('ofedit');
   }
   function ofPriceFields(val) {
@@ -2239,7 +2302,7 @@ const PAIR_CODE_LENGTH = 4;
       if (_ofEd.unit !== 'hour' && _ofEd.unit !== 'day') _ofEd.unit = 'hour';
       h += '<div class="mc-seg of-seg" id="of-tunit">' + [['hour', 'Per hour'], ['day', 'Per day']].map(function(o) { return '<button aria-pressed="' + (_ofEd.unit === o[0]) + '" onclick="App.ofTimeUnit(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>';
     }
-    if (p === 'unit') h += '<div class="exs-fl"><label for="of-unit">Per what</label><input class="exs-box-in" id="of-unit" placeholder="dozen, pound, kilo, litre" value="' + esc(_ofEd.unit === 'hour' || _ofEd.unit === 'day' ? '' : _ofEd.unit || '') + '" oninput="App.ofUnitField(this.value)"></div>';
+    if (p === 'unit') h += '<div style="margin:-6px 0 8px">' + stRow('Priced per', _ofEd.unit || 'Choose a unit', "App.ofPick('unit')") + '</div>';
     var lab = p === 'fixed' ? 'Usual price' : (p === 'time' ? 'Usual rate, per ' + _ofEd.unit : 'Usual price, per ' + (_ofEd.unit || 'unit'));
     h += '<div class="exs-fl"><label for="of-value" id="of-value-lab">' + esc(lab) + '</label><div class="exs-bigrow"><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="of-value" placeholder="0" value="' + esc(val === null || val === undefined ? '' : String(val)) + '">' + exMarkSVG(16) + '</div></div>';
     host.innerHTML = h;
@@ -2256,9 +2319,9 @@ const PAIR_CODE_LENGTH = 4;
     if (!name) { toast('Say what you offer first'); return; }
     var about = (document.getElementById('of-about').value || '').trim();
     var value = parseFloat(document.getElementById('of-value').value) || 0;
-    if (_ofEd.price === 'unit' && !_ofEd.unit) { toast('Say what the price is per'); return; }
+    if (_ofEd.price === 'unit' && !_ofEd.unit) { toast('Choose what the price is per'); return; }
     var list = exServices(), prev = _ofEd.i >= 0 ? list[_ofEd.i] : {};
-    var entry = Object.assign({}, prev, { description: name, about: about, price: _ofEd.price, unit: _ofEd.price === 'fixed' ? '' : _ofEd.unit, value: value });
+    var entry = Object.assign({}, prev, { description: name, about: about, price: _ofEd.price, unit: _ofEd.price === 'fixed' ? '' : _ofEd.unit, value: value, group: _ofEd.group, skills: _ofEd.skills.slice(), edu: _ofEd.edu.slice() });
     if (_ofEd.i >= 0) list[_ofEd.i] = entry; else list.push(entry);
     save(); mcClose(); ofRender();
   }
@@ -14897,7 +14960,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
