@@ -13247,7 +13247,10 @@ function init() {
     });
     var hasInFlight = hasPP || pendingRecords.length > 0;
 
-    if (hasInFlight) {
+    // v2.131.0 (Michael, Oct 6: "a vestige of an older system"): In flight leaves Home. A sent proposal is
+    // covered by the Wait screen (rule 2c); the witness is optional (offline-first), so an unwitnessed record
+    // is not pending, and its witness status reads on the record's detail. Code kept, never drawn.
+    if (false && hasInFlight) {
       html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">In flight</div>';
       html += '<div class="in-flight-card" style="background:var(--bg-raised); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow); margin-bottom:16px;">';
 
@@ -14894,7 +14897,7 @@ function init() {
     if (r.duration) h += field('Duration', formatDuration(r.duration));
     h += '<div class="exs-cap mc-group">The record</div>';
     var chk = '<svg class="icon icon-md" style="vertical-align:-3px"><use href="#icon-check"/></svg> ';
-    h += field('Checks', (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
+    h += field('Checks', (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '<div style="color:var(--text-faint)">No witness on this one. A witness is optional.</div>') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
     h += field('Sequence', '#' + r.seq);
     if (r.counterparty) h += field('Their fingerprint', esc(String(r.counterparty).substring(0, 16)), true);
     if (r.type === HCP.RECORD_TYPE_REPAIR) h += '<p class="exs-cap" style="margin:8px 0 0">Copied from your other device.</p>';
