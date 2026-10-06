@@ -404,7 +404,7 @@ const PAIR_CODE_LENGTH = 4;
     if (step === 'name' && inviteOnboardingActive()) {
       var nameStepEl = document.getElementById('setup-name');
       if (nameStepEl && !document.getElementById('invite-name-hint')) {
-        nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size:14px; color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
+        nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
       }
     }
     if (step === 'pin') {
@@ -556,12 +556,12 @@ const PAIR_CODE_LENGTH = 4;
 
     // Callout box
     html += '<div style="margin-top:12px; border-left:2px solid var(--green); padding:14px 0 14px 14px; background:var(--bg-raised); border-radius:0 var(--radius) var(--radius) 0;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">Your values on the shared scale:</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:12px;">Your values on the shared scale:</div>';
 
     // Simple
     html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">';
     html += '<div style="width:10px; height:10px; border-radius:50%; background:var(--green); flex-shrink:0;"></div>';
-    html += '<div style="font-size:14px;"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(sv) + '</span><span style="color:var(--text-dim);">' + sd + '</span></div>';
+    html += '<div style="font-size: var(--fs-label);"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(sv) + '</span><span style="color:var(--text-dim);">' + sd + '</span></div>';
     html += '</div>';
     var stags = getValTags('vt-simple');
     if (stags.length) html += '<div style="font-size:11px; color:var(--text-faint); margin:-6px 0 10px 18px;">' + stags.join(' · ') + '</div>';
@@ -570,7 +570,7 @@ const PAIR_CODE_LENGTH = 4;
     if (dv > 0) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">';
       html += '<div style="width:10px; height:10px; border-radius:50%; background:var(--blue, #6ba3d6); flex-shrink:0;"></div>';
-      html += '<div style="font-size:14px;"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(dv) + '</span><span style="color:var(--text-dim);">' + dd + '</span></div>';
+      html += '<div style="font-size: var(--fs-label);"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(dv) + '</span><span style="color:var(--text-dim);">' + dd + '</span></div>';
       html += '</div>';
       var dtags = getValTags('vt-daily');
       if (dtags.length) html += '<div style="font-size:11px; color:var(--text-faint); margin:-6px 0 10px 18px;">' + dtags.join(' · ') + '</div>';
@@ -579,7 +579,7 @@ const PAIR_CODE_LENGTH = 4;
     // Complex / Personal ceiling
     html += '<div style="display:flex; align-items:center; gap:8px;">';
     html += '<div style="width:10px; height:10px; border-radius:50%; background:var(--red, #d66b6b); flex-shrink:0;"></div>';
-    html += '<div style="font-size:14px;"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(cv) + '</span><span style="color:var(--text-dim);">' + cd + '</span></div>';
+    html += '<div style="font-size: var(--fs-label);"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(cv) + '</span><span style="color:var(--text-dim);">' + cd + '</span></div>';
     html += '</div>';
     var ctags = getValTags('vt-complex');
     if (ctags.length) html += '<div style="font-size:11px; color:var(--text-faint); margin:4px 0 0 18px;">' + ctags.join(' · ') + '</div>';
@@ -587,7 +587,7 @@ const PAIR_CODE_LENGTH = 4;
     html += '</div>'; // close callout
 
     // Context message
-    html += '<div style="font-size:13px; color:var(--text-dim); margin-top:14px; line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:14px; line-height:1.6;">';
     html += 'Almost everything you will ever exchange fits in a small portion of the full scale. That is completely normal. The range exists so that when something truly extraordinary happens, the scale can hold it. You and every other person share this same ruler.';
     html += '</div>';
 
@@ -2183,7 +2183,7 @@ const PAIR_CODE_LENGTH = 4;
     h += stRow('What your phone contributes', 'The signals behind your shield, and how each one reads', 'App.secSignals()');
     // Keys
     h += '<div class="exs-cap mc-group">Your key</div>';
-    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="font-family:var(--mono);font-size:13px">' + esc((state.fingerprint || '').substring(0, 16)) + '</div><div class="exs-cap">Your chain\u2019s fingerprint</div></div></div>';
+    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="font-family:var(--mono);font-size: var(--fs-label)">' + esc((state.fingerprint || '').substring(0, 16)) + '</div><div class="exs-cap">Your chain\u2019s fingerprint</div></div></div>';
     h += stRow('Change PIN', 'The PIN that opens HEP on this device', 'App.changePIN()');
     el.innerHTML = h;
   }
@@ -2501,7 +2501,7 @@ const PAIR_CODE_LENGTH = 4;
     var v = _sigV || sigRollup(); if (!v) return;
     var x = v.signals.find(function(q) { return q.id === id; }), sig = (POH.SIGNALS || {})[id]; if (!x || !sig) return;
     var tier = sig.tier === 3 ? 'Critical' : sig.tier === 2 ? 'Supporting' : 'Enrichment';
-    function r(k, val, mono) { return '<div class="exs-row mc-vrow st-row"><div class="exs-rowmain"><div class="exs-body">' + k + '</div></div><div class="exs-rowval" style="font-weight:400' + (mono ? ';font-family:var(--mono);font-size:12px' : '') + '">' + esc(String(val)) + '</div></div>'; }
+    function r(k, val, mono) { return '<div class="exs-row mc-vrow st-row"><div class="exs-rowmain"><div class="exs-body">' + k + '</div></div><div class="exs-rowval" style="font-weight:400' + (mono ? ';font-family:var(--mono);font-size: var(--fs-caption)' : '') + '">' + esc(String(val)) + '</div></div>'; }
     var h = '<div class="exs-cap" style="margin-top:4px">How it is weighed</div>';
     h += r('Signal', sig.id, true) + r('Weight', tier + ' (' + sig.tier + ')') + r('Expected on', (sig.expectedOn || []).join(', ')) + r('This device', v.deviceClass) + r('Expected here', x.expected ? 'Yes' : 'No');
     h += '<div class="exs-cap mc-group">How it reads</div>';
@@ -2531,35 +2531,35 @@ const PAIR_CODE_LENGTH = 4;
     html += '<h2 style="font-size:18px; color:var(--text); margin:0;">My Photos</h2>';
     html += '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
     html += '</div>';
-    html += '<p style="font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Show this screen to the person you are exchanging with. They can compare your genesis photo with how you look now.</p>';
+    html += '<p style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Show this screen to the person you are exchanging with. They can compare your genesis photo with how you look now.</p>';
 
     // Genesis photo
     html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Genesis photo</div>';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Genesis photo</div>';
     if (genesis && genesis.photoHash) {
       html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:8px; text-align:center;">';
       if (genesis.photoData) {
         html += '<img src="' + genesis.photoData + '" style="max-width:100%; max-height:300px; border-radius:8px;">';
       }
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-top:8px;">Hash: ' + genesis.photoHash.substring(0, 16) + '...</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); margin-top:4px;">' + new Date(genesis.timestamp).toLocaleDateString() + '</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:8px;">Hash: ' + genesis.photoHash.substring(0, 16) + '...</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-top:4px;">' + new Date(genesis.timestamp).toLocaleDateString() + '</div>';
       html += '</div>';
     } else {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size:14px;">No genesis photo recorded</div>';
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size: var(--fs-label);">No genesis photo recorded</div>';
     }
     html += '</div>';
 
     // Current photo
     html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Current photo</div>';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Current photo</div>';
     if (current) {
       html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:8px; text-align:center;">';
       html += '<img src="' + current + '" style="max-width:100%; max-height:300px; border-radius:8px;">';
-      if (currentDate) html += '<div style="font-size:12px; color:var(--text-faint); margin-top:8px;">' + new Date(currentDate).toLocaleDateString() + '</div>';
+      if (currentDate) html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-top:8px;">' + new Date(currentDate).toLocaleDateString() + '</div>';
       if (state.declarations.photoSource) html += '<div style="font-size:11px; color:var(--text-faint);">Source: ' + state.declarations.photoSource + '</div>';
       html += '</div>';
     } else {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size:14px;">No photo set. Add one in your declarations.</div>';
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size: var(--fs-label);">No photo set. Add one in your declarations.</div>';
     }
     html += '</div>';
 
@@ -2708,7 +2708,7 @@ const PAIR_CODE_LENGTH = 4;
     const body = document.getElementById('pending-body');
     const items = loadPending();
     if (!items.length) { body.innerHTML = '<div class="empty-state">No pending exchanges.</div>'; return; }
-    body.innerHTML = '<div style="text-align:right; margin-bottom:12px;"><button style="font-size:13px; color:var(--red); background:none; text-decoration:underline;" onclick="App.deleteAllPending()">Delete all</button></div>';
+    body.innerHTML = '<div style="text-align:right; margin-bottom:12px;"><button style="font-size: var(--fs-label); color:var(--red); background:none; text-decoration:underline;" onclick="App.deleteAllPending()">Delete all</button></div>';
     items.forEach(p => {
       const card = document.createElement('div');
       card.className = 'pending-card';
@@ -2735,7 +2735,7 @@ const PAIR_CODE_LENGTH = 4;
       let pairInfo = '';
       if (p.transport === 'pair' && p.pairCode) {
         pairInfo = '<div style="margin-top:8px;padding:8px 12px;background:var(--bg-input);border-radius:var(--radius-sm);border:1px solid var(--border);text-align:center;">' +
-          '<div style="font-size: 13px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Your code</div>' +
+          '<div style="font-size: var(--fs-label);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Your code</div>' +
           '<div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--accent);letter-spacing:6px;">' + esc(p.pairCode) + '</div>' +
           '</div>';
       }
@@ -2989,7 +2989,7 @@ const PAIR_CODE_LENGTH = 4;
     if (r.category) detailHtml += '<div class="rd-row"><span class="rd-label">Category</span><span class="rd-val">' + esc(r.category) + '</span></div>';
     if (r.duration) detailHtml += '<div class="rd-row"><span class="rd-label">Duration</span><span class="rd-val">' + formatDuration(r.duration) + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Counterparty</span><span class="rd-val">' + esc(name) + '</span></div>';
-    detailHtml += '<div class="rd-row"><span class="rd-label">Fingerprint</span><span class="rd-val" style="font-family:var(--font-mono);font-size: 13px;">' + esc(r.counterparty) + '</span></div>';
+    detailHtml += '<div class="rd-row"><span class="rd-label">Fingerprint</span><span class="rd-val" style="font-family:var(--font-mono);font-size: var(--fs-label);">' + esc(r.counterparty) + '</span></div>';
     if (r.city || r.state) detailHtml += '<div class="rd-row"><span class="rd-label">Location</span><span class="rd-val">' + esc([r.city, r.state].filter(Boolean).join(', ')) + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Timestamp</span><span class="rd-val">' + new Date(r.timestamp).toLocaleString() + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Sequence</span><span class="rd-val">#' + r.seq + '</span></div>';
@@ -3099,10 +3099,10 @@ const PAIR_CODE_LENGTH = 4;
         // Strong pre-exchange prompt for undone scale exercise
         html += '<div style="padding:16px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:16px; line-height:1.6;">';
         html += '<div style="font-size:16px; font-weight:500; color:var(--text); margin-bottom:10px;">Before your first exchange</div>';
-        html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:10px;">It is really worth taking the time to think about how you value things. It may take you one minute, it might take five, but it matters. It helps you understand your own effort and helps the other person understand you.</div>';
-        html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:14px;">If you want to cooperate well, this is how you start.</div>';
+        html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:10px;">It is really worth taking the time to think about how you value things. It may take you one minute, it might take five, but it matters. It helps you understand your own effort and helps the other person understand you.</div>';
+        html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:14px;">If you want to cooperate well, this is how you start.</div>';
         html += '<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Take a few minutes to do the scale exercise</button>';
-        html += '<button class="btn btn-secondary" style="width:100%; font-size:14px;" onclick="App.dismissRangePrompt()">Continue without it</button>';
+        html += '<button class="btn btn-secondary" style="width:100%; font-size: var(--fs-label);" onclick="App.dismissRangePrompt()">Continue without it</button>';
         html += '</div>';
       }
       html += '<div class="coop-empty">';
@@ -3119,9 +3119,9 @@ const PAIR_CODE_LENGTH = 4;
     // Subtle nudge for experienced users who still haven't declared
     let rangeNudge = '';
     if (!hasRange) {
-      rangeNudge = '<div style="padding:12px 14px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:14px; font-size:14px; color:var(--text-dim); line-height:1.5;">' +
+      rangeNudge = '<div style="padding:12px 14px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:14px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.5;">' +
       'You have not done the scale exercise yet. It helps you think about how you value your effort before exchanging. ' +
-      '<button style="background:none; border:none; color:var(--accent); font-size:14px; font-weight:500; text-decoration:underline; cursor:pointer; padding:0; margin-top:4px; display:block;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Do the scale exercise</button>' +
+      '<button style="background:none; border:none; color:var(--accent); font-size: var(--fs-label); font-weight:500; text-decoration:underline; cursor:pointer; padding:0; margin-top:4px; display:block;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Do the scale exercise</button>' +
       '</div>';
     }
 
@@ -4319,7 +4319,7 @@ const PAIR_CODE_LENGTH = 4;
       // Integrity signals
       var ig = ts.integrity;
       if (ig) {
-        h += '<h3 style="margin:14px 0 8px;font-size:13px;color:var(--text-dim);">Reality signals</h3>';
+        h += '<h3 style="margin:14px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Reality signals</h3>';
         h += '<div class="review-panel">';
         h += '<div class="review-row"><span class="rlbl">Genesis photo anchored</span><span class="rval">' + (ig.genesisPhoto ? '\u2713 Yes' + (ig.genesisPhotoSource ? ' (' + ig.genesisPhotoSource + ')' : '') : '\u2014 No') + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Sensor coverage</span><span class="rval">' + ig.sensorCoverage + '%</span></div>';
@@ -4343,15 +4343,15 @@ const PAIR_CODE_LENGTH = 4;
       }
       const cats = ts.cats || {};
       if (Object.keys(cats).length) {
-        h += '<h3 style="margin:14px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
+        h += '<h3 style="margin:14px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Categories</h3>';
         h += '<div class="review-panel">';
         Object.entries(cats).sort(function(a,b){return b[1].n - a[1].n;}).forEach(function(e) {
           var k = e[0], v = e[1];
           var pct = Math.round(v.n / ts.n * 100);
           h += '<div style="margin-bottom:12px;">';
-          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:14px;font-weight:500;">' + esc(k) + '</span><span style="font-size:13px;color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
+          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size: var(--fs-label);font-weight:500;">' + esc(k) + '</span><span style="font-size: var(--fs-label);color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
           h += '<div style="height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:3px;"></div></div>';
-          h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
+          h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
           h += '</div>';
         });
         h += '</div>';
@@ -4369,10 +4369,10 @@ const PAIR_CODE_LENGTH = 4;
         var word = e[0], count = e[1];
         var size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
         var opacity = 0.5 + (count / maxCount) * 0.5;
-        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: var(--fs-label);color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
       });
       h += '</div>';
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Words from their exchange descriptions. Larger words appear more often.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Words from their exchange descriptions. Larger words appear more often.</p>';
       return h;
     }
 
@@ -4392,9 +4392,9 @@ const PAIR_CODE_LENGTH = 4;
         var parts = m.split('-');
         var label = parts.length === 1 ? m : new Date(parseInt(parts[0]), parseInt(parts[1]) - 1).toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
         h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-        h += '<span style="font-size: 13px;color:var(--text-dim);min-width:70px;">' + label + '</span>';
+        h += '<span style="font-size: var(--fs-label);color:var(--text-dim);min-width:70px;">' + label + '</span>';
         h += '<div style="flex:1;height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-        h += '<span style="font-size: 13px;font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
+        h += '<span style="font-size: var(--fs-label);font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
         h += '</div>';
       });
       h += '</div>';
@@ -4408,10 +4408,10 @@ const PAIR_CODE_LENGTH = 4;
           if (diff > 1) gaps.push(diff + ' month gap before ' + months[i]);
         }
         if (gaps.length) {
-          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: 13px;color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
+          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: var(--fs-label);color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
         }
       }
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
       return h;
     }
 
@@ -4424,7 +4424,7 @@ const PAIR_CODE_LENGTH = 4;
         var d = stab[cat];
         var cv = d[2] > 0 ? (d[3] / d[2] * 100).toFixed(0) : 0;
         h += '<div class="review-panel" style="margin-bottom:10px;">';
-        h += '<div style="font-size:14px;font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
+        h += '<div style="font-size: var(--fs-label);font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
         h += '<div class="review-row"><span class="rlbl">Average</span><span class="rval">' + d[2] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Range</span><span class="rval">' + d[0] + ' \u2014 ' + d[1] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Std Dev</span><span class="rval">' + d[3] + '</span></div>';
@@ -4438,7 +4438,7 @@ const PAIR_CODE_LENGTH = 4;
         h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
         h += '</div></div>';
       });
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
       return h;
     }
 
@@ -4453,7 +4453,7 @@ const PAIR_CODE_LENGTH = 4;
 
     if (!mySnap || myDensity === 0) {
       return '<div class="empty-state">You need at least one act in your chain to calculate exchange rates.</div>' +
-        '<p style="font-size: 13px;color:var(--text-faint);margin-top:8px;line-height:1.5;">Their density: ' + theirDensity + ' u/act. Once you have exchange history, you\'ll see how your valuations compare.</p>';
+        '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:8px;line-height:1.5;">Their density: ' + theirDensity + ' u/act. Once you have exchange history, you\'ll see how your valuations compare.</p>';
     }
 
     var overallRatio = myDensity / theirDensity;
@@ -4464,7 +4464,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Overall exchange rate hero
     h += '<div class="sess-rate-hero ' + (isParity ? 'parity' : 'cross') + '">';
-    h += '<div style="font-size: 13px;color:var(--text-dim);margin-bottom:4px;">Overall Exchange Rate</div>';
+    h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:4px;">Overall Exchange Rate</div>';
     h += '<div class="sess-rate-val" style="color:' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">' + ratioStr + '</div>';
     h += '<div class="sess-rate-sub">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
     h += '</div>';
@@ -4485,25 +4485,25 @@ const PAIR_CODE_LENGTH = 4;
     });
 
     if (matchingCats.length > 0) {
-      h += '<h3 style="font-size:13px;color:var(--text-dim);margin-bottom:8px;">Category-Specific Rates</h3>';
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-bottom:10px;line-height:1.5;">When you both have history in the same category, the rate for that specific work is more precise than the overall.</p>';
+      h += '<h3 style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:8px;">Category-Specific Rates</h3>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-bottom:10px;line-height:1.5;">When you both have history in the same category, the rate for that specific work is more precise than the overall.</p>';
 
       matchingCats.sort(function(a,b) { return a.isProposal ? -1 : (b.isProposal ? 1 : 0); }).forEach(function(mc) {
         var catParity = Math.abs(mc.ratio - 1) < 0.15;
         var catRatioStr = catParity ? '1 : 1' : (mc.ratio >= 1 ? '1 : ' + mc.ratio.toFixed(2) : (1/mc.ratio).toFixed(2) + ' : 1');
         h += '<div class="sess-cat-rate"' + (mc.isProposal ? ' style="border-color:var(--accent);"' : '') + '>';
         if (mc.isProposal) {
-          h += '<div style="font-size: 13px;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">This exchange\'s category</div>';
+          h += '<div style="font-size: var(--fs-label);color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">This exchange\'s category</div>';
         }
         h += '<div class="sess-cat-rate-row"><span class="cl">' + esc(mc.name) + '</span><span class="cv" style="color:' + (catParity ? 'var(--green)' : 'var(--blue)') + ';">' + catRatioStr + '</span></div>';
-        h += '<div class="sess-cat-rate-row"><span class="cl" style="font-size: 13px;">You avg ' + mc.myAvg + ' \u00b7 They avg ' + mc.theirAvg + '</span></div>';
+        h += '<div class="sess-cat-rate-row"><span class="cl" style="font-size: var(--fs-label);">You avg ' + mc.myAvg + ' \u00b7 They avg ' + mc.theirAvg + '</span></div>';
         h += '</div>';
       });
     }
 
     // What their prices mean in your units
     h += '<div class="review-panel" style="margin-top:14px;">';
-    h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
+    h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
     [50, 100, 200, 500].forEach(function(val) {
       var inYours = Math.round(val * overallRatio);
       var actsEquiv = myDensity > 0 ? (inYours / myDensity).toFixed(1) : '\u2014';
@@ -4519,13 +4519,13 @@ const PAIR_CODE_LENGTH = 4;
       var converted = Math.round(propVal * conversionRatio);
       var rateLabel = catMatch ? 'category-specific' : 'overall';
       h += '<div style="margin-top:14px;padding:12px;background:rgba(42,90,143,0.08);border:1px solid var(--accent-dim);border-radius:var(--radius-sm);text-align:center;">';
-      h += '<div style="font-size: 13px;color:var(--text-dim);margin-bottom:4px;">Your proposal: ' + propVal + ' units (' + esc(proposalCat) + ')</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:4px;">Your proposal: ' + propVal + ' units (' + esc(proposalCat) + ')</div>';
       h += '<div style="font-size:20px;font-weight:500;color:var(--accent);">\u2248 ' + converted + ' in their units</div>';
-      h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:4px;">Using ' + rateLabel + ' rate</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:4px;">Using ' + rateLabel + ' rate</div>';
       h += '</div>';
     }
 
-    h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:14px;line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts so both sides are honestly represented. Neither unit is worth more \u2014 they measure at different scales.') + '</p>';
+    h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:14px;line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts so both sides are honestly represented. Neither unit is worth more \u2014 they measure at different scales.') + '</p>';
     return h;
   }
 
@@ -4585,9 +4585,9 @@ const PAIR_CODE_LENGTH = 4;
       const pp = state.pendingProposal;
       if (pp) {
         html += '<div style="padding:14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius);">' +
-          '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Your proposal</div>' +
-          '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(pp.details.description) + '</div>' +
-          '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">' +
+          '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:8px;">Your proposal</div>' +
+          '<div style="font-size: var(--fs-body); font-weight:500; color:var(--text);">' + esc(pp.details.description) + '</div>' +
+          '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:4px;">' +
           (pp.details.energyState === 'provided' ? 'Providing' : 'Receiving') + ' \u00b7 ' + pp.details.value + ' units' +
           (pp.details.category ? ' \u00b7 ' + esc(pp.details.category) : '') +
           '</div></div>';
@@ -4595,7 +4595,7 @@ const PAIR_CODE_LENGTH = 4;
       if (ts && ts.n) {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       } else if (!sessionPartner._snapshotDecrypted) {
-        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their chain data before you can send...</div>';
+        html += '<div style="margin-top:16px;color:var(--text-dim);font-size: var(--fs-label);">Waiting for their chain data before you can send...</div>';
       } else {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       }
@@ -4927,7 +4927,7 @@ const PAIR_CODE_LENGTH = 4;
       html += '<div class="spr-row" style="border-top:1px solid var(--bg-input); padding-top:8px; margin-top:4px;">' +
         '<span class="spr-label">In your units</span>' +
         '<span class="spr-val" style="color:var(--accent); font-size:16px;">\u2248 ' + converted + '</span></div>';
-      html += '<div style="font-size: 13px; color:var(--text-faint); text-align:right; margin-top:2px;">Using ' + rateLabel + ' (' + convRatio.toFixed(2) + ':1)</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-align:right; margin-top:2px;">Using ' + rateLabel + ' (' + convRatio.toFixed(2) + ':1)</div>';
     }
     html += '</div>';
 
@@ -4967,7 +4967,7 @@ const PAIR_CODE_LENGTH = 4;
     // Full interactive thread viewer below for exploration
     if (sessionPartner && sessionPartner.thread_snapshot && sessionPartner.thread_snapshot.n) {
       html += '<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">';
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Explore their chain</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:8px;">Explore their chain</div>';
       html += buildSessionTabBar();
       html += '<div class="sess-tab-content" id="sess-tab-body">' + renderSessionTabContent(sessionActiveTab) + '</div>';
       html += '</div>';
@@ -5761,13 +5761,13 @@ const PAIR_CODE_LENGTH = 4;
 
     if (tab === 'texture') {
       let h = '<div class="review-panel">';
-      h += '<div class="review-row"><span class="rlbl">From</span><span class="rval" style="font-family:var(--font-mono);font-size: 13px;">' + esc(s._fp) + '</span></div>';
+      h += '<div class="review-row"><span class="rlbl">From</span><span class="rval" style="font-family:var(--font-mono);font-size: var(--fs-label);">' + esc(s._fp) + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + s.n + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + s.d + ' u/act</span></div>';
       h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + s.g + ' / ' + s.r + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
       h += '</div>';
-      h += '<h3 style="margin:16px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
+      h += '<h3 style="margin:16px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Categories</h3>';
       const cats = s.cats || {};
       if (Object.keys(cats).length) {
         h += '<div class="review-panel">';
@@ -5775,9 +5775,9 @@ const PAIR_CODE_LENGTH = 4;
           const k = e[0], v = e[1];
           const pct = Math.round(v.n / s.n * 100);
           h += '<div style="margin-bottom:12px;">';
-          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:14px;font-weight:500;">' + esc(k) + '</span><span style="font-size:13px;color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
+          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size: var(--fs-label);font-weight:500;">' + esc(k) + '</span><span style="font-size: var(--fs-label);color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
           h += '<div style="height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:3px;"></div></div>';
-          h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
+          h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
           h += '</div>';
         });
         h += '</div>';
@@ -5794,10 +5794,10 @@ const PAIR_CODE_LENGTH = 4;
         const word = e[0], count = e[1];
         const size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
         const opacity = 0.5 + (count / maxCount) * 0.5;
-        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;cursor:pointer;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;" onclick="App.wordCloudDetail(\'' + esc(word) + '\')">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;cursor:pointer;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;" onclick="App.wordCloudDetail(\'' + esc(word) + '\')">' + esc(word) + '<sub style="font-size: var(--fs-label);color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
       });
       h += '</div>';
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Tap a word to see details. Larger words appear more often in their exchange descriptions.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Tap a word to see details. Larger words appear more often in their exchange descriptions.</p>';
       body.innerHTML = h;
     }
     else if (tab === 'ratio') {
@@ -5808,15 +5808,15 @@ const PAIR_CODE_LENGTH = 4;
       const ratioStr = isParity ? '1 : 1' : (ratio >= 1 ? '1 : ' + ratio.toFixed(2) : (1/ratio).toFixed(2) + ' : 1');
 
       let h = '<div style="text-align:center;padding:20px;border-radius:var(--radius);margin-bottom:16px;background:' + (isParity ? 'rgba(43,140,62,0.1)' : 'rgba(42,90,143,0.1)') + ';border:1px solid ' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">';
-      h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:4px;">Exchange Ratio</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:4px;">Exchange Ratio</div>';
       h += '<div style="font-size:36px;font-weight:300;color:' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">' + ratioStr + '</div>';
-      h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:6px;">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:6px;">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
       h += '</div>';
 
       // What prices mean in your units
       const theirAvg = theirDensity;
       h += '<div class="review-panel" style="margin-bottom:12px;">';
-      h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
       [50, 100, 200, 500].forEach(function(val) {
         const inYours = Math.round(val * ratio);
         const hrs = myDensity > 0 ? (inYours / myDensity).toFixed(1) : '\u2014';
@@ -5824,7 +5824,7 @@ const PAIR_CODE_LENGTH = 4;
       });
       h += '</div>';
 
-      h += '<p style="font-size: 13px;color:var(--text-faint);line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts prices so both sides are honestly represented. Neither unit is worth more — they measure at different scales.') + '</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts prices so both sides are honestly represented. Neither unit is worth more — they measure at different scales.') + '</p>';
       body.innerHTML = h;
     }
     else if (tab === 'time') {
@@ -5839,9 +5839,9 @@ const PAIR_CODE_LENGTH = 4;
         const parts = m.split('-');
         const label = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1).toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
         h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-        h += '<span style="font-size: 13px;color:var(--text-dim);min-width:70px;">' + label + '</span>';
+        h += '<span style="font-size: var(--fs-label);color:var(--text-dim);min-width:70px;">' + label + '</span>';
         h += '<div style="flex:1;height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-        h += '<span style="font-size: 13px;font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
+        h += '<span style="font-size: var(--fs-label);font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
         h += '</div>';
       });
       h += '</div>';
@@ -5855,10 +5855,10 @@ const PAIR_CODE_LENGTH = 4;
           if (diff > 1) gaps.push(diff + ' month gap before ' + months[i]);
         }
         if (gaps.length) {
-          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: 13px;color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
+          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: var(--fs-label);color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
         }
       }
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
       body.innerHTML = h;
     }
     else if (tab === 'stability') {
@@ -5871,7 +5871,7 @@ const PAIR_CODE_LENGTH = 4;
         const range = d[1] - d[0];
         const cv = d[2] > 0 ? (d[3] / d[2] * 100).toFixed(0) : 0;
         h += '<div class="review-panel" style="margin-bottom:10px;">';
-        h += '<div style="font-size:14px;font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
+        h += '<div style="font-size: var(--fs-label);font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
         h += '<div class="review-row"><span class="rlbl">Average</span><span class="rval">' + d[2] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Range</span><span class="rval">' + d[0] + ' \u2014 ' + d[1] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Std Dev</span><span class="rval">' + d[3] + '</span></div>';
@@ -5887,7 +5887,7 @@ const PAIR_CODE_LENGTH = 4;
         h += '</div>';
         h += '</div>';
       });
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category. The data is raw — you decide what it means.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category. The data is raw — you decide what it means.</p>';
       body.innerHTML = h;
     }
   }
@@ -6102,7 +6102,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function renderCfRate(d) {
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What\u2019s the exchange rate for <strong>' + esc(d.cat || 'this work') + '</strong>?</div>';
+    let h = '<div style="font-size: var(--fs-label);color:var(--text);margin-bottom:14px;">What\u2019s the exchange rate for <strong>' + esc(d.cat || 'this work') + '</strong>?</div>';
 
     // Two rate cards
     h += '<div class="cf-rate-pair">';
@@ -6172,7 +6172,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function renderCfPrice(d) {
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What is this act of <strong>' + esc(d.cat || 'work') + '</strong> worth?</div>';
+    let h = '<div style="font-size: var(--fs-label);color:var(--text);margin-bottom:14px;">What is this act of <strong>' + esc(d.cat || 'work') + '</strong> worth?</div>';
 
     // Slider — range 0 to 3x current value, editable number
     const def = cfAdjVal || cfOrigVal;
@@ -6204,7 +6204,7 @@ const PAIR_CODE_LENGTH = 4;
       h += '<div class="cf-comp-item"><span class="cd">Lowest</span><span class="cv lo">' + d.theirStab[0] + '</span></div>';
       h += '<div class="cf-comp-item"><span class="cd">Variation</span><span class="cv">' + (d.theirStab[2] > 0 ? Math.round(d.theirStab[3]/d.theirStab[2]*100) : 0) + '%</span></div>';
     } else {
-      h += '<div style="font-size: 13px;color:var(--text-faint);padding:4px 0;">No history</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);padding:4px 0;">No history</div>';
     }
     h += '</div>';
     // Right — my comparison category
@@ -6216,7 +6216,7 @@ const PAIR_CODE_LENGTH = 4;
       h += '<div class="cf-comp-item"><span class="cd">Lowest</span><span class="cv lo">' + ms[0] + '</span></div>';
       h += '<div class="cf-comp-item"><span class="cd">Variation</span><span class="cv">' + (ms[2] > 0 ? Math.round(ms[3]/ms[2]*100) : 0) + '%</span></div>';
     } else {
-      h += '<div style="font-size: 13px;color:var(--text-faint);padding:4px 0;">No data</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);padding:4px 0;">No data</div>';
     }
     h += '</div></div>';
 
@@ -6230,7 +6230,7 @@ const PAIR_CODE_LENGTH = 4;
     const mySurplus = HCP.walletBalance(state.chain) || 0;
     const afterBal = mySurplus - fieldAdj;
 
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What does each chain record?</div>';
+    let h = '<div style="font-size: var(--fs-label);color:var(--text);margin-bottom:14px;">What does each chain record?</div>';
 
     if (cfAdjVal && cfAdjVal !== cfOrigVal) {
       h += '<div class="cf-revised">Revised from ' + cfOrigVal + ' to ' + cfAdjVal + ' \u2014 they\u2019ll confirm the new value.</div>';
@@ -6278,7 +6278,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="field"><label>Their name (for your records)</label><input type="text" id="cf-name" placeholder="Optional display name"></div>';
 
     // View chain link
-    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size:13px;color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full chain \u203a</button></div>';
+    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size: var(--fs-label);color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full chain \u203a</button></div>';
 
     h += '<button class="btn btn-primary" onclick="App.confirmAndSign()">Confirm & Sign</button>';
     h += '<button class="btn btn-secondary" onclick="App.cancelConfirm()">Decline</button>';
@@ -6516,7 +6516,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!card) return;
     var d = state.doneDetails;
     if (!d) {
-      card.innerHTML = '<div style="font-size:14px; color:var(--text-dim);">' + esc(state.doneSummary || 'Exchange recorded.') + '</div>';
+      card.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim);">' + esc(state.doneSummary || 'Exchange recorded.') + '</div>';
       return;
     }
     var rows = [];
@@ -6584,7 +6584,7 @@ const PAIR_CODE_LENGTH = 4;
     var body = document.getElementById('chain-body');
 
     if (!state.chain.length) {
-      body.innerHTML = '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, this view will show you how your chain looks to others \u2014 the same assessment they see when deciding whether to exchange with you.</div>';
+      body.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, this view will show you how your chain looks to others \u2014 the same assessment they see when deciding whether to exchange with you.</div>';
       return;
     }
 
@@ -6622,7 +6622,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Classify and render — but override name for self-view context
     var cl = exClassifyChain(ts);
-    var html = '<div style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">This is how your chain looks to someone considering an exchange with you.</div>';
+    var html = '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:12px;">This is how your chain looks to someone considering an exchange with you.</div>';
 
     // Override the name to frame as self-view
     var selfName = 'Your chain';
@@ -6650,14 +6650,14 @@ const PAIR_CODE_LENGTH = 4;
     var html = '<div style="padding:16px; background:rgba(43,140,62,0.04); border:1px solid rgba(43,140,62,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--green);">Healthy chain</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--green);">Healthy chain</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has ' + ts.n + ' exchanges' + months + ' across ' + catCount + ' categor' + (catCount === 1 ? 'y' : 'ies') + '. Consistent cooperation with diverse counterparties.';
     html += '</div>';
     html += exCoopBar(ts.g, ts.r);
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
-      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
+      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size: var(--fs-caption); color:var(--text-faint);">';
       html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
@@ -6681,7 +6681,7 @@ const PAIR_CODE_LENGTH = 4;
     var body = document.getElementById('chain-body');
 
     if (!state.chain.length) {
-      body.innerHTML = '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, your services and pricing history will appear here.</div>';
+      body.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, your services and pricing history will appear here.</div>';
       return;
     }
 
@@ -6716,7 +6716,7 @@ const PAIR_CODE_LENGTH = 4;
 
     var svcKeys = Object.keys(services);
     if (!svcKeys.length) {
-      body.innerHTML = '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; padding:16px 0;">You have not provided any services yet. Once you provide something in an exchange, your pricing history will appear here.</div>';
+      body.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6; padding:16px 0;">You have not provided any services yet. Once you provide something in an exchange, your pricing history will appear here.</div>';
       return;
     }
 
@@ -6733,8 +6733,8 @@ const PAIR_CODE_LENGTH = 4;
       }
     });
 
-    var html = '<div style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">Your services and pricing as others see them during an exchange.</div>';
-    html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:12px;">' + svcKeys.length + ' service' + (svcKeys.length > 1 ? 's' : '') + ' you provide</div>';
+    var html = '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:8px;">Your services and pricing as others see them during an exchange.</div>';
+    html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin-bottom:12px;">' + svcKeys.length + ' service' + (svcKeys.length > 1 ? 's' : '') + ' you provide</div>';
 
     Object.keys(byCat).sort().forEach(function(cat) {
       var items = byCat[cat];
@@ -6747,12 +6747,12 @@ const PAIR_CODE_LENGTH = 4;
     }
 
     // Contextual tip
-    html += '<div style="margin-top:20px; padding:14px; background:var(--bg-raised); border-radius:var(--radius); border:1px solid var(--border); font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="margin-top:20px; padding:14px; background:var(--bg-raised); border-radius:var(--radius); border:1px solid var(--border); font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     if (uncategorized.length) {
       html += 'Some of your services have no category. Adding categories to your exchanges helps the person you are cooperating with understand what you offer at a glance. ';
     }
     html += 'You can update your skills and what you offer in your declarations. The clearer your profile, the easier it is for others to see what you do and decide to cooperate with you.';
-    html += '<div style="margin-top:10px;"><button style="background:none; border:none; color:var(--accent); font-size:13px; font-weight:500; text-decoration:underline; cursor:pointer; padding:0;" onclick="App.closeModal(\'chain\'); App.openDeclarationsEdit();">Update your declarations</button></div>';
+    html += '<div style="margin-top:10px;"><button style="background:none; border:none; color:var(--accent); font-size: var(--fs-label); font-weight:500; text-decoration:underline; cursor:pointer; padding:0;" onclick="App.closeModal(\'chain\'); App.openDeclarationsEdit();">Update your declarations</button></div>';
     html += '</div>';
 
     body.innerHTML = html;
@@ -6771,14 +6771,14 @@ const PAIR_CODE_LENGTH = 4;
       if (state.declarations.rangeSimpleVal && state.declarations.rangeComplexVal) {
         const ratio = Math.round(state.declarations.rangeComplexVal / state.declarations.rangeSimpleVal);
         emptyHtml += '<div style="padding:14px 16px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px;">';
-        emptyHtml += '<div style="font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Your Scale Exercise</div>';
+        emptyHtml += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Your Scale Exercise</div>';
         emptyHtml += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">';
-        emptyHtml += '<div><div style="font-size:14px; color:var(--text-dim);">A small favor</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeSimpleVal + '</div></div>';
-        emptyHtml += '<div style="font-size:14px; color:var(--text-faint);">1 : ' + ratio + '</div>';
-        emptyHtml += '<div style="text-align:right;"><div style="font-size:14px; color:var(--text-dim);">Your best work</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeComplexVal + '</div></div>';
+        emptyHtml += '<div><div style="font-size: var(--fs-label); color:var(--text-dim);">A small favor</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeSimpleVal + '</div></div>';
+        emptyHtml += '<div style="font-size: var(--fs-label); color:var(--text-faint);">1 : ' + ratio + '</div>';
+        emptyHtml += '<div style="text-align:right;"><div style="font-size: var(--fs-label); color:var(--text-dim);">Your best work</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeComplexVal + '</div></div>';
         emptyHtml += '</div>';
         if (state.declarations.rangeDailyVal) {
-          emptyHtml += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size:14px; color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
+          emptyHtml += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size: var(--fs-label); color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
         }
         emptyHtml += '</div>';
         emptyHtml += '<div class="empty-state">Your scale is set. Your chain will grow from your first exchange.</div>';
@@ -6817,13 +6817,13 @@ const PAIR_CODE_LENGTH = 4;
       var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
       state.chain.filter(HCP.isAct).forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
       var summaryHtml = '<div style="padding:12px 14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px;">';
-      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><span style="color:var(--text-dim);">Provided</span><span style="color:var(--green); font-weight:500;">' + actsP + ' acts · +' + totalP + '</span></div>';
-      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size:14px;"><span style="color:var(--text-dim);">Received</span><span style="color:var(--blue); font-weight:500;">' + actsR + ' acts · \u2212' + totalR + '</span></div>';
+      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label); margin-bottom:4px;"><span style="color:var(--text-dim);">Provided</span><span style="color:var(--green); font-weight:500;">' + actsP + ' acts · +' + totalP + '</span></div>';
+      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label);"><span style="color:var(--text-dim);">Received</span><span style="color:var(--blue); font-weight:500;">' + actsR + ' acts · \u2212' + totalR + '</span></div>';
       summaryHtml += '</div>';
 
       body.innerHTML = summaryHtml;
       if (!filtered.length) {
-        body.innerHTML += '<div style="font-size:13px; color:var(--text-faint); text-align:center; padding:20px 0;">No records match this filter.</div>';
+        body.innerHTML += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-align:center; padding:20px 0;">No records match this filter.</div>';
       } else {
         filtered.slice().reverse().forEach(r => body.appendChild(makeCard(r)));
       }
@@ -6842,7 +6842,7 @@ const PAIR_CODE_LENGTH = 4;
           h += '<div class="review-row"><span class="rlbl">Heartbeats</span><span class="rval">' + s.pings + '</span></div>';
         }
         h += '</div>';
-        h += '<h3 style="margin:16px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
+        h += '<h3 style="margin:16px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Categories</h3>';
         const cats = s.cats || {};
         if (Object.keys(cats).length) {
           h += '<div class="review-panel">';
@@ -6850,9 +6850,9 @@ const PAIR_CODE_LENGTH = 4;
             const k = e[0], v = e[1];
             const pct = Math.round(v.n / s.n * 100);
             h += '<div style="margin-bottom:12px;">';
-            h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:14px;font-weight:500;">' + esc(k) + '</span><span style="font-size:13px;color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
+            h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size: var(--fs-label);font-weight:500;">' + esc(k) + '</span><span style="font-size: var(--fs-label);color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
             h += '<div style="height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:3px;"></div></div>';
-            h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
+            h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
             h += '</div>';
           });
           h += '</div>';
@@ -6869,10 +6869,10 @@ const PAIR_CODE_LENGTH = 4;
           const word = e[0], count = e[1];
           const size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
           const opacity = 0.5 + (count / maxCount) * 0.5;
-          h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+          h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: var(--fs-label);color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
         });
         h += '</div>';
-        h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Words from your exchange descriptions. Larger words appear more often.</p>';
+        h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Words from your exchange descriptions. Larger words appear more often.</p>';
         body.innerHTML = h;
       }
       else if (tab === 'time') {
@@ -6887,13 +6887,13 @@ const PAIR_CODE_LENGTH = 4;
           const isYear = m.length === 4;
           const label = isYear ? m : new Date(parseInt(m.split('-')[0]), parseInt(m.split('-')[1]) - 1).toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
           h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-          h += '<span style="font-size: 13px;color:var(--text-dim);min-width:70px;">' + label + '</span>';
+          h += '<span style="font-size: var(--fs-label);color:var(--text-dim);min-width:70px;">' + label + '</span>';
           h += '<div style="flex:1;height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-          h += '<span style="font-size: 13px;font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
+          h += '<span style="font-size: var(--fs-label);font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
           h += '</div>';
         });
         h += '</div>';
-        h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Your activity pattern over time.</p>';
+        h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Your activity pattern over time.</p>';
         body.innerHTML = h;
       }
       else if (tab === 'stability') {
@@ -6905,7 +6905,7 @@ const PAIR_CODE_LENGTH = 4;
           const d = stab[cat];
           const cv = d[2] > 0 ? (d[3] / d[2] * 100).toFixed(0) : 0;
           h += '<div class="review-panel" style="margin-bottom:10px;">';
-          h += '<div style="font-size:14px;font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
+          h += '<div style="font-size: var(--fs-label);font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
           h += '<div class="review-row"><span class="rlbl">Average</span><span class="rval">' + d[2] + '</span></div>';
           h += '<div class="review-row"><span class="rlbl">Range</span><span class="rval">' + d[0] + ' \u2014 ' + d[1] + '</span></div>';
           h += '<div class="review-row"><span class="rlbl">Std Dev</span><span class="rval">' + d[3] + '</span></div>';
@@ -6919,7 +6919,7 @@ const PAIR_CODE_LENGTH = 4;
           h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
           h += '</div></div>';
         });
-        h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
+        h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
         body.innerHTML = h;
       }
     }
@@ -7834,7 +7834,7 @@ const PAIR_CODE_LENGTH = 4;
     var bar = document.createElement('div');
     bar.id = 'photo-nudge-bar';
     bar.style.cssText = 'position:fixed; bottom:0; left:0; right:0; background:var(--bg-raised); border-top:1px solid var(--border); padding:14px 20px; padding-bottom:calc(14px + var(--safe-bottom)); z-index:900; display:flex; align-items:center; gap:12px;';
-    bar.innerHTML = '<div style="flex:1; font-size:13px; color:var(--text-dim); line-height:1.4;">'
+    bar.innerHTML = '<div style="flex:1; font-size: var(--fs-label); color:var(--text-dim); line-height:1.4;">'
       + 'Your photo is ' + months + ' months old. Updating it strengthens your chain\'s integrity.'
       + '</div>'
       + '<button onclick="sessionStorage.setItem(\'hep_photo_nudge_dismissed\',\'1\'); document.getElementById(\'photo-nudge-bar\').remove();" style="background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
@@ -8734,7 +8734,7 @@ const PAIR_CODE_LENGTH = 4;
       // a fresh chooser or their active room; either way they deserve
       // to know which pipe they are looking at.
       var openedAgo = inviteTimeAgo(open.openedAt);
-      var resumeBanner = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px; font-size:13px; color:var(--text-dim); line-height:1.5;">You have an invite open from earlier (' + esc(openedAgo) + '). <span style="color:var(--accent); cursor:pointer;" onclick="App.inviteStartFresh()">Start a new invite instead</span></div>';
+      var resumeBanner = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.5;">You have an invite open from earlier (' + esc(openedAgo) + '). <span style="color:var(--accent); cursor:pointer;" onclick="App.inviteStartFresh()">Start a new invite instead</span></div>';
       var statusEl = document.getElementById('invite-status');
       statusEl.innerHTML = resumeBanner + statusEl.innerHTML;
       return;
@@ -8742,7 +8742,7 @@ const PAIR_CODE_LENGTH = 4;
 
     if (intro) intro.style.display = '';
     status.innerHTML =
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">How many people are you inviting?</div>' +
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px;">How many people are you inviting?</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<button class="btn btn-primary" onclick="App.createInvitePipe(\'single\')">One person</button>' +
       '<button class="btn btn-secondary" onclick="App.createInvitePipe(\'room\')">Several people, same code</button>' +
@@ -8805,7 +8805,7 @@ const PAIR_CODE_LENGTH = 4;
       ? 'Anyone can scan it. People appear below as they come in.'
       : "When they scan, they'll appear here";
     status.innerHTML = '<div style="font-size:16px; font-weight:600; color:var(--text);">Have them scan this code</div>' +
-      '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">' + hint + '</div>';
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:4px;">' + hint + '</div>';
     document.getElementById('invite-qr-wrap').style.display = '';
     var urlEl = document.getElementById('invite-url');
     urlEl.style.display = '';
@@ -8887,12 +8887,12 @@ const PAIR_CODE_LENGTH = 4;
       var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
       var ago = inviteTimeAgo(r.created_at);
       html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0;">';
-      html += '<div style="min-width:0; flex:1;"><div style="font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint);">' + esc(ago) + '</div></div>';
+      html += '<div style="min-width:0; flex:1;"><div style="font-size: var(--fs-body); color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint);">' + esc(ago) + '</div></div>';
       if (done[r.redeemer_code]) {
-        html += '<div style="font-size:13px; color:var(--text-dim); flex-shrink:0;">Recorded</div>';
+        html += '<div style="font-size: var(--fs-label); color:var(--text-dim); flex-shrink:0;">Recorded</div>';
       } else {
-        html += '<button class="btn btn-primary" style="flex-shrink:0; padding:8px 14px; font-size:14px;" onclick="App.roomStartExchange(\'' + esc(r.redeemer_code) + '\')">Start exchange</button>';
+        html += '<button class="btn btn-primary" style="flex-shrink:0; padding:8px 14px; font-size: var(--fs-label);" onclick="App.roomStartExchange(\'' + esc(r.redeemer_code) + '\')">Start exchange</button>';
       }
       html += '</div>';
     }
@@ -8918,12 +8918,12 @@ const PAIR_CODE_LENGTH = 4;
     var status = document.getElementById('invite-status');
     status.innerHTML =
       '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + '</div>' +
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this exchange:</div>' +
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px;">Your side of this exchange:</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
       '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
       '</div>' +
-      '<div style="text-align:center; margin-top:14px;"><span style="font-size:14px; color:var(--accent); cursor:pointer;" onclick="App.roomBackToQueue()">Back to the list</span></div>';
+      '<div style="text-align:center; margin-top:14px;"><span style="font-size: var(--fs-label); color:var(--accent); cursor:pointer;" onclick="App.roomBackToQueue()">Back to the list</span></div>';
   }
 
   function roomBackToQueue() {
@@ -8948,7 +8948,7 @@ const PAIR_CODE_LENGTH = 4;
     var status = document.getElementById('invite-status');
     status.innerHTML =
       '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + ' is in</div>' +
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
       '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
@@ -8979,7 +8979,7 @@ const PAIR_CODE_LENGTH = 4;
       '<div style="text-align:center; padding:24px 0;">' +
       '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
       '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
-      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '<span style="font-size: var(--fs-label); color:var(--accent);">Connecting with ' + who + '...</span>' +
       '</div></div>';
     exPostJoin(sessionCode, sessionTheirCode);
   }
@@ -9125,7 +9125,7 @@ const PAIR_CODE_LENGTH = 4;
       '<div style="text-align:center; padding:24px 0;">' +
       '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
       '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
-      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '<span style="font-size: var(--fs-label); color:var(--accent);">Connecting with ' + who + '...</span>' +
       '</div></div>';
     exPostJoin(sessionCode, sessionTheirCode);
   }
@@ -10444,7 +10444,7 @@ function init() {
 
     // Confirm button
     html += '<button class="btn btn-primary" style="width:100%; margin-bottom:4px;" onclick="App.exReviewConfirm()">Confirm</button>';
-    html += '<div style="text-align:center; margin-bottom:14px;"><span style="font-size:13px; color:var(--text-faint); cursor:pointer;" onclick="App.exRejectSAS()">Not the right person?</span></div>';
+    html += '<div style="text-align:center; margin-bottom:14px;"><span style="font-size: var(--fs-label); color:var(--text-faint); cursor:pointer;" onclick="App.exRejectSAS()">Not the right person?</span></div>';
 
     // Render into the verify step container (replacing the SAS-only view)
     var verifyStep = document.getElementById('ex-step-verify');
@@ -10623,8 +10623,8 @@ function init() {
     var iconColor = highlight ? 'var(--accent)' : 'var(--text-faint)';
     return '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showTextureDetail(\'' + detailKey + '\')">' +
       '<span style="font-size:10px; flex-shrink:0; width:20px; text-align:center; color:' + iconColor + ';">' + icon + '</span>' +
-      '<span style="flex:1; font-size:13px; color:' + labelColor + '; line-height:1.4;' + labelWeight + '">' + label + '</span>' +
-      '<span style="font-size:14px; color:var(--text-faint); flex-shrink:0;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>' +
+      '<span style="flex:1; font-size: var(--fs-label); color:' + labelColor + '; line-height:1.4;' + labelWeight + '">' + label + '</span>' +
+      '<span style="font-size: var(--fs-label); color:var(--text-faint); flex-shrink:0;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>' +
       '</div>';
   }
 
@@ -10646,13 +10646,13 @@ function init() {
       body = '<div style="text-align:center; margin-bottom:16px;">' +
         '<div style="font-size:36px; font-weight:600; color:' + balClass + ';">' + balStr + '</div>' +
         '</div>' +
-        '<div style="font-size:14px; color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
         'This number represents your cooperative position right now. It does not mean you have received less or more than others. It may simply mean that what you received was deeply valuable to the person who provided it, and you agreed.' +
         '</div>' +
-        '<div style="font-size:14px; color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
         'This is not debt. No one will ever come for this balance. Human beings receive far more than they give for most of their early life, and when we get old, we will again. There are seasons of providing and seasons of receiving.' +
         '</div>' +
-        '<div style="font-size:14px; color:var(--text-dim); line-height:1.7;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'This number does not stop you from cooperating with anyone. You can provide, you can receive. Your chain continues to grow regardless of where this number sits.' +
         '</div>';
       document.getElementById('texture-detail-title').textContent = title;
@@ -10676,18 +10676,18 @@ function init() {
       body = exDetailCategories(ts);
     } else if (key === 'young-thin') {
       title = 'What makes a chain young';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'A young chain simply means this person has not been using the protocol for long. There are few exchanges on record, which means less history to read.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'This is not a concern on its own. Everyone starts with an empty chain. What matters is whether what is here looks genuine and whether the context makes sense for your exchange.' +
         '</div>';
     } else if (key === 'young-depth') {
       title = 'Why network depth matters';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'A chain builds credibility through diversity \u2014 different people, different services, different times. A person who has exchanged with many different people across months is harder to fabricate than one with a few exchanges in a single week.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'Depth comes with time. A young chain will grow if the person continues to cooperate genuinely.' +
         '</div>';
     } else if (key === 'young-questions') {
@@ -10702,10 +10702,10 @@ function init() {
       body = exDetailObservations(ts);
     } else if (key === 'unusual-means') {
       title = 'What this means for you';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'Unusual patterns do not mean this person is dishonest. There are many legitimate reasons a chain might look one-sided or concentrated \u2014 someone new to their area, someone who primarily offers one skill, or simply someone early in their journey.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'What it does mean is that you have less history to rely on. The chain is giving you less information than a more established one would. Factor that into your decision.' +
         '</div>';
     } else if (key === 'unusual-questions') {
@@ -10717,16 +10717,16 @@ function init() {
       ]);
     } else if (key === 'unusual-gaming') {
       title = 'How gaming works \u2014 and what it costs';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'To inflate a chain, a person needs accomplices. Say three people agree to fake exchanges to build each other\u2019s records.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'Each fake exchange creates a real record \u2014 with a real deficit for the person issuing the value. That deficit is permanent and visible. They have sacrificed their own record to build someone else\u2019s.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'The beneficiary now has a chain where all exchanges are with the same two people. Anyone reviewing it will see this immediately \u2014 deep relationship, tiny network.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'The effort required to game the system costs more than genuine cooperation would. And the result tells a story any community member can read.' +
         '</div>';
     } else if (key === 'nonhuman-what') {
@@ -10734,13 +10734,13 @@ function init() {
       body = exDetailNonhumanSignals(dev);
     } else if (key === 'nonhuman-means') {
       title = 'What this means for you';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'The device on the other end of this exchange is not behaving like a real phone carried by a person. This does not necessarily mean the person is fake \u2014 but the tool they are using is not a normal phone.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'Emulators and virtual machines can generate exchanges without a human being present. They can run around the clock, from anywhere, and simulate interactions that never happened in the physical world.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'You decide whether to proceed. The chain is showing you what it sees.' +
         '</div>';
     } else if (key === 'nonhuman-questions') {
@@ -10752,13 +10752,13 @@ function init() {
       ]);
     } else if (key === 'nonhuman-extract') {
       title = 'How fabricated chains extract from communities';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'A fabricated chain is a script \u2014 an automated system producing exchanges that never involved real cooperation. The chain looks populated but the work never happened.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'When someone with a fabricated chain enters a genuine community, they receive real cooperation in exchange for a record that was manufactured. Your real effort gets recorded against their artificial history.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px; color:var(--accent); font-weight:500;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px; color:var(--accent); font-weight:500;">' +
         'The deeper your own network grows \u2014 more people, more diversity, more genuine exchanges \u2014 the more your chain speaks for itself, and the harder it becomes for anyone to extract value from your community.' +
         '</div>';
     } else if (key === 'device-signals') {
@@ -10788,18 +10788,18 @@ function init() {
     var isPhone = dev.touchPoints > 0;
     if (isPhone) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">';
-      html += '<span style="color:var(--green); font-size:14px;"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
-      html += '<span style="font-size:13px; color:var(--text-dim);">Real phone confirmed</span>';
+      html += '<span style="color:var(--green); font-size: var(--fs-label);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
+      html += '<span style="font-size: var(--fs-label); color:var(--text-dim);">Real phone confirmed</span>';
       html += '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:16px; line-height:1.5;">This device has a touch screen, a hardware graphics chip, and physical sensors. It behaves like a real phone carried by a person.</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:16px; line-height:1.5;">This device has a touch screen, a hardware graphics chip, and physical sensors. It behaves like a real phone carried by a person.</div>';
     }
     // Sensor coverage
     if (dev.totalRecords > 0) {
       var sensorPct = Math.round(dev.recordsWithSensor / dev.totalRecords * 100);
       var geoPct = Math.round(dev.recordsWithGeo / dev.totalRecords * 100);
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:8px;">Physical reality signals</div>';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin-bottom:8px;">Physical reality signals</div>';
       var hasSensorCap = (dev.capabilityMask || 0) & 6;
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
       html += '<strong style="color:var(--accent);">' + sensorPct + '%</strong> of exchanges carry sensor data \u2014 ';
       if (!hasSensorCap && sensorPct < 30) {
         html += 'this device\u2019s operating system does not allow apps to read physical sensors like accelerometers and gyroscopes. This is a platform limitation (common on iPhones), not a concern about the person.';
@@ -10813,7 +10813,7 @@ function init() {
         html += 'no exchanges carry physical sensor data. The phone has not recorded any motion, gravity, or air pressure during exchanges.';
       }
       html += '</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
       html += '<strong style="color:var(--accent);">' + geoPct + '%</strong> carry location data \u2014 ';
       if (geoPct >= 80) {
         html += 'exchanges are happening in real, locatable places. The phone knows where it is.';
@@ -10826,7 +10826,7 @@ function init() {
       }
       html += '</div>';
       if (dev.pohSnapshots > 0) {
-        html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">';
+        html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">';
         html += '<strong style="color:var(--accent);">' + dev.pohSnapshots + '</strong> proof-of-human snapshot' + (dev.pohSnapshots > 1 ? 's' : '') + ' \u2014 ';
         if (dev.pingRecords > 0) {
           html += '<strong style="color:var(--accent);">' + dev.pingRecords + '</strong> standalone heartbeat' + (dev.pingRecords > 1 ? 's' : '') + ' between exchanges. ';
@@ -10840,8 +10840,8 @@ function init() {
     // --- Heartbeat drift analysis ---
     var deltas = ts._deltas;
     if (deltas && deltas.length > 0) {
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin:16px 0 8px;">Heartbeat drift</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin:16px 0 8px;">Heartbeat drift</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">';
       var identicalCount = 0;
       deltas.forEach(function(d) {
         if (d.gpsIdentical) identicalCount++;
@@ -10860,8 +10860,8 @@ function init() {
     // --- Counterparty platform distribution ---
     var plat = ts._platforms;
     if (plat && plat.total > 0) {
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin:16px 0 8px;">Counterparty devices</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin:16px 0 8px;">Counterparty devices</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">';
       var platEntries = Object.entries(plat.platforms).sort(function(a,b) { return b[1] - a[1]; });
       platEntries.forEach(function(e) {
         var pct = Math.round(e[1] / plat.total * 100);
@@ -10941,20 +10941,20 @@ function init() {
   function exDetailCategories(ts) {
     var cats = ts.cats || {};
     var keys = Object.keys(cats);
-    if (!keys.length) return '<div style="font-size:13px; color:var(--text-faint);">No category data available.</div>';
+    if (!keys.length) return '<div style="font-size: var(--fs-label); color:var(--text-faint);">No category data available.</div>';
     var html = '';
     Object.entries(cats).sort(function(a,b) { return b[1].n - a[1].n; }).forEach(function(e) {
       var k = e[0], v = e[1];
       var pct = Math.round(v.n / ts.n * 100);
       html += '<div style="margin-bottom:14px;">';
       html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;">';
-      html += '<span style="font-size:14px; font-weight:500; color:var(--text);">' + esc(k) + '</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">' + v.n + ' acts \u00b7 ' + pct + '%</span>';
+      html += '<span style="font-size: var(--fs-label); font-weight:500; color:var(--text);">' + esc(k) + '</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">' + v.n + ' acts \u00b7 ' + pct + '%</span>';
       html += '</div>';
       html += '<div style="height:5px; background:var(--bg-input); border-radius:3px; overflow:hidden;">';
       html += '<div style="height:100%; width:' + pct + '%; background:var(--accent); border-radius:3px;"></div>';
       html += '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); margin-top:3px;">provided ' + v.g + ' \u00b7 received ' + v.r + ' \u00b7 avg ' + (v.avg || 0) + ' units</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-top:3px;">provided ' + v.g + ' \u00b7 received ' + v.r + ' \u00b7 avg ' + (v.avg || 0) + ' units</div>';
       html += '</div>';
     });
     return html;
@@ -10962,12 +10962,12 @@ function init() {
 
   function exDetailObservations(ts) {
     var cl = exClassifyChain(ts);
-    if (!cl.observations.length) return '<div style="font-size:13px; color:var(--text-faint);">No specific observations.</div>';
+    if (!cl.observations.length) return '<div style="font-size: var(--fs-label); color:var(--text-faint);">No specific observations.</div>';
     var html = '';
     cl.observations.forEach(function(obs) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">';
-      html += '<span style="color:var(--accent); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">' + obs.text + '</div>';
+      html += '<span style="color:var(--accent); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">' + obs.text + '</div>';
       html += '</div>';
     });
     return html;
@@ -10977,8 +10977,8 @@ function init() {
     var html = '';
     items.forEach(function(item) {
       html += '<div style="margin-bottom:16px;">';
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:6px;">' + item.q + '</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">' + item.a + '</div>';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin-bottom:6px;">' + item.q + '</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">' + item.a + '</div>';
       html += '</div>';
     });
     return html;
@@ -10989,58 +10989,58 @@ function init() {
     var webgl = dev.webgl || '';
     if (exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">';
-      html += '<span style="color:var(--red); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div><div style="font-size:13px; color:var(--text); font-weight:500; margin-bottom:4px;">This is not a real phone</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The graphics chip in this device is software pretending to be hardware. Real phones have physical chips made by companies like Qualcomm, ARM, or Apple. This device reports: ' + esc(webgl) + '. This is the signature of an emulator or virtual machine \u2014 a program that imitates a phone without being one.</div></div>';
+      html += '<span style="color:var(--red); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div><div style="font-size: var(--fs-label); color:var(--text); font-weight:500; margin-bottom:4px;">This is not a real phone</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The graphics chip in this device is software pretending to be hardware. Real phones have physical chips made by companies like Qualcomm, ARM, or Apple. This device reports: ' + esc(webgl) + '. This is the signature of an emulator or virtual machine \u2014 a program that imitates a phone without being one.</div></div>';
       html += '</div>';
     }
     if (dev.touchPoints === 0) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">';
-      html += '<span style="color:var(--red); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div><div style="font-size:13px; color:var(--text); font-weight:500; margin-bottom:4px;">No touch screen</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">Every smartphone has a touch screen. This device reports zero touch capability. That means it is either a desktop computer, a server, or a virtual machine. None of those are phones that a person carries and uses in daily life.</div></div>';
+      html += '<span style="color:var(--red); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div><div style="font-size: var(--fs-label); color:var(--text); font-weight:500; margin-bottom:4px;">No touch screen</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">Every smartphone has a touch screen. This device reports zero touch capability. That means it is either a desktop computer, a server, or a virtual machine. None of those are phones that a person carries and uses in daily life.</div></div>';
       html += '</div>';
     }
     if (dev.totalRecords >= 5 && dev.recordsWithSensor === 0) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">';
-      html += '<span style="color:var(--red); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div><div style="font-size:13px; color:var(--text); font-weight:500; margin-bottom:4px;">No physical reality in any exchange</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">Across ' + dev.totalRecords + ' exchanges, this device has never recorded any motion, gravity, air pressure, or orientation. A real phone constantly feels the world around it \u2014 every tilt, every step, every change in altitude or weather. This phone appears to exist in a place where none of that happens.</div></div>';
+      html += '<span style="color:var(--red); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div><div style="font-size: var(--fs-label); color:var(--text); font-weight:500; margin-bottom:4px;">No physical reality in any exchange</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">Across ' + dev.totalRecords + ' exchanges, this device has never recorded any motion, gravity, air pressure, or orientation. A real phone constantly feels the world around it \u2014 every tilt, every step, every change in altitude or weather. This phone appears to exist in a place where none of that happens.</div></div>';
       html += '</div>';
     }
     if (!html) {
-      html = '<div style="font-size:13px; color:var(--text-faint);">Device signals flagged during classification.</div>';
+      html = '<div style="font-size: var(--fs-label); color:var(--text-faint);">Device signals flagged during classification.</div>';
     }
     return html;
   }
 
   function exDetailDeviceSignals(dev) {
     var html = '';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:12px;">These are the physical characteristics of the device on the other end of this exchange. Each one tells you something about whether this is a real phone in a real person\u2019s hand.</div>';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:12px;">These are the physical characteristics of the device on the other end of this exchange. Each one tells you something about whether this is a real phone in a real person\u2019s hand.</div>';
     // Platform
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Platform</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono);">' + esc(dev.platform || '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The operating system. Android and iOS are phones. Linux or Win32 is a computer.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Platform</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono);">' + esc(dev.platform || '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The operating system. Android and iOS are phones. Linux or Win32 is a computer.</div>';
     html += '</div>';
     // Screen
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Screen</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono);">' + esc(dev.screen || '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The screen resolution. Phone screens are typically narrow and tall. Very large or square resolutions suggest a desktop monitor.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Screen</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono);">' + esc(dev.screen || '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The screen resolution. Phone screens are typically narrow and tall. Very large or square resolutions suggest a desktop monitor.</div>';
     html += '</div>';
     // Touch points
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Touch points</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono);">' + (dev.touchPoints != null ? '' + dev.touchPoints : '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">How many fingers the screen can detect at once. Phones report 5 or more. Zero means no touch screen at all.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Touch points</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono);">' + (dev.touchPoints != null ? '' + dev.touchPoints : '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">How many fingers the screen can detect at once. Phones report 5 or more. Zero means no touch screen at all.</div>';
     html += '</div>';
     // GPU
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Graphics chip</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono); max-width:60%; text-align:right; word-break:break-word;">' + esc(dev.webgl || '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The hardware that draws the screen. Real phones have chips from Qualcomm (Adreno), ARM (Mali), or Apple. Software renderers like SwiftShader or llvmpipe mean the device is simulated.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Graphics chip</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono); max-width:60%; text-align:right; word-break:break-word;">' + esc(dev.webgl || '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The hardware that draws the screen. Real phones have chips from Qualcomm (Adreno), ARM (Mali), or Apple. Software renderers like SwiftShader or llvmpipe mean the device is simulated.</div>';
     html += '</div>';
     if (dev.totalRecords > 0) {
       var sensorPct = Math.round(dev.recordsWithSensor / dev.totalRecords * 100);
       var geoPct = Math.round(dev.recordsWithGeo / dev.totalRecords * 100);
-      html += '<div style="margin-top:12px; font-size:13px; color:var(--text-dim); line-height:1.6;">';
+      html += '<div style="margin-top:12px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
       html += 'Sensor coverage: <strong style="color:var(--accent);">' + sensorPct + '%</strong> \u00b7 Location: <strong style="color:var(--accent);">' + geoPct + '%</strong>';
       if (dev.pohSnapshots > 0) html += ' \u00b7 Proof-of-human: <strong style="color:var(--accent);">' + dev.pohSnapshots + '</strong>';
       if (dev.pingRecords > 0) html += ' (' + dev.pingRecords + ' heartbeat' + (dev.pingRecords > 1 ? 's' : '') + ')';
@@ -11288,14 +11288,14 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--blue);">&#9679;</span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--blue);">New participant</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--blue);">New participant</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has no exchange history yet. Everyone starts somewhere.';
     html += '</div>';
     // Device check even on new
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
-      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
+      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size: var(--fs-caption); color:var(--text-faint);">';
       html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
@@ -11317,9 +11317,9 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--blue);">&#9679;</span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--blue);">This chain is young.</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--blue);">This chain is young.</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has ' + ts.n + ' exchange' + (ts.n > 1 ? 's' : '') + ' on record. What is here looks genuine \u2014 the chain just has not had time to build depth yet.';
     html += '</div>';
 
@@ -11327,7 +11327,7 @@ function init() {
     if (cl.observations.length > 0) {
       html += '<div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(42,90,143,0.12);">';
       cl.observations.forEach(function(obs) {
-        html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5; margin-bottom:4px;">\u2022 ' + obs.text + '</div>';
+        html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5; margin-bottom:4px;">\u2022 ' + obs.text + '</div>';
       });
       html += '</div>';
     }
@@ -11337,7 +11337,7 @@ function init() {
 
     // Device confirmation
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
-      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
+      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size: var(--fs-caption); color:var(--text-faint);">';
       html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
@@ -11366,9 +11366,9 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--accent);"><svg class="icon icon-md"><use href="#icon-warning"/></svg></span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has ' + ts.n + ' exchanges' + months + '. ';
     html += 'This person may be perfectly honest, but some patterns do not match what you would typically see. It is worth understanding what you are looking at before you proceed.';
     html += '</div>';
@@ -11396,9 +11396,9 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(204,68,68,0.04); border:1px solid rgba(204,68,68,0.15); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += 'The person you are dealing with may be real, but the device they are holding is not behaving the way any normal person\u2019s phone would. Multiple signals point to a simulated or automated device.';
     html += '</div>';
     html += '</div>';
@@ -11631,7 +11631,7 @@ function init() {
       html += '<div class="exs-check" style="visibility:hidden"></div><div class="exs-m" style="margin-top:12px">&nbsp;</div><div style="height:18px"></div><div class="btn btn-primary" style="width:100%; visibility:hidden">Done</div>';
     } else if (st === 'done') {
       html += '<div class="exs-check exs-in"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
-      html += '<div class="exs-m exs-in" style="text-align:center; margin-top:12px; font-size:14px">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
+      html += '<div class="exs-m exs-in" style="text-align:center; margin-top:12px; font-size: var(--fs-label)">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
       html += '<div style="height:18px"></div>';
       html += '<button class="btn btn-primary exs-in" style="width:100%;" onclick="App.exRVDone()">Done</button>';
     } else if (st === 'declined') {
@@ -11769,7 +11769,7 @@ function init() {
     h += '</svg>';
     var l1 = iProvide ? esc(other) + ' confirmed ' + p.value.toLocaleString() + ' for your work' : 'You confirmed ' + p.value.toLocaleString() + ' for ' + esc(other) + '\'s work';
     h += '<div class="exs-grow"></div>';
-    h += '<div id="exs-l1" class="exs-fade" style="text-align:center; font-size:15px">' + l1 + '</div>';
+    h += '<div id="exs-l1" class="exs-fade" style="text-align:center; font-size: var(--fs-body)">' + l1 + '</div>';
     h += '<div id="exs-l2" class="exs-fade exs-f" style="text-align:center; margin-top:4px">Recorded on both chains</div>';
     h += '<div style="height:24px"></div>';
     h += '</div>';
@@ -12005,7 +12005,7 @@ function init() {
   function exBreakdownHTML(bd, value) {
     if (!bd || !Array.isArray(bd.lines) || !bd.lines.length) return '';
     var h = '<div style="margin-top:12px">', sum = 0;
-    bd.lines.forEach(function(l) { var t = pkLineTotal(l); sum += t; var cap = pkLineCap(l); h += '<div class="exs-row mc-vrow st-row" style="padding:8px 2px"><div class="exs-rowmain"><div class="exs-body" style="font-size:14px">' + esc(l.desc || '') + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><div class="exs-rowval" style="font-weight:400;font-size:14px">' + mcFmt(t) + exMarkSVG(12) + '</div></div>'; });
+    bd.lines.forEach(function(l) { var t = pkLineTotal(l); sum += t; var cap = pkLineCap(l); h += '<div class="exs-row mc-vrow st-row" style="padding:8px 2px"><div class="exs-rowmain"><div class="exs-body" style="font-size: var(--fs-label)">' + esc(l.desc || '') + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><div class="exs-rowval" style="font-weight:400;font-size: var(--fs-label)">' + mcFmt(t) + exMarkSVG(12) + '</div></div>'; });
     h += '</div>';
     if (Math.round(sum) !== Math.round(Number(value) || 0)) h += '<p class="exs-cap" style="margin:6px 0 0">The parts add up to ' + mcFmt(sum) + '. The total proposed is ' + mcFmt(Number(value) || 0) + '.</p>';
     return h;
@@ -12274,7 +12274,7 @@ function init() {
     container.id = 'ex-reusable-acts';
     container.style.cssText = 'margin-bottom:16px;';
     var hdr = document.createElement('div');
-    hdr.style.cssText = 'font-size:13px; color:var(--text-dim); margin-bottom:8px;';
+    hdr.style.cssText = 'font-size: var(--fs-label); color:var(--text-dim); margin-bottom:8px;';
     hdr.textContent = 'Repeat a previous act';
     container.appendChild(hdr);
 
@@ -12511,32 +12511,32 @@ function init() {
       console.log('[ex-flow] Counterparty context render failed on proposal:', cpe.message);
     }
 
-    html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:12px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
+    html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:12px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
 
     html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:12px;">';
 
     // Direction badges
     html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
     if (p.direction === 'provided') {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You received</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You received</span>';
     } else {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You provided</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You provided</span>';
     }
     html += '</div>';
 
     // Description
     html += '<div style="margin-bottom:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">What was done</div>';
-    html += '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">What was done</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
     html += '</div>';
 
     // Category + Duration
     html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
     if (serviceCat) {
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Category</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(serviceCat) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Category</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(serviceCat) + '</div></div>';
     }
     if (p.duration) {
       var dH = Math.floor(p.duration / 60);
@@ -12544,14 +12544,14 @@ function init() {
       var dStr = '';
       if (dH) dStr += dH + ' hour' + (dH > 1 ? 's' : '');
       if (dM) dStr += (dStr ? ' ' : '') + dM + ' min';
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Duration</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(dStr) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Duration</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(dStr) + '</div></div>';
     }
     html += '</div>';
 
     // Value
     html += '<div style="border-top:1px solid var(--border); padding-top:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
     html += '<div style="font-size:28px; font-weight:700; color:var(--accent); font-family:var(--font-mono,monospace);">' + Number(proposedValue).toLocaleString() + '</div>';
     html += '</div>';
 
@@ -12624,17 +12624,17 @@ function init() {
     var catId = 'svc-cat-' + catName.replace(/[^a-zA-Z0-9]/g, '_');
     var html = '<div style="margin-bottom:2px;">';
     html += '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.toggleServiceCat(\'' + catId + '\')">';
-    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
-    html += '<span style="flex:1; font-size:14px; font-weight:500; color:var(--text);">' + esc(catName) + '</span>';
-    html += '<span style="font-size:12px; color:var(--text-faint);">' + items.length + ' service' + (items.length > 1 ? 's' : '') + ' \u00b7 ' + totalCount + 'x</span>';
+    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size: var(--fs-caption); color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
+    html += '<span style="flex:1; font-size: var(--fs-label); font-weight:500; color:var(--text);">' + esc(catName) + '</span>';
+    html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">' + items.length + ' service' + (items.length > 1 ? 's' : '') + ' \u00b7 ' + totalCount + 'x</span>';
     html += '</div>';
 
     // Collapsible service list
     html += '<div id="' + catId + '" style="display:none; padding-left:22px;">';
     items.sort(function(a, b) { return b.n - a.n; }).forEach(function(s) {
       html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-      html += '<div style="font-size:13px; color:var(--text); margin-bottom:4px;">' + esc(s.desc) + '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">';
+      html += '<div style="font-size: var(--fs-label); color:var(--text); margin-bottom:4px;">' + esc(s.desc) + '</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">';
       if (s.n === 1) {
         html += 'Offered once \u00b7 ' + s.avg + ' units';
       } else {
@@ -12701,7 +12701,7 @@ function init() {
     }
 
     var html = '';
-    html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:16px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
+    html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:16px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
 
     // Proposal card
     html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:16px;">';
@@ -12709,25 +12709,25 @@ function init() {
     // Direction badges
     html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
     if (p.direction === 'provided') {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You received</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You received</span>';
     } else {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You provided</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You provided</span>';
     }
     html += '</div>';
 
     // Description
     html += '<div style="margin-bottom:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">What was done</div>';
-    html += '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">What was done</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
     html += '</div>';
 
     // Category + Duration row
     html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
     if (serviceCat) {
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Category</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(serviceCat) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Category</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(serviceCat) + '</div></div>';
     }
     if (p.duration) {
       var dHrs = Math.floor(p.duration / 60);
@@ -12735,14 +12735,14 @@ function init() {
       var durStr = '';
       if (dHrs) durStr += dHrs + ' hour' + (dHrs > 1 ? 's' : '');
       if (dMin) durStr += (durStr ? ' ' : '') + dMin + ' min';
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Duration</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(durStr) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Duration</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(durStr) + '</div></div>';
     }
     html += '</div>';
 
     // Proposed value
     html += '<div style="border-top:1px solid var(--border); padding-top:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
     html += '<div style="font-size:28px; font-weight:700; color:var(--accent); font-family:var(--font-mono,monospace);">' + Number(proposedValue).toLocaleString() + '</div>';
     html += '</div>';
 
@@ -12901,7 +12901,7 @@ function init() {
     var bar = function(label, v, color) {
       var pct = Math.max(v > 0 ? 1 : 0, Math.round(v / mx * 100));
       return '<div style="margin-bottom:12px;">'
-        + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;"><span style="font-size:var(--fs-sm); color:var(--text-dim);">' + label + '</span><span style="font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--text);">' + fmt(v) + '</span></div>'
+        + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;"><span style="font-size:var(--fs-sm); color:var(--text-dim);">' + label + '</span><span style="font-family:var(--font-mono); font-size: var(--fs-body); font-weight:600; color:var(--text);">' + fmt(v) + '</span></div>'
         + '<div style="height:14px; border-radius:4px; background:var(--bg-input); overflow:hidden;"><div style="height:100%; width:' + pct + '%; background:' + color + '; border-radius:4px;"></div></div>'
         + '</div>';
     };
@@ -13010,7 +13010,7 @@ function init() {
     var seg = function(items, cur, fn) {
       return '<div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">' + items.map(function(it) {
         var on = it[0] === cur, dis = it[2];
-        return '<button ' + (dis ? 'disabled ' : '') + 'style="border:none; padding:6px 10px; font-size:12px; font-family:inherit; cursor:pointer; background:' + (on ? 'var(--accent)' : 'var(--bg-raised)') + '; color:' + (on ? '#fff' : (dis ? 'var(--text-faint)' : 'var(--text-dim)')) + ';" onclick="' + fn + '(\'' + it[0] + '\')">' + it[1] + '</button>';
+        return '<button ' + (dis ? 'disabled ' : '') + 'style="border:none; padding:6px 10px; font-size: var(--fs-caption); font-family:inherit; cursor:pointer; background:' + (on ? 'var(--accent)' : 'var(--bg-raised)') + '; color:' + (on ? '#fff' : (dis ? 'var(--text-faint)' : 'var(--text-dim)')) + ';" onclick="' + fn + '(\'' + it[0] + '\')">' + it[1] + '</button>';
       }).join('') + '</div>';
     };
     h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:10px;">Provided above, received below</div>';
@@ -13344,7 +13344,7 @@ function init() {
     h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
     h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
-    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
+    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size: var(--fs-caption); flex-shrink:0;">' + toneIcon + '</div>';
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
 
@@ -13808,7 +13808,7 @@ function init() {
     h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
     h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
-    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
+    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size: var(--fs-caption); flex-shrink:0;">' + toneIcon + '</div>';
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
     // Same bonus-aware main-line logic as the owner's POH card.
@@ -14583,7 +14583,7 @@ function init() {
     html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text);">' + esc(name) + '</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-family:var(--font-mono);">' + esc(fp) + '</div>';
     html += '</div>';
-    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
+    html += '<span class="id-chev" style="font-size: var(--fs-label); color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     html += '</div>';
     // Expanded panel
     html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
@@ -14873,7 +14873,7 @@ function init() {
         }
         html += '<div style="flex:1; min-width:0;"><div class="ltab-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + esc(topic.title) + '</div>';
         html += '<div class="ltab-lesson-steps">' + stepCount + ' steps</div></div>';
-        html += '<span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
+        html += '<span style="font-size: var(--fs-label); color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
         html += '</button>';
       });
       html += '</div>';
@@ -14929,7 +14929,7 @@ function init() {
       + '</div>'
       + '<div style="margin-bottom:14px;">'
       +   '<label style="display:block; font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:6px;">Server public key</label>'
-      +   '<input type="text" id="add-witness-pubkey" placeholder="64-character hex string" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-family:var(--mono); box-sizing:border-box;">'
+      +   '<input type="text" id="add-witness-pubkey" placeholder="64-character hex string" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size: var(--fs-label); font-family:var(--mono); box-sizing:border-box;">'
       + '</div>'
       + '<div id="add-witness-status" style="min-height:20px; font-size:var(--fs-sm); margin-bottom:14px; line-height:1.5;"></div>'
       + '<button id="add-witness-submit" onclick="App.verifyAndAddWitness()" style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer;">Verify and add</button>'
@@ -15025,7 +15025,7 @@ function init() {
     h += '<p class="exs-cap" style="margin:8px 0 0">You decide who knows what about your past. Past counterparty names are never sent to others. Privacy mode also hides them on this phone, for when someone could see your screen and that could put a person at risk.</p>';
     // Network
     h += '<div class="exs-cap mc-group">Network</div>';
-    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body">Witness server</div><div class="exs-cap" id="settings-witness-status">Checking\u2026</div></div><button class="exs-quiet" style="width:auto;flex:none;font-size:13px;padding:6px 0 6px 10px" onclick="App.checkWitnessStatus()">Check again</button></div>';
+    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body">Witness server</div><div class="exs-cap" id="settings-witness-status">Checking\u2026</div></div><button class="exs-quiet" style="width:auto;flex:none;font-size: var(--fs-label);padding:6px 0 6px 10px" onclick="App.checkWitnessStatus()">Check again</button></div>';
     var showOp = getShowOperatorSurface(), uw = getUserWitnesses();
     h += stSwitchRow('I run a witness server', 'Register a server you operate', showOp, 'switch-operator-surface', 'App.toggleOperatorSurface()');
     if (showOp) {
@@ -15035,7 +15035,7 @@ function init() {
         try { host = new URL(w.url).host; } catch (e) { host = w.url; }
         try { var d = new Date(w.addedAt); if (!isNaN(d)) added = ', added ' + d.toLocaleDateString(); } catch (e) {}
         h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="word-break:break-all">' + esc(host) + '</div><div class="exs-cap"><span style="font-family:var(--mono)">key ' + esc((w.pubkey || '').substring(0, 16)) + '\u2026</span>' + esc(added) + '</div></div>' +
-          '<button class="exs-quiet" style="width:auto;flex:none;font-size:12px;padding:6px 0 6px 10px;color:var(--text-faint)" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button></div>';
+          '<button class="exs-quiet" style="width:auto;flex:none;font-size: var(--fs-caption);padding:6px 0 6px 10px;color:var(--text-faint)" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button></div>';
       }
       h += stRow(uw.length ? 'Add another server' : 'Add a server', '', 'App.openAddWitnessModal()');
     }
