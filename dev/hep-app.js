@@ -12672,6 +12672,8 @@ function init() {
       html += '</div>';
     }
 
+    // v2.111.5 (Michael, Oct 5): the version, tucked at the bottom of Home, caption size, faintest grey.
+    html += '<div class="exs-cap" style="text-align:center; color:var(--text-faint); padding:28px 0 8px;">v' + APP_VERSION + (/\/dev\//.test(location.pathname) ? ' dev' : '') + '</div>';
     el.innerHTML = html;
     // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
     try { renderBrowserStorageBanner(); } catch (e) {}
