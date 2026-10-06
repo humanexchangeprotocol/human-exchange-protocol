@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.111.3';
+const APP_VERSION='2.111.4';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -613,9 +613,9 @@ function grr(c){const ex=acts(c);if(!ex.length)return{provided:0,received:0,rati
 function crep(o,origHash,origFp){
   const r={serVersion:SV,type:RT_REPAIR,value:o.value,energyState:o.energyState,counterparty:o.counterparty,timestamp:o.timestamp,seq:null,prevHash:null,prevHash3:null,signature:null,
     originalHash:origHash,originalFp:origFp,originalType:o.type===RT_REPAIR?(o.originalType||''):o.type};
-  // v2.111.3: street, city, state, geo carried too (Reach places exchanges by them; copies were missing from it).
+  // v2.111.4: street, city, state, geo carried too (Reach places exchanges by them; copies were missing from it).
   for(const k of['counterpartyName','duration','description','category','actHash','counterpartySig','street','city','state','geo'])if(o[k]!==undefined&&o[k]!=='')r[k]=o[k];
-  // v2.111.3: the witness attestation sits outside ser (unsigned, attests the original's mint hash); carried so a copy does not read as unwitnessed.
+  // v2.111.4: the witness attestation sits outside ser (unsigned, attests the original's mint hash); carried so a copy does not read as unwitnessed.
   if(o.witnessAttestation)r.witnessAttestation=JSON.parse(JSON.stringify(o.witnessAttestation));
   return r;
 }

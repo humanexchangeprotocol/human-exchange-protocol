@@ -2451,7 +2451,7 @@ const PAIR_CODE_LENGTH = 4;
     b.className = 'home-backup';
     b.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') +
       '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div></div>' +
-      '<button class="exs-save" onclick="App.exportBackup()">Back up now</button>';
+      '<button class="exs-save" onclick="App.recBkOpen()">Back up now</button>';
     hero.appendChild(b);
   }
 
@@ -7916,7 +7916,7 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeImportSheet() { var el = document.getElementById('import-sheet'); if (el) el.hidden = true; }
   function importChooseFile() { closeImportSheet(); document.getElementById('import-file').click(); }
-  function importBackUpFirst() { closeImportSheet(); exportBackupAction(); }
+  function importBackUpFirst() { closeImportSheet(); recBkOpen(); } // v2.111.4: the one Backup sheet, with the email choice
 
   async function handleImportFile(event) {
     const file = event.target.files[0]; if (!file) return;
