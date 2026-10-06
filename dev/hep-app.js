@@ -2421,7 +2421,7 @@ const PAIR_CODE_LENGTH = 4;
   // and says how many. Saving a backup (or restoring one) records the act
   // count in SK_backup; the line returns when a new exchange lands.
   function backupMarker() { try { return JSON.parse(localStorage.getItem(SK + '_backup') || 'null'); } catch(e) { return null; } }
-  function markBackedUp() { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, seq: state.chain.length - 1, at: new Date().toISOString() })); } catch(e) {} }
+  function markBackedUp(file) { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, seq: state.chain.length - 1, at: new Date().toISOString(), file: file || '' })); } catch(e) {} }
   function renderBrowserStorageBanner() {
     var existing = document.getElementById('browser-storage-banner');
     if (existing) existing.remove();
@@ -2537,18 +2537,54 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" onclick="App.mcClose();App.syncChoose(' + i + ')">Sync now</button>';
     mcOpen('recdev');
   }
+  // v2.113.0 (Michael, Oct 6): the sheet leads with the last backup, plainly; the why lives in
+  // two explainers (FAQ) opened by underlined questions (rule 9).
+  function bkWhen(ts) { try { var d = new Date(ts); return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
   function recBkOpen() {
     bkPrepare();
-    var rm = recModel();
-    document.getElementById('recbk-body').innerHTML = '<div class="exs-cap mc-group">Last backup</div><div class="exs-body">' + (rm.backupAt ? esc(recFmtD(rm.backupAt)) + (rm.unbacked ? '. ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</div>' +
-      '<p class="exs-body" style="margin-top:16px">A backup is a copy of your record outside all your devices. If you ever lose every device, you can bring everything back from it.</p>' +
-      '<p class="exs-body" style="margin-top:10px" id="bk-how"></p>' +
-      '<p class="exs-cap" style="margin-top:10px">It is locked with your PIN. To bring it back, open HEP on a new device and choose Restore from a backup file.</p>' +
-      '<p class="exs-cap" id="bk-diag" style="margin-top:14px;color:var(--text-faint);font-family:var(--font-mono);font-size:11px;word-break:break-word;"></p>';
+    var rm = recModel(), m = backupMarker() || {}, h = '';
+    var icon = function(id, col) { return '<svg width="22" height="22" style="flex:none;color:' + col + '"><use href="#' + id + '"/></svg>'; };
+    var head = function(ic, t) { return '<div style="display:flex;align-items:center;gap:10px;margin-top:4px;">' + ic + '<div class="exs-t" style="margin:0">' + t + '</div></div>'; };
+    if (!rm.backupAt) {
+      h += head(icon('icon-warning', 'var(--red)'), 'Not backed up yet');
+      h += '<p class="exs-body" style="margin-top:8px">Your record is only on your devices.</p>';
+    } else if (rm.unbacked) {
+      h += head(icon('icon-warning', 'var(--red)'), rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up');
+      h += '<p class="exs-body" style="margin-top:8px">Last backup ' + esc(bkWhen(rm.backupAt)) + '</p>';
+    } else {
+      h += head(icon('icon-check', 'var(--green)'), 'Backed up');
+      h += '<p class="exs-body" style="margin-top:8px">' + esc(bkWhen(rm.backupAt)) + '. Nothing new since.</p>';
+    }
+    if (m.file) h += '<p class="exs-cap" style="margin-top:4px;word-break:break-all;">' + esc(m.file) + '</p>';
+    h += '<p class="exs-body" style="margin-top:20px" id="bk-how"></p>';
+    h += '<p class="exs-cap" style="margin-top:10px">It is locked with your PIN. To bring it back, open HEP on a new device and choose Restore from a backup file.</p>';
+    h += '<p class="mc-link" style="margin-top:20px"><a href="#" onclick="App.faqOpen(\'backup\');return false">Why keep a backup off this device?</a></p>';
+    h += '<p class="mc-link"><a href="#" onclick="App.faqOpen(\'pwa\');return false">Why HEP is a web app</a></p>';
+    document.getElementById('recbk-body').innerHTML = h;
     mcOpen('recbk');
     bkButton();
   }
-  async function recBackup(mode) { var ok = await exportBackupAction(mode); if (!ok) return; mcClose(); recRender(); renderBrowserStorageBanner(); }
+  // Short explainers, one place for the words. Any surface (Backup, Learn, Settings) opens them with faqOpen.
+  var FAQ = {
+    backup: { title: 'Why keep a backup off this device?', paras: [
+      'Your record is yours and no one else\u2019s. There is no company holding a copy of it for you.',
+      'Think of it the way you think of cash. It exists as long as you hold it. If you lose it, it is gone.',
+      'So keep a copy somewhere outside your devices. The simplest place is your own email: send it to yourself, and you can search for it whenever you need it. Search for HEP and your name and every backup you have sent shows up, newest last.',
+      'If you lose every device, open HEP on a new one, choose Restore from a backup file, and enter your PIN. Your record comes back exactly as it was.'
+    ] },
+    pwa: { title: 'Why HEP is a web app', paras: [
+      'HEP is built so that anyone with a smartphone can use it, with or without an internet connection.',
+      'It is a web app, not something you get from an app store. No company has to approve it, list it, or keep it available. It can be shared from one phone to another, kept on a thumb drive, and passed along without anyone\u2019s permission.',
+      'For you, this means your record lives on your own device, not on someone else\u2019s server. That is what keeps it yours. It is also why backing it up is up to you.'
+    ] }
+  };
+  function faqOpen(k) {
+    var f = FAQ[k]; if (!f) return;
+    document.getElementById('faq-title').textContent = f.title;
+    document.getElementById('faq-body').innerHTML = f.paras.map(function(p) { return '<p class="exs-body" style="margin-top:12px">' + esc(p) + '</p>'; }).join('') + (f.link ? '<p class="mc-link" style="margin-top:20px"><a href="#" onclick="App.faqOpen(\'' + f.link.faq + '\');return false">' + esc(f.link.text) + '</a></p>' : '');
+    mcOpen('faq');
+  }
+  async function recBackup(mode) { var ok = await exportBackupAction(mode); if (!ok) return; mcClose(); if (_recFromHome) recClose(); else recRender(); renderBrowserStorageBanner(); } // v2.113.0: opened from Home or Settings, return there
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -7864,26 +7900,29 @@ const PAIR_CODE_LENGTH = 4;
     var bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
     bk.declarations = state.declarations;
     bk.settings = state.settings;
-    var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
-    var text = JSON.stringify(bk, null, 2), name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
+    // v2.113.0 (Michael, Oct 6): HEP-<name>-<device name>-<YYYYMMDD>-<HHMM>, local time, 24-hour,
+    // so a search for the name lists every backup and the newest sorts last.
+    var slug = function(t) { return String(t || '').trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, ''); };
+    var d = new Date(), p2 = function(n) { return (n < 10 ? '0' : '') + n; };
+    var stamp = d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes());
+    var name = ['HEP', slug(state.declarations.name) || state.fingerprint.slice(0, 8), slug(syMyName()), stamp].filter(Boolean).join('-') + '.json';
+    var text = JSON.stringify(bk, null, 2);
     // Chrome on Android shares only some file types and .json is not one; .txt is. Import accepts both.
-    var file = null, diag = { share: !!navigator.share, canShare: !!navigator.canShare, json: null, txt: null, err: '' };
+    var file = null;
     try {
       if (navigator.share && navigator.canShare) {
         // v2.112.3: always share as .txt. Michael's Pixel (Chrome 154, installed): canShare said yes
         // to .json, then share() refused it with NotAllowedError 'Permission denied' (Chrome's
         // shareable-type list has no .json). text/plain is on that list everywhere; restore reads it.
         var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' });
-        diag.txt = navigator.canShare({ files: [f2] }); if (diag.txt) file = f2;
+        if (navigator.canShare({ files: [f2] })) file = f2;
       }
-    } catch (e) { file = null; diag.err = (e && e.name) + ': ' + (e && e.message); }
-    diag.kb = Math.round(text.length / 1024);
-    return { text: text, name: name, file: file, len: state.chain.length, diag: diag };
+    } catch (e) { file = null; }
+    return { text: text, name: name, file: file, len: state.chain.length };
   }
   function bkButton() {
     var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
     if (!b) return;
-    bkDiag();
     if (!_bkPrep) { b.disabled = true; b.textContent = 'Preparing your backup\u2026'; return; }
     b.disabled = false;
     if (_bkPrep.file) {
@@ -7895,16 +7934,6 @@ const PAIR_CODE_LENGTH = 4;
       if (sv) sv.style.display = 'none';
       if (note) note.textContent = 'This browser cannot open a share panel, so the backup saves as a file, usually to Downloads. Then move it somewhere outside this device, like your email or Google Drive.';
     }
-  }
-  // v2.112.2: dev build only, one faint line of facts under the Backup sheet text, so a failed
-  // share on a real phone says why without a cable. Removed before promotion.
-  var _bkLastErr = '';
-  function bkDiag() {
-    var el = document.getElementById('bk-diag'); if (!el) return;
-    if (!/\/dev\//.test(location.pathname)) { el.textContent = ''; return; }
-    if (!_bkPrep) { el.textContent = 'Test info: preparing'; return; }
-    var d = _bkPrep.diag || {}, yn = function(v) { return v === null || v === undefined ? '-' : (v ? 'yes' : 'no'); };
-    el.textContent = 'Test info (dev only): share ' + yn(d.share) + ', canShare ' + yn(d.canShare) + ', json ' + yn(d.json) + ', txt ' + yn(d.txt) + ', ' + d.kb + ' kB' + (d.err ? ', check error ' + d.err : '') + (_bkLastErr ? '. Last tap: ' + _bkLastErr : '') + '. ' + (navigator.userAgent.match(/Chrome\/[\d.]+|Version\/[\d.]+ Safari|Firefox\/[\d.]+|SamsungBrowser\/[\d.]+/) || ['?'])[0] + (window.matchMedia && matchMedia('(display-mode: standalone)').matches ? ', installed' : ', in browser');
   }
   function bkPrepare() {
     _bkPrep = null; bkButton();
@@ -7928,12 +7957,11 @@ const PAIR_CODE_LENGTH = 4;
     if (mode === 'share' && b && b.file) {
       try {
         await navigator.share({ files: [b.file], title: 'HEP backup ' + new Date().toISOString().slice(0, 10) });
-        markBackedUp(); renderBrowserStorageBanner(); toast('Backup shared');
+        markBackedUp(b.file.name); renderBrowserStorageBanner(); toast('Backup shared');
         console.log('[backup] shared ' + b.file.name);
         return true;
       } catch (e) {
         console.log('[backup] share failed: ' + (e && e.name) + ' ' + (e && e.message));
-        _bkLastErr = (e && e.name) + ': ' + (e && e.message); bkDiag();
         if (e && e.name === 'AbortError') return false; // the panel was closed: nothing sent, nothing marked
         toast('The share panel did not open (' + (e && e.name) + ').');
         return false; // v2.112.2: stay on the sheet so the test info shows; Save to this device is right below
@@ -7941,7 +7969,7 @@ const PAIR_CODE_LENGTH = 4;
     }
     try { if (!b) b = await bkBuild(); } catch (e) { toast('Backup failed'); return false; }
     if (!bkSaveLocal(b.text, b.name)) { toast('Backup failed'); return false; }
-    markBackedUp(); renderBrowserStorageBanner();
+    markBackedUp(b.name); renderBrowserStorageBanner();
     toast('Backup saved to this device. Move it somewhere outside this device too.');
     console.log('[backup] saved ' + b.name);
     return true;
@@ -14736,7 +14764,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: bkOpenHome, recOpen, recOpenHome, recClose, recDev, recBkOpen, bkOpenHome, recBackup, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
+    exportBackup: bkOpenHome, recOpen, recOpenHome, recClose, recDev, recBkOpen, bkOpenHome, recBackup, faqOpen, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };
