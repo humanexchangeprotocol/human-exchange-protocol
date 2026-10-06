@@ -1235,6 +1235,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <symbol id="icon-shield" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 3 L20 6 V12 c0 5 -4 8 -8 9 c-4 -1 -8 -4 -8 -9 V6 z"/>
     </symbol>
+    <symbol id="icon-filter" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z"/></symbol>
     <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
     </symbol>
@@ -1637,7 +1638,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="exs-sheet mc-sheet" id="mc-sheet-records" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Your records</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <button class="exs-row" onclick="App.recOpen()"><div class="exs-rowmain"><div class="exs-body">Record keeping</div><div class="exs-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.openChainViewerFromWallet()"><div class="exs-rowmain"><div class="exs-body">Exchange history</div><div class="exs-cap">Every recorded act</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.exListOpen()"><div class="exs-rowmain"><div class="exs-body">Exchange history</div><div class="exs-cap">Every exchange on your chain</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-settings" hidden>

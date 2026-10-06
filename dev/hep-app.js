@@ -14675,80 +14675,132 @@ function init() {
     el.innerHTML = html;
   }
 
+  // v2.122.0 (Michael, Oct 6, twenty-fifth session): one exchange list, used by the History tab and by
+  // Your records > Exchange history. The old Records sheet (direction chips beside a category cloud,
+  // green/blue signed numbers, cards) is retired. Rules: plain rows (11), numbers in the colour of their
+  // side with the mark (8, 16), month captions (7b), no inline expander (10): a row opens a reading
+  // sheet with the whole record and its receipt. Filtering is one control, "Filter", opening its own
+  // sheet where each way to dial in (show, order, kind) is its own section.
+  var _exF = { dir: 'all', order: 'new', kind: '' };
+  var _rsStack = [];
+  function rsShow(html, key) {
+    var n = _rsStack.length, o = document.createElement('div');
+    o.className = 'rs-ov'; o.setAttribute('data-key', key || '');
+    o.style.cssText = 'position:fixed;inset:0;z-index:' + (2100 + n) + ';background:var(--bg);display:flex;justify-content:center;';
+    o.innerHTML = '<div class="exs-sheet" style="position:relative;max-width:480px;width:100%;"></div>';
+    o.firstChild.innerHTML = html;
+    document.body.appendChild(o); _rsStack.push(o);
+    return o.firstChild;
+  }
+  function rsClose() { var o = _rsStack.pop(); if (o && o.parentNode) o.parentNode.removeChild(o); }
+  function rsBody(key) { for (var i = _rsStack.length - 1; i >= 0; i--) if (_rsStack[i].getAttribute('data-key') === key) return _rsStack[i].firstChild; return null; }
+  function exActs() { return HCP.acts(state.chain).map(function(r, i) { return { r: withCopyInfo(r), i: i }; }); }
+  function exKindKey(k) { return String(k || '').trim().toLowerCase(); }
+  function exHasPackage(r) { var rc = r.actHash && state.declarations.receipts && state.declarations.receipts[r.actHash]; return !!(rc && rc.breakdown && rc.breakdown.name); }
+  // Kinds present on the chain, merged by spelling case ("Debugging" and "DeBugging" are one kind, shown as first seen), plus Packages when any receipt names one.
+  function exKinds() {
+    var m = {}, order = [], pk = 0;
+    exActs().forEach(function(x) { var k = exKindKey(x.r.category); if (k) { if (!m[k]) { m[k] = String(x.r.category).trim(); order.push(k); } } if (exHasPackage(x.r)) pk++; });
+    var out = order.map(function(k) { return { key: k, label: m[k] }; });
+    if (pk) out.push({ key: '__pk', label: 'Packages' });
+    return out;
+  }
+  function exFiltered() {
+    var L = exActs();
+    if (_exF.dir !== 'all') L = L.filter(function(x) { return x.r.energyState === _exF.dir; });
+    if (_exF.kind === '__pk') L = L.filter(function(x) { return exHasPackage(x.r); });
+    else if (_exF.kind) L = L.filter(function(x) { return exKindKey(x.r.category) === _exF.kind; });
+    L.sort(function(a, b) { var d = new Date(a.r.timestamp) - new Date(b.r.timestamp); return (d || a.i - b.i) * (_exF.order === 'new' ? -1 : 1); });
+    return L;
+  }
+  function exFilterWords() {
+    var w = [];
+    if (_exF.dir === 'provided') w.push('Provided'); else if (_exF.dir === 'received') w.push('Received');
+    if (_exF.kind) { var k = exKinds().filter(function(x) { return x.key === _exF.kind; })[0]; if (k) w.push(k.label); }
+    w.push(_exF.order === 'new' ? 'Newest first' : 'Oldest first');
+    return w.join(' \u00b7 ');
+  }
+  function exListHTML() {
+    var all = exActs();
+    if (!all.length) return '<p class="exs-body" style="margin-top:12px">Your first exchange will appear here.</p>';
+    var h = '<div class="exs-caprow" style="margin:2px 0 4px"><span class="exs-cap">' + esc(exFilterWords()) + '</span><button class="mc-add" style="margin:0" onclick="App.exFilterOpen()"><svg width="18" height="18"><use href="#icon-filter"/></svg>Filter</button></div>';
+    var L = exFiltered();
+    if (!L.length) return h + '<p class="exs-cap" style="margin-top:16px">Nothing matches. Change the filter to see more.</p>';
+    var lastMonth = '';
+    L.forEach(function(x) {
+      var r = x.r, d = new Date(r.timestamp);
+      var month = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      if (month !== lastMonth) { h += '<div class="exs-cap mc-group"' + (lastMonth ? '' : ' style="margin-top:10px"') + '>' + esc(month) + '</div>'; lastMonth = month; }
+      var desc = r.description || r.category || 'Exchange';
+      var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
+      var ds = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), ts = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      var cap = (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + (r.duration ? ' \u00b7 ' + formatDuration(r.duration) : '');
+      var col = r.energyState === 'provided' ? 'var(--accent)' : 'var(--amber)';
+      h += '<button class="exs-row" onclick="App.exDetailOpen(' + x.i + ')"><div class="exs-rowmain"><div class="exs-body" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(desc) + '</div><div class="exs-cap">' + cap + '</div></div>';
+      h += '<span class="exs-rowval" style="color:' + col + '">' + mcFmt(r.value) + exMarkSVG(14) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    return h;
+  }
   function renderHistoryTab() {
     var el = document.getElementById('tab-history-content');
     if (!el) return;
-    // v2.111.0: newest first by when it happened (copies from another device land at the end of the chain).
-    var ex = HCP.acts(state.chain).map(function(r, i) { return { r: r, i: i }; }).sort(function(a, b) { var d = new Date(b.r.timestamp) - new Date(a.r.timestamp); return d || b.i - a.i; }).map(function(x) { return x.r; });
-    var html = '';
-    if (ex.length === 0) {
-      html += '<div style="text-align:center; padding:40px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
-      html += 'Your exchange history will appear here once you complete your first exchange.</div>';
-      el.innerHTML = html;
-      return;
+    el.innerHTML = '<div style="padding-top:4px">' + exListHTML() + '</div>';
+  }
+  function exListRefresh() {
+    renderHistoryTab();
+    var b = rsBody('exlist'); if (b) b.innerHTML = atHead('Exchange history', false, 'rsClose') + exListHTML();
+  }
+  function exListOpen() { rsShow(atHead('Exchange history', false, 'rsClose') + exListHTML(), 'exlist'); }
+  function exFilterHTML() {
+    var seg = function(id, opts, cur, k) { return '<div class="mc-seg of-seg" id="' + id + '">' + opts.map(function(o) { return '<button aria-pressed="' + (cur === o[0]) + '" onclick="App.exFilterSet(\'' + k + '\',\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>'; };
+    var h = atHead('Filter', false, 'rsClose');
+    h += '<div class="exs-cap mc-group" style="margin-top:4px">Show</div>' + seg('exf-dir', [['all', 'Everything'], ['provided', 'Provided'], ['received', 'Received']], _exF.dir, 'dir');
+    h += '<div class="exs-cap mc-group">Order</div>' + seg('exf-order', [['new', 'Newest first'], ['old', 'Oldest first']], _exF.order, 'order');
+    var kinds = exKinds();
+    if (kinds.length) {
+      var row = function(label, key) { var sel = _exF.kind === key; return '<button class="exs-row' + (sel ? ' of-pickrow-on' : '') + '" onclick="App.exFilterSet(\'kind\',\'' + key + '\')"><div class="exs-rowmain"><div class="exs-body">' + esc(label) + '</div></div>' + (sel ? '<svg width="18" height="18" style="color:var(--accent)"><use href="#icon-check"/></svg>' : '') + '</button>'; };
+      h += '<div class="exs-cap mc-group">Kind</div>' + row('Everything', '');
+      kinds.forEach(function(k) { h += row(k.label, k.key); });
     }
-    html += '<div style="display:flex; gap:8px; margin-bottom:16px; padding-top:4px;">';
-    html += '<button class="hist-pill active" data-filter="all" onclick="App.histFilter(\'all\')">All</button>';
-    html += '<button class="hist-pill" data-filter="provided" onclick="App.histFilter(\'provided\')">Provided</button>';
-    html += '<button class="hist-pill" data-filter="received" onclick="App.histFilter(\'received\')">Received</button>';
-    html += '</div>';
-    html += '<div id="hist-list">';
-    ex.forEach(function(r) {
-      var desc = r.description || r.category || 'Exchange';
-      var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
-      var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-      var isProv = r.energyState === 'provided';
-      // See Bite 2 note in renderHomeTab: green for provided, blue for received.
-      var valColor = isProv ? 'var(--green)' : 'var(--blue)';
-      var valSign = isProv ? '+' : '-';
-      var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
-      // Horizontal arrow (left) + person silhouette (right). Arrow toward person = received, away = provided.
-      var arrowIcon = isProv
-        ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
-        : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
-      var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
-      html += '<div class="hist-row" data-dir="' + r.energyState + '" style="border-bottom:1px solid var(--border); cursor:pointer;" onclick="var d=this.querySelector(\'.hist-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-      html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
-      html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
-      html += '<div style="flex:1; min-width:0;">';
-      html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + '</div>';
-      html += '</div>';
-      html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
-      html += '</div>';
-      // Expandable detail
-      html += '<div class="hist-detail" style="display:none; padding:0 0 14px 56px; font-size:var(--fs-sm); color:var(--text-dim); line-height:1.8;">';
-      if (r.category) html += '<div><span style="color:var(--text-faint);">Category:</span> ' + esc(r.category) + '</div>';
-      if (r.duration) html += '<div><span style="color:var(--text-faint);">Duration:</span> ' + formatDuration(r.duration) + '</div>';
-      var fullName = r.counterpartyName || '';
-      var fpShort = (r.counterparty || '').substring(0, 16);
-      if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
-      html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
-      html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
-      if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
-      if (r.counterpartySig) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Countersigned by both</div>';
-      if (r.type === HCP.RECORD_TYPE_REPAIR) html += '<div><span style="color:var(--text-faint);">Copied from your other device</span></div>';
-      // v2.121.0: the receipt kept beside this exchange (off the chain), with its signature check.
-      var rcp = r.actHash && state.declarations.receipts && state.declarations.receipts[r.actHash];
-      if (rcp && rcp.breakdown) {
-        html += '<div style="margin-top:10px; line-height:1.5;"><div style="color:var(--text); font-weight:500;">Receipt' + (rcp.breakdown.name ? ': ' + esc(rcp.breakdown.name) : '') + '</div>';
-        html += exBreakdownHTML(rcp.breakdown, r.value);
-        html += '<div class="hist-rc" data-ah="' + esc(r.actHash) + '" style="margin-top:6px;">' + receiptStatusHTML(rcp, r) + '</div>';
-        html += '<div style="color:var(--text-faint); margin-top:2px;">Kept on this phone only. Not part of the record.</div></div>';
-      }
-      html += '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
-    el.innerHTML = html;
-    // Re-check each signed receipt now, so an edit made since it was kept shows up.
-    el.querySelectorAll('.hist-rc').forEach(function(node) {
-      var ah = node.getAttribute('data-ah'); var rc = state.declarations.receipts[ah];
-      if (!rc || !rc.sig) return;
-      var rec = HCP.acts(state.chain).filter(function(x) { return x.actHash === ah; })[0];
-      receiptCheck(ah, rc).then(function(ok) { var st = ok ? 'ok' : 'changed'; if (rc.checked !== st) { rc.checked = st; save(); } node.innerHTML = receiptStatusHTML(rc, rec); });
-    });
+    return h;
+  }
+  function exFilterOpen() { rsShow(exFilterHTML(), 'exfilter'); }
+  function exFilterSet(k, v) {
+    _exF[k] = v;
+    var b = rsBody('exfilter'); if (b) b.innerHTML = exFilterHTML();
+    exListRefresh();
+  }
+  function exDetailOpen(i) {
+    var acts = exActs(), x = acts[i]; if (!x) return;
+    var r = x.r, d = new Date(r.timestamp), isProv = r.energyState === 'provided';
+    var col = isProv ? 'var(--accent)' : 'var(--amber)';
+    var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
+    var when = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    var field = function(label, val, mono) { return '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-cap">' + label + '</div><div class="exs-body"' + (mono ? ' style="font-family:var(--mono);font-size:var(--fs-label)"' : '') + '>' + val + '</div></div></div>'; };
+    var h = atHead(r.description || r.category || 'Exchange', false, 'rsClose');
+    h += '<div class="exs-disp" style="color:' + col + ';margin-top:4px">' + mcFmt(r.value) + exMarkSVG(22) + '</div>';
+    h += '<p class="exs-cap" style="margin:4px 0 8px">' + (isProv ? 'You provided' : 'You received') + ' \u00b7 ' + esc(when) + '</p>';
+    if (name) h += field('With', esc(name));
+    if (r.category) h += field('Kind', esc(r.category));
+    if (r.duration) h += field('Duration', formatDuration(r.duration));
+    h += '<div class="exs-cap mc-group">The record</div>';
+    var chk = '<svg class="icon icon-md" style="vertical-align:-3px"><use href="#icon-check"/></svg> ';
+    h += field('Checks', (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
+    h += field('Sequence', '#' + r.seq);
+    if (r.counterparty) h += field('Their fingerprint', esc(String(r.counterparty).substring(0, 16)), true);
+    if (r.type === HCP.RECORD_TYPE_REPAIR) h += '<p class="exs-cap" style="margin:8px 0 0">Copied from your other device.</p>';
+    var rcp = r.actHash && state.declarations.receipts && state.declarations.receipts[r.actHash];
+    if (rcp && rcp.breakdown) {
+      h += '<div class="exs-cap mc-group">Receipt' + (rcp.breakdown.name ? ': ' + esc(rcp.breakdown.name) : '') + '</div>';
+      h += exBreakdownHTML(rcp.breakdown, r.value);
+      h += '<div class="exs-cap hist-rc" data-ah="' + esc(r.actHash) + '" style="margin-top:8px">' + receiptStatusHTML(rcp, r) + '</div>';
+      h += '<p class="exs-cap" style="margin:2px 0 0">Kept on this phone only. Not part of the record.</p>';
+    }
+    var sh = rsShow(h, 'exdetail');
+    if (rcp && rcp.sig) {
+      var node = sh.querySelector('.hist-rc');
+      receiptCheck(r.actHash, rcp).then(function(ok) { var st = ok ? 'ok' : 'changed'; if (rcp.checked !== st) { rcp.checked = st; save(); } if (node) node.innerHTML = receiptStatusHTML(rcp, r); });
+    }
   }
   function receiptStatusHTML(rc, r) {
     if (!rc.sig) return '<span style="color:var(--text-faint);">Kept without a signature.</span>';
@@ -14759,15 +14811,7 @@ function init() {
     return '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Signed by ' + who + '. Unchanged since.</span>';
   }
 
-  function histFilter(dir) {
-    document.querySelectorAll('.hist-pill').forEach(function(p) {
-      p.classList.toggle('active', p.getAttribute('data-filter') === dir);
-    });
-    document.querySelectorAll('.hist-row').forEach(function(row) {
-      if (dir === 'all') row.style.display = '';
-      else row.style.display = row.getAttribute('data-dir') === dir ? '' : 'none';
-    });
-  }
+  function histFilter(dir) { exFilterSet('dir', dir); }
 
   function renderLearnTab() {
     var el = document.getElementById('tab-learn-content');
@@ -15143,7 +15187,7 @@ function init() {
 
   return {
     init, setupStep, completeSetup: completeSetupWrapped, goToInstallOrPin,
-    switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
+    switchTab, histFilter, rsClose, exListOpen, exFilterOpen, exFilterSet, exDetailOpen, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
