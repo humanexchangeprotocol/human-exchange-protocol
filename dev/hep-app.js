@@ -353,7 +353,7 @@ const PAIR_CODE_LENGTH = 4;
     // Return to wallet if this was a child modal
     if (_returnToWallet && (id === 'chain')) {
       _returnToWallet = false;
-      setTimeout(() => { openWallet(); if (_walletSub) mcOpen(_walletSub); _walletSub = null; }, 340);
+      setTimeout(() => { var fh = _mcFromHome; openWallet(); _mcFromHome = fh; if (_walletSub) mcOpen(_walletSub); _walletSub = null; }, 340);
     }
     // Refresh active tab after modal closes (e.g., exchange completed)
     if (activeTab) setTimeout(function() { switchTab(activeTab); }, 350);
@@ -1027,10 +1027,10 @@ const PAIR_CODE_LENGTH = 4;
     return 'This device';
   }
   function atFp(fp) { var s = String(fp || '').slice(0, 12).toUpperCase(); return s.slice(0, 4) + ' ' + s.slice(4, 8) + ' ' + s.slice(8, 12); }
-  var AT_X = '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
+  var AT_X = '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
   function atHead(title, centered, xFn) {
     var x = xFn ? '<button class="exs-x" onclick="App.' + xFn + '()" aria-label="Back">' + AT_X + '</button>' : '<span style="width:40px"></span>';
-    if (centered) return '<div class="exs-sheet-head" style="position:relative;justify-content:center;"><span class="exs-t">' + esc(title) + '</span><span style="position:absolute;right:0;top:16px;">' + (xFn ? x : '') + '</span></div>';
+    if (centered) return '<div class="exs-sheet-head" style="justify-content:center;"><span class="exs-t">' + esc(title) + '</span><span style="position:absolute;right:20px;top:50%;transform:translateY(-50%);">' + (xFn ? x : '') + '</span></div>';
     return '<div class="exs-sheet-head"><span class="exs-t">' + esc(title) + '</span>' + x + '</div>';
   }
   // v2.106.0: password field with Show/Hide (DESIGN rule 13a; the word, not an eye, per rule 15).
@@ -1675,7 +1675,9 @@ const PAIR_CODE_LENGTH = 4;
     el.hidden = false; el.scrollTop = 0;
     _mcStack.push(el);
   }
-  function mcClose() { var el = _mcStack.pop(); if (el) el.hidden = true; }
+  // v2.125.0 (Michael, Oct 6 walk): a sheet opened straight from Home (Standing) closes back to Home, not to Account.
+  var _mcFromHome = false;
+  function mcClose() { var el = _mcStack.pop(); if (el) el.hidden = true; if (!_mcStack.length && _mcFromHome) { _mcFromHome = false; closeModal('wallet'); } }
   function mcFmt(n) { return Math.round(n).toLocaleString('en-US'); }
   function mcStandWords(st) { return st === 0 ? 'even' : mcFmt(Math.abs(st)) + ' ' + (st > 0 ? 'above' : 'below'); }
   function mcRatioSentence(p, r) {
@@ -2081,6 +2083,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function openWallet() {
+    _mcFromHome = false;
     _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
     document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
     var ex = state.chain.filter(HCP.isAct);
@@ -2130,7 +2133,7 @@ const PAIR_CODE_LENGTH = 4;
   function openMyTextureFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'wallet'; openMyTexture(); }
   function openMyPricingFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openMyPricing(); }
   function openChainViewerFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openChainViewer(); }
-  function openStanding() { openWallet(); mcOpen('wallet'); }
+  function openStanding() { openWallet(); _mcFromHome = true; mcOpen('wallet'); }
   function stOpen() { renderSettingsTab(); mcOpen('settings'); }
   // v2.115.0 (Michael, Oct 6): Preview beside Edit. Your profile (declarations) as a counterparty sees it, from saved values.
   function acProfileData() {

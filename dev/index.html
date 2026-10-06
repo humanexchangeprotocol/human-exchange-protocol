@@ -773,10 +773,12 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-icon { text-align: center; cursor: pointer; background: none; border: none; padding: 4px; font-family: inherit; }
 .exs-icon .exs-f { margin-top: 2px; }
 .exs-sheet { position: absolute; inset: 0; background: var(--bg); padding: 0 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; overflow-y: auto; }
-.exs-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 10px; }
+/* v2.125.0 (Michael, Oct 6 walk): the header stays put and the content scrolls under it, so X is always in reach. */
+.exs-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; margin: 0 -20px; position: sticky; top: 0; z-index: 3; background: var(--bg); }
 .exs-sheet-head .exs-h { font-size: var(--fs-title); }
 .rec-hd { font-weight: 600; margin: 18px 0 6px; }
-.exs-x { background: none; border: none; width: 40px; height: 40px; margin-right: -8px; border-radius: 50%; color: var(--text-dim); font-size: 22px; line-height: 1; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; }
+/* v2.125.0: one close control everywhere, the same as .modal-close: 44px, a quiet filled circle, full-strength glyph. */
+.exs-x { background: var(--bg-input); border: none; width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; color: var(--text); font-size: 28px; line-height: 1; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; }
 .exs-lines { font-size: var(--fs-body); color: var(--text-dim); line-height: 1.9; }
 .exs-lines b { color: var(--text); font-weight: 600; }
 .exs-boxes { display: flex; align-items: center; justify-content: center; gap: 14px; }
