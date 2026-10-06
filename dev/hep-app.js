@@ -331,6 +331,7 @@ const PAIR_CODE_LENGTH = 4;
   // --- Screens ---
   function showScreen(id) { document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; }); const el = document.getElementById(id); el.classList.add('active'); el.style.display = 'flex'; }
   var _returnToWallet = false;
+  var _walletSub = null; // v2.114.0: which Account sheet to reopen on return
   function showModal(id) {
     if (fabOpen) toggleFab();
     const el = document.getElementById(id + '-overlay');
@@ -352,7 +353,7 @@ const PAIR_CODE_LENGTH = 4;
     // Return to wallet if this was a child modal
     if (_returnToWallet && (id === 'chain')) {
       _returnToWallet = false;
-      setTimeout(() => openWallet(), 340);
+      setTimeout(() => { openWallet(); if (_walletSub) mcOpen(_walletSub); _walletSub = null; }, 340);
     }
     // Refresh active tab after modal closes (e.g., exchange completed)
     if (activeTab) setTimeout(function() { switchTab(activeTab); }, 350);
@@ -2111,6 +2112,8 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('mc-s-ratio').textContent = mcRatioSentence(cur, cos);
     // Numbers
     set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M);
+    var ast = document.getElementById('mc-a-st'); if (ast) { ast.className = 'exs-rowval' + (side ? ' ' + side : ''); ast.innerHTML = mcStandWords(st) + M; }
+    try { recRender(); } catch (e) {}
     var nst = document.getElementById('mc-n-st'); nst.className = 'exs-rowval mc-big' + (side ? ' ' + side : ''); nst.innerHTML = mcStandWords(st) + M;
     set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
     set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
@@ -2122,9 +2125,12 @@ const PAIR_CODE_LENGTH = 4;
     showModal('wallet');
   }
 
-  function openMyTextureFromWallet() { closeModal('wallet'); _returnToWallet = true; openMyTexture(); }
-  function openMyPricingFromWallet() { closeModal('wallet'); _returnToWallet = true; openMyPricing(); }
-  function openChainViewerFromWallet() { closeModal('wallet'); _returnToWallet = true; openChainViewer(); }
+  // v2.114.0: these open from a sheet inside Account (Standing or Your records); closing returns to that sheet (rule 2a).
+  function openMyTextureFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'wallet'; openMyTexture(); }
+  function openMyPricingFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openMyPricing(); }
+  function openChainViewerFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openChainViewer(); }
+  function openStanding() { openWallet(); mcOpen('wallet'); }
+  function stOpen() { renderSettingsTab(); mcOpen('settings'); }
 
   function showMyPhotos() {
     var genesis = null;
@@ -2518,6 +2524,7 @@ const PAIR_CODE_LENGTH = 4;
     h += recRow('Add a device', 'Put your record on another phone or computer', 'App.attachOldStart()');
     h += '<div class="exs-cap mc-group">Backup</div>';
     h += recRow('Back up', rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '') : 'Not backed up yet', 'App.recBkOpen()');
+    h += recRow('Restore from a backup', 'Replace this device\u2019s record with one from a backup file', 'App.importBackup()'); // v2.114.0: moved here from Settings
     el.innerHTML = h;
     var c = document.getElementById('rec-acct-cap'); if (c) c.textContent = recCaption(rm);
   }
@@ -12386,7 +12393,7 @@ function init() {
     else if (tab === 'share') renderShareTab();
     else if (tab === 'history') renderHistoryTab();
     else if (tab === 'learn') renderLearnTab();
-    else if (tab === 'settings') renderSettingsTab();
+    else if (tab === 'settings') { activeTab = 'home'; switchTab('home'); openWallet(); stOpen(); }
   }
 
   // --- Home tab (default landing surface, v2.59.0) ---
@@ -12571,7 +12578,7 @@ function init() {
     h += '<div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div>';
     h += '<div class="exs-cap" style="margin-top:28px">Your standing</div>';
     h += '<div class="mc-display ' + side + '">' + Math.abs(st).toLocaleString() + ' ' + exMarkSVG(20) + '</div>';
-    if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openWallet();return false">See your full standing</a></p>';
+    if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openStanding();return false">See your full standing</a></p>';
     return h + '</div>';
   }
   function openLearnFromAccount() { lrRenderHome(); mcOpen('learn'); }
@@ -14458,141 +14465,60 @@ function init() {
     renderSettingsTab();
   }
 
+  // v2.114.0 (Michael, Oct 6): Settings left the bottom bar and is a sheet inside Account,
+  // in the exs style (captioned groups, plain rows; DESIGN.md rules 7b, 11, 14, 15, 15a).
+  // Back up and Restore live in Record keeping; the version shows on Home.
+  function stSwitchRow(word, cap, on, id, onclick) {
+    return '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body">' + word + '</div><div class="exs-cap">' + cap + '</div></div>' +
+      '<div class="switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" style="cursor:pointer" onclick="' + onclick + '"></div></div>';
+  }
+  function stRow(word, cap, onclick, cls) {
+    return '<button class="exs-row' + (cls ? ' ' + cls : '') + '" onclick="' + onclick + '"><div class="exs-rowmain"><div class="exs-body">' + word + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+  }
   function renderSettingsTab() {
-    var el = document.getElementById('tab-settings-content');
+    var el = document.getElementById('st-body');
     if (!el) return;
-    var html = '';
-
-    // Proof of Human (top, prominent)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; margin-top:4px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Proof of Human</div>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:14px;">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</div>';
-    // Motion toggle
-    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Motion sensors</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Proves a real hand holds a real phone</div></div>';
-    html += '<div class="switch ' + (state.settings.sensorMotion ? 'on' : '') + '" id="switch-motion-tab" onclick="App.toggleMotionTab()"></div>';
-    html += '</div>';
-    // Location toggle
-    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Location</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Proves your chain spans real places over time</div></div>';
-    html += '<div class="switch ' + (state.settings.locationAuto ? 'on' : '') + '" id="switch-location-tab" onclick="App.toggleLocationTab()"></div>';
-    html += '</div>';
-    // Passive sensor status
-    var statusParts = [];
-    if (_sensor.battery) statusParts.push('Battery');
-    if (_sensor.network) statusParts.push('Network');
-    if (_sensor.light !== null) statusParts.push('Light');
-    if (_sensor.pressure !== null) statusParts.push('Pressure');
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); padding-top:10px; line-height:1.5;">';
-    if (statusParts.length) {
-      html += 'Captured automatically: ' + statusParts.join(', ');
-    } else {
-      html += 'Passive sensors will activate when available';
-    }
-    html += '</div>';
-    html += '</div>';
-
+    var h = '';
+    // Proof of human
+    h += '<div class="exs-cap" style="margin-top:4px">Proof of human</div>';
+    h += '<p class="exs-cap" style="margin:4px 0 2px">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</p>';
+    h += stSwitchRow('Motion sensors', 'Proves a real hand holds a real phone', state.settings.sensorMotion, 'switch-motion-tab', 'App.toggleMotionTab()');
+    h += stSwitchRow('Location', 'Proves your chain spans real places over time', state.settings.locationAuto, 'switch-location-tab', 'App.toggleLocationTab()');
+    var parts = [];
+    if (_sensor.battery) parts.push('battery');
+    if (_sensor.network) parts.push('network');
+    if (_sensor.light !== null) parts.push('light');
+    if (_sensor.pressure !== null) parts.push('pressure');
+    h += '<p class="exs-cap" style="margin:8px 0 0">' + (parts.length ? 'Also captured automatically: ' + parts.join(', ') + '.' : 'Other sensors are captured automatically when the phone has them.') + '</p>';
     // Privacy
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Privacy mode</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Hide counterparty names in your own lists</div></div>';
-    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
-    html += '</div>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
-    html += 'Sovereign identity: you decide who knows what about your past. Past counterparty names are never sent to others by default. The chain shares only aggregate data. This setting hides them from your own device too, for when local visibility could put someone at risk or when you simply choose not to disclose. Tradeoff: harder to remember specific past work or offer references. Your chain still demonstrates the history.';
-    html += '</div></div>';
-
-    // Network — connected / not connected, with small refresh icon
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Witness server</div><div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Checking\u2026</div></div>';
-    html += '<button aria-label="Re-check connection" style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); padding:6px 12px; font-size:16px; cursor:pointer; line-height:1;" onclick="App.checkWitnessStatus()">\u21bb</button>';
-    html += '</div></div>';
-
-    // Your witness server — operator self-registration surface.
-    // Gated by an opt-in toggle so the cryptographic-string-typing UI
-    // doesn't appear for users who aren't running a server. If the
-    // user has already added one or more servers, the section is
-    // shown unconditionally so they can still see and manage them.
-    var showOperatorSurface = getShowOperatorSurface();
-    var userWitnesses = getUserWitnesses();
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Your witness server</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">I run a witness server</div><div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Register a server you operate</div></div>';
-    html += '<div class="switch ' + (showOperatorSurface ? 'on' : '') + '" id="switch-operator-surface" onclick="App.toggleOperatorSurface()"></div>';
-    html += '</div>';
-
-    if (showOperatorSurface) {
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
-      html += 'Add the address and public key of a witness server you run. The app verifies the key against the live server before adding. Servers you add here are counted as trusted alongside the default trust set.';
-      html += '</div>';
-
-      if (userWitnesses.length === 0) {
-        html += '<button style="width:100%; padding:12px; background:var(--accent); border:none; border-radius:var(--radius-sm); color:var(--bg); font-size:var(--fs-sm); font-weight:500; margin-top:14px; cursor:pointer;" onclick="App.openAddWitnessModal()">+ Add server</button>';
-      } else {
-        // List user-added witnesses
-        html += '<div style="margin-top:14px;">';
-        for (var i = 0; i < userWitnesses.length; i++) {
-          var w = userWitnesses[i];
-          var host = '';
-          try { host = new URL(w.url).host; } catch(e) { host = w.url; }
-          var keyShort = (w.pubkey || '').substring(0, 16);
-          var added = '';
-          try {
-            var d = new Date(w.addedAt);
-            if (!isNaN(d)) added = 'Added ' + d.toLocaleDateString();
-          } catch(e) {}
-          html += '<div style="padding:12px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:10px;">';
-          html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">';
-          html += '<div style="flex:1; min-width:0;">';
-          html += '<div style="font-size:var(--fs-sm); color:var(--text); font-weight:500; word-break:break-all;">' + esc(host) + '</div>';
-          html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); font-family:var(--mono); margin-top:4px; word-break:break-all;">key ' + esc(keyShort) + '\u2026</div>';
-          if (added) html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:4px;">' + esc(added) + '</div>';
-          html += '</div>';
-          html += '<button style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--red); padding:6px 10px; font-size:var(--fs-xs); cursor:pointer; flex-shrink:0;" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button>';
-          html += '</div>';
-          html += '</div>';
-        }
-        html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-top:4px; cursor:pointer;" onclick="App.openAddWitnessModal()">+ Add another</button>';
-        html += '</div>';
+    h += '<div class="exs-cap mc-group">Privacy</div>';
+    h += stSwitchRow('Privacy mode', 'Hide counterparty names in your own lists', state.settings.hideNames, 'switch-hide-names-tab', 'App.togglePrivacy()');
+    h += '<p class="exs-cap" style="margin:8px 0 0">You decide who knows what about your past. Past counterparty names are never sent to others. Privacy mode also hides them on this phone, for when someone could see your screen and that could put a person at risk.</p>';
+    // Network
+    h += '<div class="exs-cap mc-group">Network</div>';
+    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body">Witness server</div><div class="exs-cap" id="settings-witness-status">Checking\u2026</div></div><button class="exs-quiet" style="width:auto;flex:none;font-size:13px;padding:6px 0 6px 10px" onclick="App.checkWitnessStatus()">Check again</button></div>';
+    var showOp = getShowOperatorSurface(), uw = getUserWitnesses();
+    h += stSwitchRow('I run a witness server', 'Register a server you operate', showOp, 'switch-operator-surface', 'App.toggleOperatorSurface()');
+    if (showOp) {
+      h += '<p class="exs-cap" style="margin:8px 0 6px">Add the address and public key of a witness server you run. The app checks the key against the live server before adding it. Servers you add count as trusted alongside the default ones.</p>';
+      for (var i = 0; i < uw.length; i++) {
+        var w = uw[i], host = '', added = '';
+        try { host = new URL(w.url).host; } catch (e) { host = w.url; }
+        try { var d = new Date(w.addedAt); if (!isNaN(d)) added = ', added ' + d.toLocaleDateString(); } catch (e) {}
+        h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="word-break:break-all">' + esc(host) + '</div><div class="exs-cap"><span style="font-family:var(--mono)">key ' + esc((w.pubkey || '').substring(0, 16)) + '\u2026</span>' + esc(added) + '</div></div>' +
+          '<button class="exs-quiet" style="width:auto;flex:none;font-size:12px;padding:6px 0 6px 10px;color:var(--text-faint)" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button></div>';
       }
+      h += stRow(uw.length ? 'Add another server' : 'Add a server', '', 'App.openAddWitnessModal()');
     }
-    html += '</div>';
-
-    // Install to home screen (prominent)
-    html += '<div style="margin-bottom:16px;">';
-    html += '<button style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer; box-shadow:var(--shadow);" onclick="App.installFromSettings()">Install to home screen</button>';
-    html += '</div>';
-
-    // Data (Export, Import, Change PIN)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.bkOpenHome()">Back up</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.importBackup()">Import backup</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.changePIN()">Change PIN</button>';
-    html += '</div>';
-
-    // Check for updates (low priority, small)
-    html += '<div style="text-align:center; padding:4px 0 16px;">';
-    html += '<button style="background:none; border:none; color:var(--text-faint); font-size:var(--fs-sm); cursor:pointer; text-decoration:underline;" onclick="App.forceUpdate()">Check for updates</button>';
-    html += '</div>';
-
-    // Danger zone
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--red-light); border-radius:var(--radius); padding:16px; margin-bottom:16px;">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--red); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Danger zone</div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--red); border-radius:var(--radius-sm); color:var(--red); font-size:var(--fs-sm); font-weight:500;" onclick="App.deleteChain()">Delete chain</button>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:8px; line-height:1.5;">This permanently deletes your chain and keys. Export a backup first.</div>';
-    html += '</div>';
-
-    // Version
-    html += '<div style="text-align:center; padding:16px 0; color:var(--text-faint); font-size:var(--fs-sm);">HEP v' + APP_VERSION + '</div>';
-
-    el.innerHTML = html;
-
-    // Auto-check witness status on render
+    // This app
+    h += '<div class="exs-cap mc-group">This app</div>';
+    h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
+    h += stRow('Change PIN', 'The PIN that opens HEP on this device', 'App.changePIN()');
+    h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
+    // Delete, last and alone (rule 8a: red tonally, no filled block)
+    h += '<div class="exs-cap mc-group">Delete</div>';
+    h += stRow('Delete chain', 'Permanently deletes your chain and keys from this device. Back up first.', 'App.deleteChain()', 'st-danger');
+    el.innerHTML = h;
     checkWitnessStatus();
   }
 
@@ -14761,7 +14687,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,

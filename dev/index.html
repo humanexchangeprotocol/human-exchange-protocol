@@ -514,6 +514,10 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .mc-id { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 12px 0 24px; }
 .mc-edit { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; background: none; border: none; padding: 6px 10px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; }
 .mc-group { margin: 26px 0 2px; }
+.mc-acct { margin-top: 18px; }
+.st-row { cursor: default; }
+.st-row .exs-rowmain { flex: 1; min-width: 0; }
+.st-danger .exs-body { color: var(--red); }
 .mc-name { font-size: 18px; font-weight: 600; color: var(--text); margin-top: 12px; }
 .mc-photo { width: 72px; height: 72px; border-radius: 50%; background: var(--accent-light); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent); }
 .mc-photo img { width: 100%; height: 100%; object-fit: cover; }
@@ -1537,9 +1541,6 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
   </div>
 
   <!-- TAB: Settings -->
-  <div class="tab-content" id="tab-settings">
-    <div class="tab-content-inner" id="tab-settings-content"></div>
-  </div>
 
   <!-- Home doors strip (ruled Oct 2, twelfth session): two equal
        buttons just above the tab bar, always there on the main tabs.
@@ -1569,10 +1570,6 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5z" fill="currentColor"/></svg>
       <span class="tab-label">Account</span>
     </div>
-    <div class="tab-bar-item" onclick="App.switchTab('settings')" data-tab="settings">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></g><g fill="currentColor"><circle cx="9" cy="6" r="2.5"/><circle cx="16" cy="12" r="2.5"/><circle cx="11" cy="18" r="2.5"/></g></svg>
-      <span class="tab-label">Settings</span>
-    </div>
   </div>
 </div>
 
@@ -1583,6 +1580,17 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <div class="exs-sheet-head"><div class="exs-h">Account</div><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
       <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="mc-name" id="mc-name"></div><div class="exs-cap" id="mc-since"></div>
         <button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button></div>
+      <div class="mc-acct">
+      <button class="exs-row" onclick="App.mcOpen('wallet')"><div class="exs-rowmain"><div class="exs-body">Standing</div><div class="exs-cap">Texture, wave, people, reach</div></div><span class="exs-rowval" id="mc-a-st"></span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('records')"><div class="exs-rowmain"><div class="exs-body">Your records</div><div class="exs-cap" id="rec-acct-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP is built this way</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">This phone</div><div class="exs-cap">Your photos and your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.stOpen()"><div class="exs-rowmain"><div class="exs-body">Settings</div><div class="exs-cap">Proof of human, privacy, network, PIN</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      </div>
+    </div>
+    <!-- v2.114.0 (Michael, Oct 6): Account compressed to five rows; Settings left the bottom bar and lives here. -->
+    <div class="exs-sheet mc-sheet" id="mc-sheet-wallet" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Standing</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div class="mc-standing">
         <div class="exs-cap">Where you stand</div>
         <div class="mc-tbar"><div class="mc-tbar-top"><div><div class="exs-body">Currency</div><div class="exs-cap">What you have produced</div></div><span class="exs-rowval mc-blue" id="mc-s-cur"></span></div><div class="mc-track"><div class="mc-fill mc-blue-fill" id="mc-s-curbar"></div><div class="mc-gapbox" id="mc-s-curgap" hidden></div></div></div>
@@ -1598,14 +1606,16 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <button class="exs-row" onclick="App.mcOpen('people')"><div class="exs-rowmain"><div class="exs-body">People</div><div class="exs-cap">Who you have exchanged with, over time</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.mcOpen('reach')"><div class="exs-rowmain"><div class="exs-body">Reach</div><div class="exs-cap">How far your exchanges reach</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyTextureFromWallet()"><div class="exs-rowmain"><div class="exs-body">As others see it</div><div class="exs-cap">Your texture, the way a counterparty sees it</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <div class="exs-cap mc-group">Your record</div>
-      <button class="exs-row" onclick="App.recOpen()"><div class="exs-rowmain"><div class="exs-body">Record keeping</div><div class="exs-cap" id="rec-acct-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-records" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Your records</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <button class="exs-row" onclick="App.recOpen()"><div class="exs-rowmain"><div class="exs-body">Record keeping</div><div class="exs-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openChainViewerFromWallet()"><div class="exs-rowmain"><div class="exs-body">Exchange history</div><div class="exs-cap">Every recorded act</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <div class="exs-cap mc-group">Learn</div>
-      <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP works the way it does</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <div class="exs-cap mc-group">This phone</div>
-      <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">Device</div><div class="exs-cap">This phone, your photos, your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-settings" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Settings</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="st-body"></div>
     </div>
     <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
@@ -1724,7 +1734,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <div class="lr-scroll" id="faq-body"></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
-      <div class="exs-sheet-head"><div class="exs-h">Device</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="exs-sheet-head"><div class="exs-h">This phone</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="wallet-identity-panel"></div>
       <div id="wallet-standing-content"></div>
     </div>
