@@ -7907,6 +7907,10 @@ const PAIR_CODE_LENGTH = 4;
     var stamp = d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes());
     var name = ['HEP', slug(state.declarations.name) || state.fingerprint.slice(0, 8), slug(syMyName()), stamp].filter(Boolean).join('-') + '.json';
     var text = JSON.stringify(bk, null, 2);
+    // v2.113.1 (Michael, Oct 6): the share title becomes the email subject in Gmail on Android:
+    // 'HEP backup, <name>, <device>, Oct 6 2026, 14:32'. Same moment as the file name.
+    var subject = 'HEP backup, ' + ((state.declarations.name || '').trim() || state.fingerprint.slice(0, 8)) + ', ' + syMyName() + ', '
+      + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '') + ', ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
     // Chrome on Android shares only some file types and .json is not one; .txt is. Import accepts both.
     var file = null;
     try {
@@ -7918,7 +7922,7 @@ const PAIR_CODE_LENGTH = 4;
         if (navigator.canShare({ files: [f2] })) file = f2;
       }
     } catch (e) { file = null; }
-    return { text: text, name: name, file: file, len: state.chain.length };
+    return { text: text, name: name, file: file, subject: subject, len: state.chain.length };
   }
   function bkButton() {
     var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
@@ -7956,7 +7960,7 @@ const PAIR_CODE_LENGTH = 4;
     var b = _bkPrep && _bkPrep.len === state.chain.length ? _bkPrep : null;
     if (mode === 'share' && b && b.file) {
       try {
-        await navigator.share({ files: [b.file], title: 'HEP backup ' + new Date().toISOString().slice(0, 10) });
+        await navigator.share({ files: [b.file], title: b.subject });
         markBackedUp(b.file.name); renderBrowserStorageBanner(); toast('Backup shared');
         console.log('[backup] shared ' + b.file.name);
         return true;
