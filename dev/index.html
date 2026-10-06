@@ -843,7 +843,9 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-cancelrow { display: flex; justify-content: flex-start; padding-top: 12px; }
 .exs-cancel { background: none; border: none; padding: 10px 0; font-size: var(--fs-caption); color: var(--text-faint); opacity: .8; cursor: pointer; font-family: inherit; text-align: left; }
 /* v2.127.0 (Michael, Oct 6 walk: "those are actions"): an action at the right of a row is an accent pill with its word. The rest of the row still opens the details. */
-.rec-act { flex: none; border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 20px; padding: 7px 16px; min-height: 36px; font-family: inherit; font-size: var(--fs-label); font-weight: 600; cursor: pointer; }
+.rec-act { display: inline-flex; align-items: center; gap: 6px; flex: none; border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 20px; padding: 7px 16px; min-height: 36px; font-family: inherit; font-size: var(--fs-label); font-weight: 600; cursor: pointer; }
+.rec-act svg, .exs-save svg { width: 18px; height: 18px; flex: none; }
+.rec-warn { color: var(--red); }
 .rec-act:disabled { border-color: var(--border); color: var(--text-faint); cursor: default; }
 .exs-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 4px; background: none; border: none; border-bottom: 1px solid var(--border); text-align: left; cursor: pointer; font-family: inherit; }
 .exs-row.off { cursor: default; }
@@ -1240,6 +1242,10 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <symbol id="icon-shield" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 3 L20 6 V12 c0 5 -4 8 -8 9 c-4 -1 -8 -4 -8 -9 V6 z"/>
     </symbol>
+    <!-- v2.128.0 (Michael, Oct 6 walk): icons for the two record actions. Sync: two arrows chasing round; Send: up out of the tray; Save: down into it. -->
+    <symbol id="icon-sync" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 10.5A7.2 7.2 0 0 0 6.2 7.6"/><path d="M5 13.5a7.2 7.2 0 0 0 12.8 2.9"/></g><path fill="currentColor" d="M3.2 3.6l.6 6.6 6.2-2.4z"/><path fill="currentColor" d="M20.8 20.4l-.6-6.6-6.2 2.4z"/></symbol>
+    <symbol id="icon-send" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h3.5v5h11v-5H21v8.5H3z"/><path d="M12 15.5V6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path fill="currentColor" d="M6.5 8.5L12 2.5l5.5 6z"/></symbol>
+    <symbol id="icon-save" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h3.5v5h11v-5H21v8.5H3z"/><path d="M12 3v9.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path fill="currentColor" d="M6.5 10L12 16l5.5-6z"/></symbol>
     <symbol id="icon-filter" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z"/></symbol>
     <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>

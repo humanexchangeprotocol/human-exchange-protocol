@@ -2830,7 +2830,7 @@ const PAIR_CODE_LENGTH = 4;
       var hero2 = document.querySelector('#tab-home-content .home-hero');
       if (!hero2) return;
       var b2 = document.createElement('div'); b2.id = 'browser-storage-banner'; b2.className = 'home-backup';
-      b2.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') + '<div class="exs-cap">' + cap + '</div></div>' + (rm.syncN > 0 ? '<button class="exs-save" onclick="App.recSyncHome()">Sync now</button>' : '<button class="exs-save" onclick="App.bkOpenHome()">Back up now</button>');
+      b2.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') + '<div class="exs-cap' + (rm.syncN > 0 ? ' rec-warn' : '') + '">' + cap + '</div></div>' + (rm.syncN > 0 ? '<button class="exs-save" onclick="App.recSyncHome()">' + recIcon('icon-sync') + 'Sync now</button>' : '<button class="exs-save" onclick="App.bkOpenHome()">Back up now</button>');
       hero2.appendChild(b2);
       return;
     }
@@ -2898,14 +2898,15 @@ const PAIR_CODE_LENGTH = 4;
   function recRow(word, cap, on) { return '<button class="exs-row" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>'; }
   // v2.127.0 (Michael, Oct 6 walk): Sync and backup. Sync and Back up are actions, so each sits as a
   // pill at the right of its row; the rest of the row opens the details (device, backup) as before.
-  function recActRow(word, cap, on, actWord, act, actId) {
-    return '<div class="exs-row" role="button" tabindex="0" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div>' +
-      '<button class="rec-act"' + (actId ? ' id="' + actId + '"' : '') + ' onclick="event.stopPropagation();' + act + '">' + esc(actWord) + '</button></div>';
+  function recIcon(id) { return '<svg aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  function recActRow(word, cap, on, actWord, act, actId, icon, warn, rowId) {
+    return '<div class="exs-row" role="button" tabindex="0"' + (rowId ? ' id="' + rowId + '"' : '') + ' onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap' + (warn ? ' rec-warn' : '') + '">' + esc(cap) + '</div></div>' +
+      '<button class="rec-act"' + (actId ? ' id="' + actId + '"' : '') + ' onclick="event.stopPropagation();' + act + '">' + (icon ? recIcon(icon) : '') + '<span>' + esc(actWord) + '</span></button></div>';
   }
   function recRender() {
     var el = document.getElementById('rec-body'); if (!el) return;
     var rm = recModel(), h = '';
-    if (rm.others.length && rm.syncN > 0) h += '<p class="exs-body">Your records are out of sync. ' + rm.syncN + (rm.syncN === 1 ? ' exchange on this device is' : ' exchanges on this device are') + ' not on your other devices yet. Next time you\u2019re near them, sync.</p>';
+    if (rm.others.length && rm.syncN > 0) h += '<p class="exs-body"><span class="rec-warn">Your records are out of sync.</span> ' + rm.syncN + (rm.syncN === 1 ? ' exchange on this device is' : ' exchanges on this device are') + ' not on your other devices yet. Next time you\u2019re near them, sync.</p>';
     else if (rm.others.length && rm.unbacked > 0) h += '<p class="exs-body">Your other devices have everything from this one. One more copy outside your devices keeps it safe if you lose them all.</p>';
     else if (rm.others.length || rm.unbacked <= 0) h += '<div style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><p class="exs-body" style="margin:0">Your record is in order. ' + (rm.others.length ? 'Your other devices have everything, and your last backup has it all.' : 'Your last backup has everything.') + '</p></div>';
     else h += '<p class="exs-body">You\u2019ve made ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since your last backup. A backup keeps a copy outside this device.</p>';
@@ -2913,22 +2914,25 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="exs-cap mc-group">Your other devices</div>';
     rm.others.forEach(function(d, i) {
       var cap = d.count ? 'Out of sync: ' + d.count + (d.count === 1 ? ' exchange' : ' exchanges') + ' not on it yet' : 'Last synced ' + (recFmtD(d.at) || 'when it was added');
-      h += recActRow(d.label, cap, 'App.recDev(' + i + ')', 'Sync', 'App.syncChoose(' + i + ')');
+      h += recActRow(d.label, cap, 'App.recDev(' + i + ')', 'Sync', 'App.syncChoose(' + i + ')', null, 'icon-sync', d.count > 0);
     });
     if (!rm.others.length) h += '<p class="exs-cap" style="margin:4px 0 0">Only this device so far.</p>';
     h += ofAddCtl('Add a device', 'App.attachOldStart()');
     h += '<div class="exs-cap mc-group">Backup</div>';
-    h += recActRow('Your backup', rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '') : 'Not backed up yet', 'App.recBkOpen()', 'Back up', 'App.recBackupInline()', 'rec-bk-go');
+    // v2.128.0 (Michael, Oct 6 walk): both ways to back up are on the sheet, send and save.
+    h += '<p class="exs-cap" style="margin:2px 0 0">' + esc(rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</p>';
+    h += recActRow('Send a backup', 'To your email, or a cloud folder', 'App.recBkOpen()', 'Send', 'App.recBackupInline(\'share\')', 'rec-bk-go', 'icon-send', false, 'rec-bk-sendrow');
+    h += recActRow('Save a backup here', 'A file on this device', 'App.recBkOpen()', 'Save', 'App.recBackupInline(\'save\')', 'rec-bk-save', 'icon-save');
     h += recRow('Restore from a backup', 'Replace this device\u2019s record with one from a backup file', 'App.importBackup()'); // v2.114.0: moved here from Settings
     el.innerHTML = h;
-    var c = document.getElementById('rec-acct-cap'); if (c) c.textContent = recCaption(rm);
-    bkPrepare(); // the Back up pill opens the share panel at once, so the file is built ahead
+    var c = document.getElementById('rec-acct-cap'); if (c) { c.textContent = recCaption(rm); c.classList.toggle('rec-warn', rm.syncN > 0); }
   }
   // From Home: one other device goes straight to the code; several open Sync and backup to pick one.
   function recSyncHome() { var rm = recModel(); if (rm.others.length === 1) syncChoose(0); else recOpenHome(); }
-  async function recBackupInline() { var ok = await exportBackupAction('share'); if (ok) { recRender(); renderBrowserStorageBanner(); } }
-  function recOpen() { _recFromHome = false; recRender(); mcOpen('record'); }
-  function recOpenHome() { _recFromHome = true; openWallet(); recRender(); mcOpen('record'); }
+  async function recBackupInline(mode) { var ok = await exportBackupAction(mode || 'share'); if (ok) { recRender(); renderBrowserStorageBanner(); bkPrepare(); } }
+  // The Send pill opens the share panel at once, so the file is built when the sheet opens (not on every Account open).
+  function recOpen() { _recFromHome = false; recRender(); mcOpen('record'); bkPrepare(); }
+  function recOpenHome() { _recFromHome = true; openWallet(); recRender(); mcOpen('record'); bkPrepare(); }
   // v2.112.0: sheets live inside the account panel, so from Home open Record keeping first, Backup on top (X returns to Record keeping).
   function bkOpenHome() { recOpenHome(); recBkOpen(); }
   function recClose() { mcClose(); if (_recFromHome) { _recFromHome = false; closeModal('wallet'); } }
@@ -8363,7 +8367,7 @@ const PAIR_CODE_LENGTH = 4;
     return { text: text, name: name, file: file, subject: subject, len: state.chain.length };
   }
   function bkButton() {
-    var ib = document.getElementById('rec-bk-go'); if (ib) { ib.disabled = !_bkPrep; ib.textContent = _bkPrep ? 'Back up' : 'Preparing'; }
+    var ib = document.getElementById('rec-bk-go'); if (ib) { ib.disabled = !_bkPrep; var ir = document.getElementById('rec-bk-sendrow'); if (ir) ir.style.display = (_bkPrep && !_bkPrep.file) ? 'none' : ''; } // no share panel in this browser: Save only
     var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
     if (!b) return;
     if (!_bkPrep) { b.disabled = true; b.textContent = 'Preparing your backup\u2026'; return; }
