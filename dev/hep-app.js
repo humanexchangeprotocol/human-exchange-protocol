@@ -10215,10 +10215,36 @@ function init() {
     if (exConnectPollTimer) { clearInterval(exConnectPollTimer); exConnectPollTimer = null; }
   }
 
+  // v2.126.0 (Michael, Oct 6 walk; registry C2 connecting state): between the code and the mark,
+  // the lock and "Setting up a secure connection"; "Secure connection open" only once the key
+  // agreement has finished on this phone, then the mark. Display only, nothing awaited here.
+  var _exConnT0 = 0;
+  function exShowConnecting(open) {
+    var el = document.getElementById('ex-connect-content'); if (!el) return;
+    var h = '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;">';
+    h += '<div style="width:72px;height:72px;border-radius:50%;background:' + (open ? 'var(--green)' : 'var(--surface-2, var(--border))') + ';display:flex;align-items:center;justify-content:center;transition:background .3s;' + (open ? '' : 'animation:pulse 1.5s infinite;') + '"><svg class="icon" width="30" height="30" style="color:' + (open ? '#fff' : 'var(--text-dim)') + '"><use href="#icon-lock"/></svg></div>';
+    h += '<div class="exs-h">' + (open ? 'Secure connection open' : 'Setting up a secure connection') + '</div>';
+    h += '<div class="exs-m">' + (open ? 'Next, check you both see the same mark.' : 'Between the two of you, for this exchange.') + '</div>';
+    h += '</div><div class="exs-grow"></div>';
+    el.innerHTML = h;
+    showExStep('connect');
+  }
+  function exShowVerifyAfterConnect() {
+    // Honest: only say open if the key agreement actually produced a key.
+    if (!sessionSharedKey) { showExStep('verify'); return; }
+    var wait = Math.max(0, 900 - (Date.now() - _exConnT0));
+    setTimeout(function() {
+      if (!sessionPartner) return;
+      exShowConnecting(true);
+      setTimeout(function() { if (sessionPartner) showExStep('verify'); }, 900);
+    }, wait);
+  }
+
   async function exOnConnected() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
     if (!sessionPartner || sessionPartner._self) return;
     sessionSetState('connected');
+    _exConnT0 = Date.now(); try { exShowConnecting(false); } catch(_) {}
     // The pipe exists from here, so listen for the other side ending it
     // from here too, not only once Verify is confirmed (ruled Oct 2).
     try { exPresenceStart(); } catch(_) {}
@@ -10353,7 +10379,7 @@ function init() {
     document.getElementById('ex-verify-name').textContent = partnerName;
     exVerifyWords(partnerName === 'Connected' ? '' : partnerName);
     document.getElementById('ex-sas-code').textContent = sasResult.code;
-    showExStep('verify');
+    exShowVerifyAfterConnect();
 
     // Poll for partner's encrypted snapshot if not yet received
     if (!sessionPartner._snapshotDecrypted && sessionSharedKey) {
@@ -11195,7 +11221,7 @@ function init() {
     var sh = exShieldRead(ts);
     var html = '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
     html += '<div style="height:8px"></div>';
-    if (sessionRole !== 'proposer') html += exOverlapSVG(mine, st.theirs, shared, 11);
+    html += exOverlapSVG(mine, st.theirs, shared, 11); // v2.126.0 (Michael, Oct 6 walk): both phones see the rings; the starter had only the line.
     html += '<div style="height:10px"></div><div class="exs-m" style="text-align:center;">' + esc(line) + '</div>';
     html += '<div style="height:16px"></div>';
     html += '<div class="exs-icons">';

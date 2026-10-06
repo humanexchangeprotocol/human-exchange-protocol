@@ -16,6 +16,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 4a. Nothing slides. Every sheet appears and disappears in place, with no slide up or down, on every surface (ruled Oct 2: sliding is disorienting).
 
 5a. Waiting on a person (to join, to confirm) is shown one way everywhere: the pulsing accent dot with a line of text beside it. No spinners in the flow. Swappable later, but only everywhere at once.
+5b. Waiting on the machine to open a secure connection (after a code is entered, in the exchange and in sync) is the pulsing lock in a grey circle with "Setting up a secure connection", turning to a green circle with "Secure connection open" only once the key agreement has finished on this phone, then the mark (ruled Oct 6 from Michael's test walk; built dev v2.111.0 for sync, v2.126.0 for the exchange). Never shown on a timer alone: if no key was made, the app goes straight to the mark.
 
 ## Text
 
