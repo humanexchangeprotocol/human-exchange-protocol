@@ -2543,7 +2543,8 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('recbk-body').innerHTML = '<div class="exs-cap mc-group">Last backup</div><div class="exs-body">' + (rm.backupAt ? esc(recFmtD(rm.backupAt)) + (rm.unbacked ? '. ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</div>' +
       '<p class="exs-body" style="margin-top:16px">A backup is a copy of your record outside all your devices. If you ever lose every device, you can bring everything back from it.</p>' +
       '<p class="exs-body" style="margin-top:10px" id="bk-how"></p>' +
-      '<p class="exs-cap" style="margin-top:10px">It is locked with your PIN. To bring it back, open HEP on a new device and choose Restore from a backup file.</p>';
+      '<p class="exs-cap" style="margin-top:10px">It is locked with your PIN. To bring it back, open HEP on a new device and choose Restore from a backup file.</p>' +
+      '<p class="exs-cap" id="bk-diag" style="margin-top:14px;color:var(--text-faint);font-family:var(--font-mono);font-size:11px;word-break:break-word;"></p>';
     mcOpen('recbk');
     bkButton();
   }
@@ -7866,19 +7867,22 @@ const PAIR_CODE_LENGTH = 4;
     var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
     var text = JSON.stringify(bk, null, 2), name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
     // Chrome on Android shares only some file types and .json is not one; .txt is. Import accepts both.
-    var file = null;
+    var file = null, diag = { share: !!navigator.share, canShare: !!navigator.canShare, json: null, txt: null, err: '' };
     try {
       if (navigator.share && navigator.canShare) {
         var f1 = new File([text], name, { type: 'application/json' });
-        if (navigator.canShare({ files: [f1] })) file = f1;
-        else { var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) file = f2; }
+        diag.json = navigator.canShare({ files: [f1] });
+        if (diag.json) file = f1;
+        else { var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' }); diag.txt = navigator.canShare({ files: [f2] }); if (diag.txt) file = f2; }
       }
-    } catch (e) { file = null; }
-    return { text: text, name: name, file: file, len: state.chain.length };
+    } catch (e) { file = null; diag.err = (e && e.name) + ': ' + (e && e.message); }
+    diag.kb = Math.round(text.length / 1024);
+    return { text: text, name: name, file: file, len: state.chain.length, diag: diag };
   }
   function bkButton() {
     var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
     if (!b) return;
+    bkDiag();
     if (!_bkPrep) { b.disabled = true; b.textContent = 'Preparing your backup\u2026'; return; }
     b.disabled = false;
     if (_bkPrep.file) {
@@ -7890,6 +7894,16 @@ const PAIR_CODE_LENGTH = 4;
       if (sv) sv.style.display = 'none';
       if (note) note.textContent = 'This browser cannot open a share panel, so the backup saves as a file, usually to Downloads. Then move it somewhere outside this device, like your email or Google Drive.';
     }
+  }
+  // v2.112.2: dev build only, one faint line of facts under the Backup sheet text, so a failed
+  // share on a real phone says why without a cable. Removed before promotion.
+  var _bkLastErr = '';
+  function bkDiag() {
+    var el = document.getElementById('bk-diag'); if (!el) return;
+    if (!/\/dev\//.test(location.pathname)) { el.textContent = ''; return; }
+    if (!_bkPrep) { el.textContent = 'Test info: preparing'; return; }
+    var d = _bkPrep.diag || {}, yn = function(v) { return v === null || v === undefined ? '-' : (v ? 'yes' : 'no'); };
+    el.textContent = 'Test info (dev only): share ' + yn(d.share) + ', canShare ' + yn(d.canShare) + ', json ' + yn(d.json) + ', txt ' + yn(d.txt) + ', ' + d.kb + ' kB' + (d.err ? ', check error ' + d.err : '') + (_bkLastErr ? '. Last tap: ' + _bkLastErr : '') + '. ' + (navigator.userAgent.match(/Chrome\/[\d.]+|Version\/[\d.]+ Safari|Firefox\/[\d.]+|SamsungBrowser\/[\d.]+/) || ['?'])[0] + (window.matchMedia && matchMedia('(display-mode: standalone)').matches ? ', installed' : ', in browser');
   }
   function bkPrepare() {
     _bkPrep = null; bkButton();
@@ -7918,8 +7932,10 @@ const PAIR_CODE_LENGTH = 4;
         return true;
       } catch (e) {
         console.log('[backup] share failed: ' + (e && e.name) + ' ' + (e && e.message));
+        _bkLastErr = (e && e.name) + ': ' + (e && e.message); bkDiag();
         if (e && e.name === 'AbortError') return false; // the panel was closed: nothing sent, nothing marked
-        toast('The share panel did not open. Saving the backup instead.');
+        toast('The share panel did not open (' + (e && e.name) + ').');
+        return false; // v2.112.2: stay on the sheet so the test info shows; Save to this device is right below
       }
     }
     try { if (!b) b = await bkBuild(); } catch (e) { toast('Backup failed'); return false; }
