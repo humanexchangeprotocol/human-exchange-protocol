@@ -7870,10 +7870,11 @@ const PAIR_CODE_LENGTH = 4;
     var file = null, diag = { share: !!navigator.share, canShare: !!navigator.canShare, json: null, txt: null, err: '' };
     try {
       if (navigator.share && navigator.canShare) {
-        var f1 = new File([text], name, { type: 'application/json' });
-        diag.json = navigator.canShare({ files: [f1] });
-        if (diag.json) file = f1;
-        else { var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' }); diag.txt = navigator.canShare({ files: [f2] }); if (diag.txt) file = f2; }
+        // v2.112.3: always share as .txt. Michael's Pixel (Chrome 154, installed): canShare said yes
+        // to .json, then share() refused it with NotAllowedError 'Permission denied' (Chrome's
+        // shareable-type list has no .json). text/plain is on that list everywhere; restore reads it.
+        var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' });
+        diag.txt = navigator.canShare({ files: [f2] }); if (diag.txt) file = f2;
       }
     } catch (e) { file = null; diag.err = (e && e.name) + ': ' + (e && e.message); }
     diag.kb = Math.round(text.length / 1024);
