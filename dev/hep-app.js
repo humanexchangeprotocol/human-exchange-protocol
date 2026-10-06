@@ -2131,6 +2131,63 @@ const PAIR_CODE_LENGTH = 4;
   function openChainViewerFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openChainViewer(); }
   function openStanding() { openWallet(); mcOpen('wallet'); }
   function stOpen() { renderSettingsTab(); mcOpen('settings'); }
+  // v2.115.0 (Michael, Oct 6): Preview beside Edit. Your profile (declarations) as a counterparty sees it, from saved values.
+  function acProfileData() {
+    var d = state.declarations || {};
+    return { name: d.name || '', about: d.about || '', photo: mcPhoto(), skills: Array.isArray(d.skills) ? d.skills : [], education: Array.isArray(d.education) ? d.education : [] };
+  }
+  function acPreview() {
+    document.getElementById('ac-prev-body').innerHTML = aboutSheetHTML(acProfileData(), { skills: "App.acPList('skills')", edu: "App.acPList('edu')" });
+    mcOpen('profile');
+  }
+  function acPList(which) {
+    var d = acProfileData();
+    document.getElementById('ac-plist-title').textContent = which === 'edu' ? 'Education' : 'Skills and qualifications';
+    document.getElementById('ac-plist-body').innerHTML = aboutListHTML(d.name, which === 'edu' ? d.education : d.skills);
+    mcOpen('plist');
+  }
+  // v2.115.0 (Michael, Oct 6): Security. Your chain (the thread) and your device (the shield), read the way
+  // a counterparty reads them on the chain read, so the two icons mean the same thing everywhere.
+  // The device's switches and Change PIN live here; the full signal reading opens below.
+  function secSnapshot() {
+    var ts = null;
+    try { ts = state.chain.length ? HCP.chainSnapshot(state.chain) : { n: 0 }; } catch (e) { ts = { n: 0 }; }
+    try { ts._people = exDistinctPeople(state.chain).length; } catch (e) {}
+    try { if (state.chain.length && typeof POH !== 'undefined' && POH.rollupForBroadcast) ts.pohVerdict = POH.rollupForBroadcast({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() }); } catch (e) {}
+    return ts;
+  }
+  function secRender() {
+    var el = document.getElementById('sec-body'); if (!el) return;
+    var ts = secSnapshot(), sh = exShieldRead(ts), h = '';
+    h += '<p class="exs-cap" style="margin:0 0 4px">When you exchange, the other person sees a thread for your chain and a shield for your device. This is what they see.</p>';
+    // Your chain
+    h += '<div class="sec-hd">' + exThreadSVG(26) + '<div class="exs-body">Your chain</div></div>';
+    var L = [];
+    if (ts.t0) L.push('Started ' + esc(exMonthYear(ts.t0)));
+    L.push((ts.n || 0) + ((ts.n || 0) === 1 ? ' exchange' : ' exchanges') + (typeof ts._people === 'number' ? ' with ' + ts._people + (ts._people === 1 ? ' person' : ' people') : ''));
+    var cats = ts.cats ? Object.keys(ts.cats).filter(function(k) { return k !== 'uncategorized' && k !== 'other'; }).sort(function(a, b) { return ts.cats[b].n - ts.cats[a].n; }).slice(0, 2) : [];
+    if (cats.length) L.push('Mostly ' + cats.map(function(c) { return esc(c.toLowerCase()); }).join(' and '));
+    if (ts.t1) L.push('Last exchange ' + esc(exAgo(ts.t1)));
+    h += '<div class="exs-body sec-lines">' + L.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>';
+    // Your device
+    h += '<div class="sec-hd">' + exShieldSVG(sh.color, 26) + '<div class="exs-body">Your device</div></div>';
+    h += '<p class="exs-body" style="margin:0">' + esc(sh.title.replace('This phone', 'Your phone')) + '</p>';
+    h += '<p class="exs-cap" style="margin:4px 0 0">The shield reads the phone. It never reads the person.</p>';
+    h += '<p class="mc-link" style="margin:8px 0 2px"><a href="#" onclick="App.secSignals();return false">What your phone contributes</a></p>';
+    h += stSwitchRow('Motion sensors', 'Proves a real hand holds a real phone', state.settings.sensorMotion, 'switch-motion-tab', 'App.toggleMotionTab()');
+    h += stSwitchRow('Location', 'Proves your chain spans real places over time', state.settings.locationAuto, 'switch-location-tab', 'App.toggleLocationTab()');
+    var parts = [];
+    if (_sensor.battery) parts.push('battery'); if (_sensor.network) parts.push('network');
+    if (_sensor.light !== null) parts.push('light'); if (_sensor.pressure !== null) parts.push('pressure');
+    h += '<p class="exs-cap" style="margin:8px 0 0">' + (parts.length ? 'Also captured automatically: ' + parts.join(', ') + '. ' : '') + 'Only hashes are stored. Raw data never leaves your device.</p>';
+    // Keys
+    h += '<div class="exs-cap mc-group">Your key</div>';
+    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="font-family:var(--mono);font-size:13px">' + esc((state.fingerprint || '').substring(0, 16)) + '</div><div class="exs-cap">Your chain\u2019s fingerprint</div></div></div>';
+    h += stRow('Change PIN', 'The PIN that opens HEP on this device', 'App.changePIN()');
+    el.innerHTML = h;
+  }
+  function secOpen() { secRender(); mcOpen('security'); }
+  function secSignals() { try { renderStandingTab(); } catch (e) {} mcOpen('signals'); }
 
   function showMyPhotos() {
     var genesis = null;
@@ -14476,22 +14533,12 @@ function init() {
     return '<button class="exs-row' + (cls ? ' ' + cls : '') + '" onclick="' + onclick + '"><div class="exs-rowmain"><div class="exs-body">' + word + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
   }
   function renderSettingsTab() {
+    try { var secEl = document.getElementById('mc-sheet-security'); if (secEl && !secEl.hidden) secRender(); } catch (e) {} // v2.115.0: the device switches live in Security
     var el = document.getElementById('st-body');
     if (!el) return;
     var h = '';
-    // Proof of human
-    h += '<div class="exs-cap" style="margin-top:4px">Proof of human</div>';
-    h += '<p class="exs-cap" style="margin:4px 0 2px">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</p>';
-    h += stSwitchRow('Motion sensors', 'Proves a real hand holds a real phone', state.settings.sensorMotion, 'switch-motion-tab', 'App.toggleMotionTab()');
-    h += stSwitchRow('Location', 'Proves your chain spans real places over time', state.settings.locationAuto, 'switch-location-tab', 'App.toggleLocationTab()');
-    var parts = [];
-    if (_sensor.battery) parts.push('battery');
-    if (_sensor.network) parts.push('network');
-    if (_sensor.light !== null) parts.push('light');
-    if (_sensor.pressure !== null) parts.push('pressure');
-    h += '<p class="exs-cap" style="margin:8px 0 0">' + (parts.length ? 'Also captured automatically: ' + parts.join(', ') + '.' : 'Other sensors are captured automatically when the phone has them.') + '</p>';
     // Privacy
-    h += '<div class="exs-cap mc-group">Privacy</div>';
+    h += '<div class="exs-cap" style="margin-top:4px">Privacy</div>';
     h += stSwitchRow('Privacy mode', 'Hide counterparty names in your own lists', state.settings.hideNames, 'switch-hide-names-tab', 'App.togglePrivacy()');
     h += '<p class="exs-cap" style="margin:8px 0 0">You decide who knows what about your past. Past counterparty names are never sent to others. Privacy mode also hides them on this phone, for when someone could see your screen and that could put a person at risk.</p>';
     // Network
@@ -14513,7 +14560,6 @@ function init() {
     // This app
     h += '<div class="exs-cap mc-group">This app</div>';
     h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
-    h += stRow('Change PIN', 'The PIN that opens HEP on this device', 'App.changePIN()');
     h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
     // Delete, last and alone (rule 8a: red tonally, no filled block)
     h += '<div class="exs-cap mc-group">Delete</div>';
@@ -14687,7 +14733,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, secSignals, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,

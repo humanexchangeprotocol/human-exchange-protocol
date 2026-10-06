@@ -515,6 +515,13 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .mc-edit { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; background: none; border: none; padding: 6px 10px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; }
 .mc-group { margin: 26px 0 2px; }
 .mc-acct { margin-top: 18px; }
+.mc-idctl { display: flex; justify-content: center; gap: 4px; }
+.mc-idctl .mc-edit { margin-top: 10px; }
+.sec-hd { display: flex; align-items: center; gap: 10px; margin: 26px 0 6px; }
+.sec-hd:first-child { margin-top: 4px; }
+.sec-hd .exs-body { font-weight: 600; }
+.sec-lines { margin: 0 0 4px 0; }
+.sec-lines div { padding: 3px 0; }
 .st-row { cursor: default; }
 .st-row .exs-rowmain { flex: 1; min-width: 0; }
 .st-danger .exs-body { color: var(--red); }
@@ -1215,6 +1222,9 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <symbol id="icon-shield" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 3 L20 6 V12 c0 5 -4 8 -8 9 c-4 -1 -8 -4 -8 -9 V6 z"/>
     </symbol>
+    <symbol id="icon-eye" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M12 5c5 0 8.6 3.6 10 7-1.4 3.4-5 7-10 7S3.4 15.4 2 12c1.4-3.4 5-7 10-7zm0 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/>
+    </symbol>
     <symbol id="icon-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 20 L4 16 L16 4 L20 8 L8 20 z"/>
       <line x1="14" y1="6" x2="18" y2="10"/>
@@ -1579,13 +1589,13 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="modal-body mc-home">
       <div class="exs-sheet-head"><div class="exs-h">Account</div><button class="exs-x" aria-label="Close" onclick="App.closeModal('wallet')">&#215;</button></div>
       <div class="mc-id"><div class="mc-photo" id="mc-photo"></div><div class="mc-name" id="mc-name"></div><div class="exs-cap" id="mc-since"></div>
-        <button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button></div>
+        <div class="mc-idctl"><button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button><button class="mc-edit" onclick="App.acPreview();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-eye"/></svg>Preview</button></div></div>
       <div class="mc-acct">
       <button class="exs-row" onclick="App.mcOpen('wallet')"><div class="exs-rowmain"><div class="exs-body">Standing</div><div class="exs-cap">Texture, wave, people, reach</div></div><span class="exs-rowval" id="mc-a-st"></span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.mcOpen('records')"><div class="exs-rowmain"><div class="exs-body">Your records</div><div class="exs-cap" id="rec-acct-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.secOpen()"><div class="exs-rowmain"><div class="exs-body">Security</div><div class="exs-cap">How your chain and device appear to others</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP is built this way</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.mcOpen('device')"><div class="exs-rowmain"><div class="exs-body">This phone</div><div class="exs-cap">Your photos and your key</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.stOpen()"><div class="exs-rowmain"><div class="exs-body">Settings</div><div class="exs-cap">Proof of human, privacy, network, PIN</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.stOpen()"><div class="exs-rowmain"><div class="exs-body">Settings</div><div class="exs-cap">Privacy, network, this app</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       </div>
     </div>
     <!-- v2.114.0 (Michael, Oct 6): Account compressed to five rows; Settings left the bottom bar and lives here. -->
@@ -1616,6 +1626,26 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="exs-sheet mc-sheet" id="mc-sheet-settings" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Settings</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="st-body"></div>
+    </div>
+    <!-- v2.115.0 (Michael, Oct 6): Profile preview (your declarations as others see them) and Security (chain and device, the exchange flow's thread and shield). -->
+    <div class="exs-sheet mc-sheet" id="mc-sheet-profile" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Preview</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <p class="exs-cap" style="margin:0 0 14px">Your profile, as the people you exchange with see it.</p>
+      <div id="ac-prev-body"></div>
+      <div style="text-align:center"><button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-plist" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="ac-plist-title"></div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="ac-plist-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-security" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">Security</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="sec-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet" id="mc-sheet-signals" hidden>
+      <div class="exs-sheet-head"><div class="exs-h">What your phone contributes</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div id="wallet-identity-panel" hidden></div>
+      <div id="wallet-standing-content"></div>
     </div>
     <!-- Learn (v2.99.0, seventeenth session): modules, lessons, the lesson player. DESIGN.md rules 2, 2a, 3, 3a, 7, 11 and the Learn lessons entry. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-learn" hidden>
@@ -1732,11 +1762,6 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-faq" hidden>
       <div class="exs-sheet-head"><div class="exs-h" id="faq-title"></div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div class="lr-scroll" id="faq-body"></div>
-    </div>
-    <div class="exs-sheet mc-sheet" id="mc-sheet-device" hidden>
-      <div class="exs-sheet-head"><div class="exs-h">This phone</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
-      <div id="wallet-identity-panel"></div>
-      <div id="wallet-standing-content"></div>
     </div>
   </div>
 </div>
