@@ -4671,6 +4671,16 @@ const PAIR_CODE_LENGTH = 4;
         photo_hash: proposePhotoHash,
       };
 
+      // v2.121.0 (Michael, Oct 6): the receipt. The proposer signs the lines together with the act
+      // hash, so the kept copy cannot be edited undetected or moved to another exchange. The signature
+      // travels inside the encrypted content only; nothing about the lines reaches the record.
+      if (sessionSharedKey && exchangeContent.breakdown) {
+        try {
+          var rcAh = await HCP.computeActHash({ proposerFp: state.fingerprint, confirmerFp: sessionPartner ? sessionPartner.fingerprint : '', value: exchangeContent.value, direction: exchangeContent.direction, description: exchangeContent.description, category: exchangeContent.category, duration: exchangeContent.duration, proposalTs: body.device_ts });
+          exchangeContent.breakdownSig = await HCP.signActHash(receiptMessage(rcAh, exchangeContent.breakdown), state.privateKey);
+          pp.breakdownSig = exchangeContent.breakdownSig;
+        } catch (rsErr) { console.log('[receipt] sign failed:', rsErr.message); }
+      }
       if (sessionSharedKey) {
         // Encrypted path: server carries opaque blob
         body.encrypted_exchange = await HCP.encryptRelayPayload(exchangeContent, sessionSharedKey);
@@ -4803,6 +4813,7 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.duration = dec.duration;
             sessionProposal.proposer_photo = dec.photo;
             sessionProposal.breakdown = dec.breakdown || null;
+            sessionProposal.breakdownSig = dec.breakdownSig || null;
             console.log('[diag-confirmer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
           } catch(de) { console.log('[session] Decrypt failed:', de.message); }
         }
@@ -5273,7 +5284,17 @@ const PAIR_CODE_LENGTH = 4;
     // shared act hash, never in the chain. Rides in backups with declarations.
     try {
       var bdKeep = role === 'confirmer' ? (sessionProposal && sessionProposal.breakdown) : (state.pendingProposal && state.pendingProposal.breakdown);
-      if (bdKeep && sessionActHash) { if (!state.declarations.receipts) state.declarations.receipts = {}; state.declarations.receipts[sessionActHash] = { breakdown: bdKeep, at: Date.now() }; }
+      if (bdKeep && sessionActHash) {
+        if (!state.declarations.receipts) state.declarations.receipts = {};
+        // v2.121.0: the receipt is signed by whoever wrote the lines (the proposer).
+        var rcSig = role === 'confirmer' ? (sessionProposal && sessionProposal.breakdownSig) : (state.pendingProposal && state.pendingProposal.breakdownSig);
+        var rcKey = role === 'confirmer' ? (sessionPartner && sessionPartner.public_key) : mySigningKeyJwk(); // the key this phone signs with (device key on a second device)
+        var rcBy = role === 'confirmer' ? (sessionPartner && sessionPartner.fingerprint) : state.fingerprint;
+        var rc = { breakdown: bdKeep, at: Date.now() };
+        if (rcSig && rcKey) { rc.sig = rcSig; rc.signerKey = rcKey; rc.signedBy = rcBy || ''; }
+        state.declarations.receipts[sessionActHash] = rc;
+        if (rc.sig) { var rcAh2 = sessionActHash; receiptCheck(rcAh2, rc).then(function(ok) { rc.checked = ok ? 'ok' : 'changed'; save(); }); }
+      }
     } catch (rcErr) { console.log('[receipt] keep failed:', rcErr.message); }
     save();
 
@@ -11973,6 +11994,14 @@ function init() {
   function exFmtDate(ts) {
     try { var d = new Date(ts); if (isNaN(d)) return ''; return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch(e) { return ''; }
   }
+  // v2.121.0: what a receipt signature covers: a fixed label, the exchange's act hash, and the lines
+  // in canonical form. Same string on both phones, so either can check it.
+  function receiptMessage(actHash, bd) { return 'hep-receipt-v1|' + actHash + '|' + HCP.canonicalizeJSON(JSON.parse(JSON.stringify(bd || null))); } // round-trip drops undefined keys, as the relay does
+  function receiptCheck(actHash, rc) {
+    if (!rc || !rc.sig || !rc.signerKey) return Promise.resolve(false);
+    try { return HCP.verifyActSig(receiptMessage(actHash, rc.breakdown), rc.sig, rc.signerKey).catch(function() { return false; }); }
+    catch (e) { return Promise.resolve(false); }
+  }
   function exBreakdownHTML(bd, value) {
     if (!bd || !Array.isArray(bd.lines) || !bd.lines.length) return '';
     var h = '<div style="margin-top:12px">', sum = 0;
@@ -14700,11 +14729,34 @@ function init() {
       if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
       if (r.counterpartySig) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Countersigned by both</div>';
       if (r.type === HCP.RECORD_TYPE_REPAIR) html += '<div><span style="color:var(--text-faint);">Copied from your other device</span></div>';
+      // v2.121.0: the receipt kept beside this exchange (off the chain), with its signature check.
+      var rcp = r.actHash && state.declarations.receipts && state.declarations.receipts[r.actHash];
+      if (rcp && rcp.breakdown) {
+        html += '<div style="margin-top:10px; line-height:1.5;"><div style="color:var(--text); font-weight:500;">Receipt' + (rcp.breakdown.name ? ': ' + esc(rcp.breakdown.name) : '') + '</div>';
+        html += exBreakdownHTML(rcp.breakdown, r.value);
+        html += '<div class="hist-rc" data-ah="' + esc(r.actHash) + '" style="margin-top:6px;">' + receiptStatusHTML(rcp, r) + '</div>';
+        html += '<div style="color:var(--text-faint); margin-top:2px;">Kept on this phone only. Not part of the record.</div></div>';
+      }
       html += '</div>';
       html += '</div>';
     });
     html += '</div>';
     el.innerHTML = html;
+    // Re-check each signed receipt now, so an edit made since it was kept shows up.
+    el.querySelectorAll('.hist-rc').forEach(function(node) {
+      var ah = node.getAttribute('data-ah'); var rc = state.declarations.receipts[ah];
+      if (!rc || !rc.sig) return;
+      var rec = HCP.acts(state.chain).filter(function(x) { return x.actHash === ah; })[0];
+      receiptCheck(ah, rc).then(function(ok) { var st = ok ? 'ok' : 'changed'; if (rc.checked !== st) { rc.checked = st; save(); } node.innerHTML = receiptStatusHTML(rc, rec); });
+    });
+  }
+  function receiptStatusHTML(rc, r) {
+    if (!rc.sig) return '<span style="color:var(--text-faint);">Kept without a signature.</span>';
+    if (rc.checked === 'changed') return '<span style="color:var(--red);">This copy has been changed since it was signed.</span>';
+    if (rc.checked !== 'ok') return '<span style="color:var(--text-faint);">Checking the signature\u2026</span>';
+    var mine = rc.signedBy && rc.signedBy === state.fingerprint;
+    var who = mine ? 'you' : ((r && r.counterpartyName && !state.settings.hideNames) ? esc(r.counterpartyName) : 'the other person');
+    return '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Signed by ' + who + '. Unchanged since.</span>';
   }
 
   function histFilter(dir) {
