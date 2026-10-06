@@ -3417,6 +3417,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Store proposal context (NOT writing to chain yet)
     state.pendingProposal = {
+      breakdown: (exFlowActive && typeof _exBeat !== 'undefined' && _exBeat && _exBeat.breakdown) ? _exBeat.breakdown : undefined, // v2.120.0: off chain, travels only encrypted
       details: details,
       city: document.getElementById('ex-city').value.trim() || undefined,
       state_field: document.getElementById('ex-state').value.trim() || undefined,
@@ -4646,6 +4647,9 @@ const PAIR_CODE_LENGTH = 4;
         photo: state.declarations.photo || ''
       };
 
+      // v2.120.0 (Michael, Oct 6): a package's lines travel inside the encrypted content only, never
+      // in plaintext and never in the record (the record writer copies named fields).
+      if (sessionSharedKey && pp.breakdown) exchangeContent.breakdown = pp.breakdown;
       // Layer 3: Bind random nonce to payload for integrity verification
       var nonceBytes = crypto.getRandomValues(new Uint8Array(16));
       var nonceHex = Array.from(nonceBytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
@@ -4798,6 +4802,7 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.category = dec.category;
             sessionProposal.duration = dec.duration;
             sessionProposal.proposer_photo = dec.photo;
+            sessionProposal.breakdown = dec.breakdown || null;
             console.log('[diag-confirmer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
           } catch(de) { console.log('[session] Decrypt failed:', de.message); }
         }
@@ -5264,6 +5269,12 @@ const PAIR_CODE_LENGTH = 4;
     } catch(xdErr) {}
 
     await appendRecord(record);
+    // v2.120.0 (Michael, Oct 6): the package's lines stay in the app beside the record, keyed by the
+    // shared act hash, never in the chain. Rides in backups with declarations.
+    try {
+      var bdKeep = role === 'confirmer' ? (sessionProposal && sessionProposal.breakdown) : (state.pendingProposal && state.pendingProposal.breakdown);
+      if (bdKeep && sessionActHash) { if (!state.declarations.receipts) state.declarations.receipts = {}; state.declarations.receipts[sessionActHash] = { breakdown: bdKeep, at: Date.now() }; }
+    } catch (rcErr) { console.log('[receipt] keep failed:', rcErr.message); }
     save();
 
     // Witness attestation
@@ -11439,7 +11450,7 @@ function init() {
     var line = d === 'provided' ? 'You are providing to ' + esc(other) : esc(other) + ' is providing to you';
     h += '<div class="exs-caprow" style="justify-content:space-between; text-align:left;"><span class="exs-body">' + line + '</span><button class="exs-switch" onclick="App.exCRSwitch()">Switch</button></div>';
     h += '<div style="height:10px"></div>';
-    var svcN = d === 'provided' ? exServices().length : 0;
+    var svcN = d === 'provided' ? exServices().length + pkList().length : 0;
     var pastN = exOwnActs(d).length;
     var door = function(t, sub, fn) {
       var live = !!fn;
@@ -11484,10 +11495,10 @@ function init() {
   // What is being proposed, from whichever side holds it.
   function exRVProposalLive() {
     if (sessionRole === 'confirmer' && sessionProposal) {
-      return { value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
+      return { breakdown: sessionProposal.breakdown || null, value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
     }
     var pp = state.pendingProposal && state.pendingProposal.details;
-    if (pp) return { value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
+    if (pp) return { breakdown: state.pendingProposal.breakdown || null, value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
     return null;
   }
   function exRVProposal() { return _exRV.p || exRVProposalLive(); }
@@ -11534,6 +11545,7 @@ function init() {
       var h = '<div class="exs-cap">' + cap + '</div>';
       h += '<div class="exs-t" style="margin-top:2px">' + esc(p.task) + '</div>';
       if (kd) h += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+      if (p.breakdown) h += exBreakdownHTML(p.breakdown, p.value);
       h += '<div style="height:24px"></div>';
       h += '<div class="exs-lab">' + giver + '</div>';
       h += '<div class="exs-disp">' + (Number(p.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
@@ -11949,6 +11961,7 @@ function init() {
   }
   // A service entry or a past act, read the same way.
   function exItemParts(kind, it) {
+    if (kind === 'services' && it._pkg) return { task: it.description || '', kind: 'Package, ' + it._pkg.lines.length + (it._pkg.lines.length === 1 ? ' part' : ' parts'), dur: '', value: it.value, ts: null };
     if (kind === 'services') {
       var sm = (it.category !== undefined || it.dur !== undefined) ? { category: it.category || '', duration: it.dur || '' } : exSplitMeta(it.meta || '');
       if (it.price === 'time' || it.price === 'unit') sm.category = sm.category || ('per ' + (it.unit || 'unit')); // v2.117.0: piece 2 asks the quantity
@@ -11959,6 +11972,14 @@ function init() {
   function exKindDur(kind, dur) { var a = []; if (kind) a.push(kind); if (dur) a.push(dur); return a.join(', '); }
   function exFmtDate(ts) {
     try { var d = new Date(ts); if (isNaN(d)) return ''; return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch(e) { return ''; }
+  }
+  function exBreakdownHTML(bd, value) {
+    if (!bd || !Array.isArray(bd.lines) || !bd.lines.length) return '';
+    var h = '<div style="margin-top:12px">', sum = 0;
+    bd.lines.forEach(function(l) { var t = pkLineTotal(l); sum += t; var cap = pkLineCap(l); h += '<div class="exs-row mc-vrow st-row" style="padding:8px 2px"><div class="exs-rowmain"><div class="exs-body" style="font-size:14px">' + esc(l.desc || '') + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><div class="exs-rowval" style="font-weight:400;font-size:14px">' + mcFmt(t) + exMarkSVG(12) + '</div></div>'; });
+    h += '</div>';
+    if (Math.round(sum) !== Math.round(Number(value) || 0)) h += '<p class="exs-cap" style="margin:6px 0 0">The parts add up to ' + mcFmt(sum) + '. The total proposed is ' + mcFmt(Number(value) || 0) + '.</p>';
+    return h;
   }
   function exRenderBeat(n, listKind) {
     var host = document.getElementById('ex-beats');
@@ -11981,7 +12002,7 @@ function init() {
       html += exCancelHTML();
     } else if (n === 2 && !listKind) {
       _exBeat.view = 'doors';
-      var svcN = _exBeat.dir === 'provided' ? exServices().length : 0;
+      var svcN = _exBeat.dir === 'provided' ? exServices().length + pkList().length : 0;
       var pastN = exOwnActs(_exBeat.dir).length;
       var door = function(t, sub, fn) {
         var live = !!fn;
@@ -11995,12 +12016,25 @@ function init() {
       html += exCancelHTML();
     } else if (n === 2 && listKind) {
       _exBeat.view = 'list'; _exBeat.listKind = listKind;
-      var items = listKind === 'services' ? exServices() : exOwnActs(_exBeat.dir);
+      var items = listKind === 'services' ? pkList().map(function(pk) { return { _pkg: pk, description: pk.name, value: pkTotal(pk) }; }).concat(exServices()) : exOwnActs(_exBeat.dir); // v2.120.0: packages first
       _exBeat.list = items;
       html += '<div class="exs-cap">' + exDirCaption(other) + '</div><div class="exs-t">' + (listKind === 'services' ? 'Services you offer' : 'Past exchanges') + '</div>';
       html += '<div style="height:12px"></div>';
       if (items.length >= 8) html += '<div class="exs-fl" style="margin-bottom:10px"><input class="exs-box-in" id="ex-list-q" placeholder="Search" value="' + esc(_exBeat.q || '') + '" oninput="App.exListFilter(this.value)"></div>';
       html += '<div id="ex-list-rows">' + exListRowsHTML(listKind, items, _exBeat.q || '') + '</div>';
+      html += exCancelHTML();
+    } else if (n === 'qty') {
+      _exBeat.view = 'qty';
+      var qi = _exBeat.qtyItem, qw = exQtyWords(qi);
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div>';
+      html += '<div class="exs-t" style="margin-top:2px">' + esc(qi.description || '') + '</div>';
+      html += '<div class="exs-lab" style="margin-top:4px">' + mcFmt(Number(qi.value) || 0) + ' per ' + esc(qi.price === 'time' ? (qi.unit || 'hour') : (qi.unit || 'unit')) + '</div>';
+      html += '<div style="height:20px"></div>';
+      html += '<div class="exs-fl"><label for="ex-qty">How many ' + esc(qw) + '</label><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="ex-qty" value="' + esc(String(_exBeat.qty || '')) + '" oninput="App.exQtyInput(this.value)"></div>';
+      html += '<div class="exs-lab">' + exGiverLabel(other) + '</div>';
+      html += '<div class="exs-disp" id="ex-qty-tot">0' + exMarkSVG(16) + '</div>';
+      html += '<div style="height:24px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exQtyDone()">Continue</button>';
       html += exCancelHTML();
     } else if (n === 'item') {
       _exBeat.view = 'item';
@@ -12010,6 +12044,7 @@ function init() {
       var kd = exKindDur(_exBeat.kind, _exBeat.dur);
       if (kd) html += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
       if (dateLine) html += '<div class="exs-cap" style="margin-top:2px">Last done ' + esc(dateLine) + '</div>';
+      if (_exBeat.breakdown) html += exBreakdownHTML(_exBeat.breakdown, _exBeat.value);
       html += '<div style="height:24px"></div>';
       html += '<div class="exs-lab">' + exGiverLabel(other) + '</div>';
       html += '<div class="exs-disp">' + (Number(_exBeat.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
@@ -12064,6 +12099,7 @@ function init() {
   // X: back one step, everything entered kept (DESIGN 2a).
   function exBeatBack() {
     var v = _exBeat.view;
+    if (v === 'qty') { exRenderBeat(2, 'services'); return; }
     if (v === 'form') { if (_exBeat.from === 'item' && _exBeat.picked) exRenderBeat('item'); else exBackToTexture(); }
     else if (v === 'item') exRenderBeat(2, _exBeat.listKind || (_exBeat.picked && _exBeat.picked.kindOf === 'past' ? 'past' : 'services'));
     else if (v === 'list') { _exBeat.q = ''; exBackToTexture(); }
@@ -12097,15 +12133,40 @@ function init() {
     exRenderBeat(1);
   }
   function exBeatDoor(kind) { _exBeat.q = ''; exRenderBeat(2, kind); }
-  function exBeatNew() { _exBeat.task = ''; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = ''; _exBeat.picked = null; _exBeat.from = 'doors'; exRenderBeat(3); }
+  function exBeatNew() { _exBeat.breakdown = null; _exBeat.qtyItem = null; _exBeat.task = ''; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = ''; _exBeat.picked = null; _exBeat.from = 'doors'; exRenderBeat(3); }
   function exBeatPickItem(kind, i) {
     var it = _exBeat.list && _exBeat.list[i]; if (!it) return;
     var p = exItemParts(kind, it);
+    _exBeat.breakdown = null; _exBeat.qtyItem = null;
+    // v2.120.0 (Michael, Oct 6): a package carries its lines; a by-time or by-unit item asks how many first.
+    if (kind === 'services' && it._pkg) {
+      _exBeat.breakdown = { name: it._pkg.name, lines: JSON.parse(JSON.stringify(it._pkg.lines || [])), total: pkTotal(it._pkg) };
+      _exBeat.task = it._pkg.name; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = _exBeat.breakdown.total;
+      _exBeat.picked = { kind: kind, kindOf: 'package', ts: null, description: _exBeat.task, category: '', dur: '', value: _exBeat.value };
+      exRenderBeat('item'); return;
+    }
+    if (kind === 'services' && (it.price === 'time' || it.price === 'unit')) { _exBeat.qtyItem = it; _exBeat.qty = ''; exRenderBeat('qty'); return; }
     _exBeat.task = p.task; _exBeat.kind = p.kind; _exBeat.dur = p.dur; _exBeat.value = p.value || '';
     _exBeat.picked = { kind: kind, kindOf: kind === 'past' ? 'past' : 'services', ts: p.ts, description: p.task, category: p.kind, dur: p.dur, value: _exBeat.value };
     exRenderBeat('item');
   }
   function exBeatEdit() { _exBeat.from = 'item'; exRenderBeat(3); }
+  function exQtyWords(it) { return it.price === 'time' ? (it.unit === 'day' ? 'days' : 'hours') : (it.unit || 'units'); }
+  function exQtyInput(v) {
+    _exBeat.qty = v; var it = _exBeat.qtyItem; if (!it) return;
+    var t = document.getElementById('ex-qty-tot'); if (t) t.innerHTML = mcFmt((parseFloat(v) || 0) * (Number(it.value) || 0)) + exMarkSVG(16);
+  }
+  function exQtyDone() {
+    var it = _exBeat.qtyItem; if (!it) return;
+    var q = parseFloat(_exBeat.qty) || 0; if (q <= 0) { toast('Enter how many'); return; }
+    var w = exQtyWords(it), name = it.description || '';
+    _exBeat.task = it.price === 'time' ? name : name + ', ' + q + ' ' + w;
+    _exBeat.kind = (it.group || '').trim();
+    _exBeat.dur = it.price === 'time' ? q + ' ' + (it.unit === 'day' ? (q === 1 ? 'day' : 'days') : (q === 1 ? 'hour' : 'hours')) : '';
+    _exBeat.value = Math.round(q * (Number(it.value) || 0) * 100) / 100;
+    _exBeat.picked = { kind: 'services', kindOf: 'services', ts: null, description: _exBeat.task, category: _exBeat.kind, dur: _exBeat.dur, value: _exBeat.value };
+    exRenderBeat('item');
+  }
   function exBeatSwitch() {
     _exBeat.dir = _exBeat.dir === 'provided' ? 'received' : 'provided';
     setDirection(_exBeat.dir);
@@ -15058,7 +15119,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, pkEdit, pkFromList, pkAddItem, pkLine, pkLineTot, pkLineSave, pkLineRemove, pkSave, pkRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, exQtyInput, exQtyDone, pkEdit, pkFromList, pkAddItem, pkLine, pkLineTot, pkLineSave, pkLineRemove, pkSave, pkRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
