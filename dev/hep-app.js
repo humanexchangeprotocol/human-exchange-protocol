@@ -2200,13 +2200,19 @@ const PAIR_CODE_LENGTH = 4;
     return v;
   }
   function ofAcctCap() {
-    var n = exServices().length, c = document.getElementById('of-acct-cap');
-    if (c) c.textContent = n ? n + (n === 1 ? ' thing listed' : ' things listed') : 'Services and products, with a usual price';
+    var n = exServices().length, np = pkList().length, c = document.getElementById('of-acct-cap');
+    if (c) c.textContent = (n || np) ? [n ? n + (n === 1 ? ' item' : ' items') : '', np ? np + (np === 1 ? ' package' : ' packages') : ''].filter(Boolean).join(', ') : 'Services and products, with a usual price';
   }
   function ofRender() {
     var el = document.getElementById('of-body'); if (!el) return;
     var list = exServices(), h = '';
     h += '<p class="exs-cap" style="margin:0 0 6px">The things you offer, each with a usual price. When you exchange, pick one and the details fill in. The price can always change in the moment.</p>';
+    var pks = pkList();
+    if (pks.length) {
+      h += '<div class="exs-cap mc-group" style="margin-top:14px">Packages</div>';
+      pks.forEach(function(pk, i) { h += '<button class="exs-row" onclick="App.pkEdit(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(pk.name || 'Untitled') + '</div><div class="exs-cap">' + pk.lines.length + (pk.lines.length === 1 ? ' part' : ' parts') + '</div></div><span class="exs-rowval" style="font-weight:400">' + mcFmt(pkTotal(pk)) + ' ' + exMarkSVG(12) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>'; });
+      if (list.some(function(it) { return !(it.group || '').trim(); })) h += '<div class="exs-cap mc-group">Single items</div>';
+    }
     var groups = ofGroups();
     list.forEach(function(it, i) { it._i = i; });
     [''].concat(groups).forEach(function(g, gi) {
@@ -2218,8 +2224,9 @@ const PAIR_CODE_LENGTH = 4;
       });
     });
     list.forEach(function(it) { delete it._i; });
-    if (!list.length) h += '<p class="exs-body" style="margin:14px 0 4px">Nothing listed yet. A meal, a ride, a dozen eggs, an hour of help: anything you do or make for others.</p>';
+    if (!list.length && !pks.length) h += '<p class="exs-body" style="margin:14px 0 4px">Nothing listed yet. A meal, a ride, a dozen eggs, an hour of help: anything you do or make for others.</p>';
     h += ofAddCtl('Add something you offer', 'App.ofEdit(-1)');
+    h += '<br>' + ofAddCtl('Add a package', 'App.pkEdit(-1)');
     el.innerHTML = h;
     ofAcctCap();
   }
@@ -2249,6 +2256,11 @@ const PAIR_CODE_LENGTH = 4;
       ofGroups().forEach(function(g) { h += row(g, "App.ofPickSet('group', decodeURIComponent('" + ofEnc(g) + "'))", _ofEd.group === g); });
       h += '<div class="exs-cap mc-group">New group</div><div class="exs-fl" style="margin-top:6px"><input class="exs-box-in" id="of-pick-other" placeholder="Carpentry, eggs and meat, rides"></div>';
       h += '<button class="btn btn-primary" style="width:100%" onclick="App.ofPickSet(\'group\', document.getElementById(\'of-pick-other\').value)">Use this</button>';
+    } else if (kind === 'pkitem') {
+      t.textContent = 'Add from what you offer';
+      var L = exServices();
+      if (!L.length) h += '<p class="exs-body">Nothing listed yet. Add things you offer first, or add a line of your own.</p>';
+      L.forEach(function(it, i) { h += '<button class="exs-row" onclick="App.pkAddItem(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(it.description || 'Untitled') + '</div></div><span class="exs-rowval" style="font-weight:400">' + ofPriceLine(it) + '</span></button>'; });
     } else if (kind === 'decl') {
       t.textContent = 'Skills and education';
       var d = state.declarations || {}, sk = Array.isArray(d.skills) ? d.skills : [], ed = Array.isArray(d.education) ? d.education : [];
@@ -2271,6 +2283,92 @@ const PAIR_CODE_LENGTH = 4;
   function ofPickDecl(which, x) {
     var a = _ofEd[which], k = a.indexOf(x); if (k >= 0) a.splice(k, 1); else a.push(x);
     ofPick('decl'); ofEdMetaRows();
+  }
+  // v2.119.0 (Michael, Oct 6): packages, piece 3 on the list side. A package is a priced set of
+  // lines (an enhanced product: a sauna build, a Thanksgiving dinner). Lines are copies, so a
+  // package keeps its own prices when an item's usual price changes later; each line can be
+  // adjusted for the person it is for. The exchange flow does not offer packages yet.
+  var _pkEd = null, _pkLn = null;
+  function pkList() { var d = state.declarations || {}; if (!Array.isArray(d.packages)) d.packages = []; return d.packages; }
+  function pkLineTotal(l) { return (Number(l.value) || 0) * (l.qty === undefined || l.qty === '' ? 1 : (Number(l.qty) || 0)); }
+  function pkTotal(pk) { return (pk.lines || []).reduce(function(a, l) { return a + pkLineTotal(l); }, 0); }
+  function pkQtyWord(l) { return l.price === 'time' ? (l.unit === 'day' ? 'days' : 'hours') : (l.price === 'unit' ? (l.unit || 'units') : 'how many'); }
+  function pkLineCap(l) {
+    var q = Number(l.qty) || 0, v = mcFmt(Number(l.value) || 0);
+    if (l.price === 'time') return q + ' ' + (l.unit === 'day' ? (q === 1 ? 'day' : 'days') : (q === 1 ? 'hour' : 'hours')) + ' at ' + v;
+    if (l.price === 'unit') return q + ' ' + esc(l.unit || 'units') + ' at ' + v;
+    return q > 1 ? q + ' at ' + v : '';
+  }
+  function pkEdit(i) {
+    var pk = i >= 0 ? pkList()[i] : null;
+    _pkEd = { i: i, name: pk ? pk.name : '', about: pk ? pk.about || '' : '', lines: pk ? JSON.parse(JSON.stringify(pk.lines || [])) : [] };
+    document.getElementById('pk-ed-title').textContent = pk ? 'Edit package' : 'New package';
+    pkEdRender(); mcOpen('pkedit');
+  }
+  function pkEdKeep() { var n = document.getElementById('pk-name'), a = document.getElementById('pk-about'); if (n) _pkEd.name = n.value; if (a) _pkEd.about = a.value; }
+  function pkEdRender() {
+    var h = '';
+    h += '<div class="exs-fl"><label for="pk-name">Package name</label><input class="exs-box-in" id="pk-name" placeholder="Sauna build, Thanksgiving dinner" value="' + esc(_pkEd.name) + '"></div>';
+    h += '<div class="exs-fl"><label for="pk-about">Description (optional)</label><textarea class="exs-box-in" id="pk-about" placeholder="What the package covers, what the other person provides">' + esc(_pkEd.about) + '</textarea></div>';
+    h += '<div class="exs-cap" style="margin-top:6px">What is in it</div>';
+    _pkEd.lines.forEach(function(l, k) {
+      var cap = pkLineCap(l);
+      h += '<button class="exs-row" onclick="App.pkLine(' + k + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(l.desc || 'Untitled') + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><span class="exs-rowval" style="font-weight:400">' + mcFmt(pkLineTotal(l)) + ' ' + exMarkSVG(12) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    if (!_pkEd.lines.length) h += '<p class="exs-cap" style="margin:8px 0 0">Nothing in it yet.</p>';
+    h += ofAddCtl('Add from what you offer', "App.pkFromList()") + '<br>' + ofAddCtl('Add a line of your own', 'App.pkLine(-1)');
+    h += '<div class="pk-total"><span>Total</span><span class="exs-rowval">' + mcFmt(pkTotal(_pkEd)) + ' ' + exMarkSVG(16) + '</span></div>';
+    h += '<p class="exs-cap" style="margin:4px 0 0">The total is a usual price. It can change in the moment, like any price.</p>';
+    if (_pkEd.i >= 0) h += '<button class="of-rm" onclick="App.pkRemove()">Remove package</button>';
+    document.getElementById('pk-ed-body').innerHTML = h;
+  }
+  function pkFromList() { pkEdKeep(); ofPick('pkitem'); }
+  function pkAddItem(i) {
+    var it = exServices()[i]; if (!it) return;
+    _pkEd.lines.push({ desc: it.description || '', price: it.price || 'fixed', unit: it.unit || '', value: Number(it.value) || 0, qty: 1 });
+    mcClose(); pkEdRender(); pkLine(_pkEd.lines.length - 1);
+  }
+  function pkLine(k) {
+    pkEdKeep();
+    var l = k >= 0 ? _pkEd.lines[k] : { desc: '', price: 'fixed', unit: '', value: '', qty: 1 };
+    _pkLn = { k: k, price: l.price || 'fixed', unit: l.unit || '' };
+    document.getElementById('pk-ln-title').textContent = k >= 0 ? (l.desc || 'Line') : 'A line of your own';
+    var h = '<div class="exs-fl"><label for="pk-ln-desc">Description</label><input class="exs-box-in" id="pk-ln-desc" placeholder="Site prep, the turkey, delivery" value="' + esc(l.desc || '') + '"></div>';
+    var qLab = l.price === 'fixed' ? 'How many' : (l.price === 'time' ? (l.unit === 'day' ? 'Days' : 'Hours') : 'How many ' + (l.unit || 'units'));
+    var vLab = l.price === 'fixed' ? 'Price' : (l.price === 'time' ? 'Rate, per ' + (l.unit || 'hour') : 'Price, per ' + (l.unit || 'unit'));
+    h += '<div class="exs-fl2"><div class="exs-fl"><label for="pk-ln-qty">' + esc(qLab) + '</label><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="pk-ln-qty" value="' + esc(String(l.qty === undefined ? 1 : l.qty)) + '" oninput="App.pkLineTot()"></div>';
+    h += '<div class="exs-fl"><label for="pk-ln-val">' + esc(vLab) + '</label><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="pk-ln-val" placeholder="0" value="' + esc(String(l.value === '' ? '' : l.value)) + '" oninput="App.pkLineTot()"></div></div>';
+    h += '<div class="pk-total"><span>Line total</span><span class="exs-rowval" id="pk-ln-tot"></span></div>';
+    if (k >= 0) h += '<button class="of-rm" onclick="App.pkLineRemove()">Remove this line</button>';
+    document.getElementById('pk-ln-body').innerHTML = h;
+    pkLineTot();
+    var open = document.getElementById('mc-sheet-pkline'); if (open.hidden) mcOpen('pkline');
+  }
+  function pkLineTot() {
+    var q = parseFloat(document.getElementById('pk-ln-qty').value) || 0, v = parseFloat(document.getElementById('pk-ln-val').value) || 0;
+    document.getElementById('pk-ln-tot').innerHTML = mcFmt(q * v) + ' ' + exMarkSVG(16);
+  }
+  function pkLineSave() {
+    var desc = (document.getElementById('pk-ln-desc').value || '').trim();
+    if (!desc) { toast('Describe this line first'); return; }
+    var line = { desc: desc, price: _pkLn.price, unit: _pkLn.unit, value: parseFloat(document.getElementById('pk-ln-val').value) || 0, qty: parseFloat(document.getElementById('pk-ln-qty').value) || 0 };
+    if (_pkLn.k >= 0) _pkEd.lines[_pkLn.k] = line; else _pkEd.lines.push(line);
+    mcClose(); pkEdRender();
+  }
+  function pkLineRemove() { if (_pkLn.k >= 0) _pkEd.lines.splice(_pkLn.k, 1); mcClose(); pkEdRender(); }
+  function pkSave() {
+    pkEdKeep();
+    var name = (_pkEd.name || '').trim();
+    if (!name) { toast('Name the package first'); return; }
+    var list = pkList(), prev = _pkEd.i >= 0 ? list[_pkEd.i] : {};
+    var pk = Object.assign({}, prev, { name: name, about: (_pkEd.about || '').trim(), lines: _pkEd.lines });
+    if (_pkEd.i >= 0) list[_pkEd.i] = pk; else list.push(pk);
+    save(); mcClose(); ofRender();
+  }
+  function pkRemove() {
+    if (_pkEd.i < 0) return;
+    if (!confirm('Remove the package "' + (pkList()[_pkEd.i].name || '') + '"? Past exchanges are not affected.')) return;
+    pkList().splice(_pkEd.i, 1); save(); mcClose(); ofRender();
   }
   function ofEdMetaRows() {
     var el = document.getElementById('of-ed-meta'); if (!el) return;
@@ -14960,7 +15058,7 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, pkEdit, pkFromList, pkAddItem, pkLine, pkLineTot, pkLineSave, pkLineRemove, pkSave, pkRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,

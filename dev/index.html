@@ -529,6 +529,8 @@ body.dc-drag, body.dc-drag * { cursor: grabbing !important; user-select: none; -
 .of-seg { margin-bottom: 14px; }
 .mc-add { display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 0; background: none; border: none; padding: 6px 2px; font-family: inherit; font-size: 13px; color: var(--accent); cursor: pointer; }
 .of-pickrow-on .exs-body { font-weight: 600; }
+.pk-total { display: flex; justify-content: space-between; align-items: center; padding: 14px 4px 4px; font-size: 15px; font-weight: 600; }
+.pk-total .exs-rowval { font-size: 18px; }
 textarea.exs-box-in { min-height: 72px; resize: vertical; line-height: 1.45; }
 .of-rm { display: block; margin: 18px auto 0; background: none; border: none; font-family: inherit; font-size: 12px; color: var(--text-faint); cursor: pointer; padding: 8px; }
 .st-row { cursor: default; }
@@ -1677,6 +1679,16 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     <div class="exs-sheet mc-sheet" id="mc-sheet-offer" hidden>
       <div class="exs-sheet-head"><div class="exs-h">What you offer</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
       <div id="of-body"></div>
+    </div>
+    <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-pkedit" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="pk-ed-title">New package</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="lr-scroll" id="pk-ed-body"></div>
+      <div class="lr-foot"><button class="btn btn-primary" style="width:100%;" onclick="App.pkSave()">Save</button></div>
+    </div>
+    <div class="exs-sheet mc-sheet lr-sheet" id="mc-sheet-pkline" hidden>
+      <div class="exs-sheet-head"><div class="exs-h" id="pk-ln-title">Line</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
+      <div class="lr-scroll" id="pk-ln-body"></div>
+      <div class="lr-foot"><button class="btn btn-primary" style="width:100%;" onclick="App.pkLineSave()">Save</button></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-ofpick" hidden>
       <div class="exs-sheet-head"><div class="exs-h" id="of-pick-title"></div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
