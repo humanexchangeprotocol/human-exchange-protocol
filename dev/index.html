@@ -948,7 +948,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .chain-share-btn { padding: 8px 16px; background: var(--accent-dim); color: #FFFFFF; border-radius: var(--radius-sm); font-size: var(--fs-label); font-weight: 600; white-space: nowrap; }
 
 /* === SHARE LINK === */
-.share-url { width: 100%; padding: 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent); font-family: var(--font-mono); font-size: var(--fs-label); text-align: center; margin-bottom: 12px; word-break: break-all; }
+.share-url { width: 100%; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-dim); font-family: inherit; font-size: var(--fs-caption); text-align: left; margin-bottom: 16px; word-break: break-all; } /* v2.130.0: a link is not a key, so no mono (rule 6); the one field style (rule 12) */
 
 /* === UPDATE BANNER === */
 .update-banner { position: fixed; top: 0; left: 0; right: 0; background: #FFFFFF; color: var(--text); padding: 14px 20px; z-index: 300; display: none; align-items: center; justify-content: space-between; font-size: var(--fs-label); font-weight: 500; border-bottom: 2px solid var(--green); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
@@ -2316,7 +2316,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
       <button class="btn btn-primary" onclick="App.copyShareLink()">Copy Link</button>
       <button class="btn btn-secondary" onclick="App.shareViaSystem()">Share</button>
       <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-        <p style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px; line-height:1.5;">Want to introduce them with a guided first exchange? Send the link below instead — it includes your identity so they can practice with you.</p>
+        <p style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px; line-height:1.5;">Want to introduce them with a guided first exchange? Send the link below instead. It includes your identity so they can practice with you.</p>
         <div class="share-url" id="share-url-ref"></div>
         <button class="btn btn-secondary" onclick="App.copyShareLinkRef()">Copy Introduction Link</button>
       </div>

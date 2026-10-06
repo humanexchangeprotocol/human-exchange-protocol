@@ -13369,22 +13369,18 @@ function init() {
     var baseUrl = appendWitnessSuggestionsToShareUrl(getAppBase());
     var refUrl = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
 
-    var html = '';
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Share the protocol</div>';
-    html += '<p style="font-size:var(--fs-md); color:var(--text-dim); margin:0 0 18px; line-height:1.5;">Share the Human Exchange Protocol with someone. They\'ll be able to install it on their phone and get started.</p>';
-    html += '<div class="share-url" id="share-tab-url" style="margin-bottom:14px;">' + esc(baseUrl) + '</div>';
-    html += '<div class="qr-container" style="display:flex; justify-content:center; margin-bottom:16px;"><canvas id="share-tab-qr"></canvas></div>';
-    html += '<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" onclick="App.copyShareLink()">Copy link</button>';
-    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.shareViaSystem()">Share via system</button>';
-    html += '</div>';
-
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Introduce with a first exchange</div>';
-    html += '<p style="font-size:var(--fs-md); color:var(--text-dim); margin:0 0 16px; line-height:1.5;">Want to introduce someone with a guided first exchange? Send the link below instead — it includes your identity so they can practice with you.</p>';
-    html += '<div class="share-url" style="margin-bottom:14px;">' + esc(refUrl) + '</div>';
-    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.copyShareLinkRef()">Copy introduction link</button>';
-    html += '</div>';
+    // v2.130.0 (Michael, Oct 6 walk: Share was not on the design standard). A reading screen: title, plain
+    // rows of text left-aligned, the code drawn in the middle, one primary action; no cards, no capitals.
+    var html = '<div class="exs-sheet-head" style="position:static;margin:0;padding:6px 0 10px;background:none"><div class="exs-h">Share HEP</div></div>';
+    html += '<p class="exs-body" style="margin:0 0 18px">Let someone scan this code, or send them the link. They open it and HEP is on their phone.</p>';
+    html += '<div class="qr-container" style="display:flex; justify-content:center; margin:0 0 18px;"><canvas id="share-tab-qr"></canvas></div>';
+    html += '<div class="exs-cap" style="margin-bottom:6px">The link</div>';
+    html += '<div class="share-url" id="share-tab-url" style="margin-bottom:16px;word-break:break-all;">' + esc(baseUrl) + '</div>';
+    html += '<button class="btn btn-primary" style="width:100%; margin-bottom:6px;" onclick="App.shareViaSystem()">Share the link</button>';
+    html += '<button class="exs-quiet" style="width:100%;" onclick="App.copyShareLink()">Copy link</button>';
+    html += '<div class="exs-cap mc-group">Introduce them with a first exchange</div>';
+    html += '<p class="exs-body" style="margin:0 0 12px">This link carries who you are, so their first exchange can be with you while they learn how it works.</p>';
+    html += '<button class="exs-quiet" style="width:100%;" onclick="App.copyShareLinkRef()">Copy introduction link</button>';
 
     el.innerHTML = html;
 
