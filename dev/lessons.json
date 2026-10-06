@@ -51,7 +51,8 @@
     "why-blind",
     "why-memory",
     "why-noscore",
-    "why-privacy"
+    "why-privacy",
+    "why-nodash"
    ]
   },
   {
@@ -538,6 +539,32 @@
     {
      "title": "You choose what others see",
      "body": "What the people you exchange with see is meant to be yours to decide, so that a person in danger can carry their record without exposing themselves. Some of those choices are still being built into the app."
+    }
+   ]
+  },
+  "why-nodash": {
+   "title": "No dashboard",
+   "caption": "Your exchanges are not anyone’s data",
+   "steps": [
+    {
+     "title": "Nothing is collected",
+     "body": "HEP has no dashboard and no shared statistics. No server gathers what people exchange. The witness sees only scrambled fingerprints, never who did what for whom."
+    },
+    {
+     "title": "What can be seen gets managed",
+     "body": "There is a well known lesson here. Once an authority can see what people are doing, it starts to manage it. And once a number is used to make decisions, people start chasing the number instead of the thing it was meant to show."
+    },
+    {
+     "title": "Who that would hurt",
+     "body": "A shared picture of exchange would expose the people HEP is for: someone who works for cash, helps a neighbor, or cooperates quietly. The pattern can point at them even when their name never appears."
+    },
+    {
+     "title": "Between people",
+     "body": "HEP is about people cooperating with each other. Governments and authorities will always be there, and communities choose who leads them by voting. HEP does not feed them data, and it has no place in that choice."
+    },
+    {
+     "title": "Yours to show",
+     "body": "Your record is yours. You can show it to anyone you choose, whenever you choose. HEP just never gathers it for anyone else."
     }
    ]
   }
