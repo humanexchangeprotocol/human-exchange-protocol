@@ -1667,6 +1667,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!el) return;
     try {
       if (k === 'wave') mcDrawWave();
+      else if (k === 'rise') mcDrawRise();
       else if (k === 'people') mcDrawPeople();
       else if (k === 'reach') mcDrawReach();
       else if (k === 'learn') lrRenderHome();
@@ -1942,6 +1943,35 @@ const PAIR_CODE_LENGTH = 4;
       idx.forEach(function(i) { if (0.6745 * Math.abs(out[i].v - m) / mad > 3.5) { out[i].v = m; n++; } });
     });
     return { list: out, flagged: n };
+  }
+  // v2.129.0: produced and received as two rising step lines; the gap between them shaded by side (rule 16).
+  function mcDrawRise() {
+    var A = mcActs(), SPAN = A.span, X0 = 14, X1 = 262, YB = 166, YT = 14;
+    var w = document.getElementById('mc-r-svg'); w.innerHTML = '';
+    w.appendChild(mcEl('line', { x1: X0, y1: YB, x2: X1, y2: YB, stroke: 'var(--text-faint)', 'stroke-width': '.8' }));
+    mcText(w, X0, 190, 'first exchange'); mcText(w, X1, 190, 'today', 'end');
+    if (!A.list.length) { mcText(w, X0, 90, 'Your lines start with your first exchange.'); return; }
+    var P = 0, R = 0, pts = [{ t: 0, p: 0, r: 0 }];
+    A.list.forEach(function(e) { if (e.dir === 'p') P += e.v; else R += e.v; pts.push({ t: e.t, p: P, r: R }); });
+    pts.push({ t: SPAN, p: P, r: R });
+    var mx = Math.max(1, P, R);
+    function X(t) { return X0 + (X1 - X0) * Math.min(t, SPAN) / SPAN; } function Y(v) { return YB - (YB - YT) * v / mx; }
+    // the gap, one band per step, coloured by who is ahead in that step
+    for (var i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], x1 = X(a.t), x2 = X(pts[i + 1].t); if (x2 - x1 < 0.05 || a.p === a.r) continue;
+      w.appendChild(mcEl('rect', { x: x1.toFixed(1), y: Y(Math.max(a.p, a.r)).toFixed(1), width: (x2 - x1).toFixed(1), height: (Y(Math.min(a.p, a.r)) - Y(Math.max(a.p, a.r))).toFixed(1), fill: a.p > a.r ? 'var(--accent)' : 'var(--amber)', 'fill-opacity': a.p > a.r ? '.14' : '.22', 'shape-rendering': 'crispEdges' }));
+    }
+    function line(key, col) {
+      var L = [];
+      for (var j = 0; j < pts.length; j++) { if (j) L.push(X(pts[j].t).toFixed(1) + ',' + Y(pts[j - 1][key]).toFixed(1)); L.push(X(pts[j].t).toFixed(1) + ',' + Y(pts[j][key]).toFixed(1)); }
+      w.appendChild(mcEl('polyline', { points: L.join(' '), fill: 'none', stroke: col, 'stroke-width': '2', 'stroke-linejoin': 'round' }));
+    }
+    line('r', 'var(--amber)'); line('p', 'var(--accent)');
+    // totals at the line ends, nudged apart when they would touch
+    var yp = Y(P), yr = Y(R);
+    if (Math.abs(yp - yr) < 15) { if (P >= R) { yp = Math.min(yp, yr) - 0; yr = yp + 15; } else { yr = Math.min(yp, yr); yp = yr + 15; } }
+    function end(y, v, col) { var t = mcEl('text', { x: X1 + 6, y: (y + 4.5).toFixed(1), 'font-size': '13', 'font-weight': '600', fill: col }); t.textContent = mcFmt(v); w.appendChild(t); }
+    end(yp, P, 'var(--accent)'); end(yr, R, 'var(--amber)');
   }
   function mcDrawWave() {
     var A = mcActs(), SPAN = A.span, typ = mcTypical(A.list);
