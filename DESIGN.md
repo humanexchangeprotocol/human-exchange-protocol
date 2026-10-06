@@ -34,6 +34,8 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 10. There is no inline expander. If something is short enough to show inline, show it. A disclosure always opens a reading sheet.
 11. A control that goes somewhere else in the flow is a button or a row with a right chevron, never an underlined phrase. A list of places to go (My chain) is plain rows: word, caption, chevron, no icons, the same row the exchange uses.
 
+11c. **An action on a row** (ruled Oct 6 from Michael's test walk: "there's learning and opening, and then there's actions"). When a row stands for a thing you can act on (a device you can sync, your backup), the action sits at the row's right as an accent pill with its word (Sync, Back up), and the rest of the row opens that thing's details as a normal row would. A pill is never a chevron and never opens a place; a chevron is never an action. Sync and backup is its own Account row (caption: the status), and Home's out-of-sync line reads "Your records are out of sync" with Sync now, straight to the code when there is one other device.
+
 11a. **Reordering** (ruled Oct 3): a list a person typed and can arrange (skills, education) shows the grip, six solid dots (#icon-grip), at the left of each row, in the faint tone at 20px, only when the list has two or more items. Press and drag the grip: on a phone you hold and move, on a computer the pointer shows a grabbing hand. The row being moved lifts (raised background, large shadow) and the others swap around it in place, nothing slides (rule 4a). The order is part of the draft on an edit sheet (rule 3a): Save keeps it, X discards it.
 
 ## Fields

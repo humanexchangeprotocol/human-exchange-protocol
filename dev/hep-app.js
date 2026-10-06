@@ -2824,12 +2824,13 @@ const PAIR_CODE_LENGTH = 4;
     var rm = recModel();
     if (rm.others.length) {
       // v2.110.0 (Michael, Oct 5): with other devices, one neutral line, no icon, one button into Record keeping.
-      var cap = rm.syncN > 0 ? rm.syncN + (rm.syncN === 1 ? ' new exchange' : ' new exchanges') + ' since you last synced' : (unbacked > 0 ? unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up' : '');
+      // v2.127.0 (Michael, Oct 6 walk): out of sync says so, and the button syncs (straight to the code with one other device).
+      var cap = rm.syncN > 0 ? 'Your records are out of sync' : (unbacked > 0 ? unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up' : '');
       if (!cap) return;
       var hero2 = document.querySelector('#tab-home-content .home-hero');
       if (!hero2) return;
       var b2 = document.createElement('div'); b2.id = 'browser-storage-banner'; b2.className = 'home-backup';
-      b2.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') + '<div class="exs-cap">' + cap + '</div></div><button class="exs-save" onclick="App.recOpenHome()">Keep your record in order</button>';
+      b2.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') + '<div class="exs-cap">' + cap + '</div></div>' + (rm.syncN > 0 ? '<button class="exs-save" onclick="App.recSyncHome()">Sync now</button>' : '<button class="exs-save" onclick="App.bkOpenHome()">Back up now</button>');
       hero2.appendChild(b2);
       return;
     }
@@ -2890,28 +2891,42 @@ const PAIR_CODE_LENGTH = 4;
     return out;
   }
   function recCaption(rm) {
-    if (rm.syncN > 0) return rm.syncN + (rm.syncN === 1 ? ' new exchange' : ' new exchanges') + ' since you last synced';
+    if (rm.syncN > 0) return 'Out of sync: ' + rm.syncN + (rm.syncN === 1 ? ' exchange' : ' exchanges') + ' not on your other devices';
     if (rm.unbacked > 0) return rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up';
     return 'Your record is in order';
   }
   function recRow(word, cap, on) { return '<button class="exs-row" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>'; }
+  // v2.127.0 (Michael, Oct 6 walk): Sync and backup. Sync and Back up are actions, so each sits as a
+  // pill at the right of its row; the rest of the row opens the details (device, backup) as before.
+  function recActRow(word, cap, on, actWord, act, actId) {
+    return '<div class="exs-row" role="button" tabindex="0" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div>' +
+      '<button class="rec-act"' + (actId ? ' id="' + actId + '"' : '') + ' onclick="event.stopPropagation();' + act + '">' + esc(actWord) + '</button></div>';
+  }
   function recRender() {
     var el = document.getElementById('rec-body'); if (!el) return;
-    var rm = recModel(), h = '<p class="exs-cap" style="margin:2px 0 14px">Steps to keep your record complete on all your devices.</p>';
-    if (rm.others.length && rm.syncN > 0) h += '<p class="exs-body">You\u2019ve made ' + rm.syncN + (rm.syncN === 1 ? ' exchange' : ' exchanges') + ' on this device since your other devices last synced. Next time you\u2019re near them, take a minute to sync.</p>';
+    var rm = recModel(), h = '';
+    if (rm.others.length && rm.syncN > 0) h += '<p class="exs-body">Your records are out of sync. ' + rm.syncN + (rm.syncN === 1 ? ' exchange on this device is' : ' exchanges on this device are') + ' not on your other devices yet. Next time you\u2019re near them, sync.</p>';
     else if (rm.others.length && rm.unbacked > 0) h += '<p class="exs-body">Your other devices have everything from this one. One more copy outside your devices keeps it safe if you lose them all.</p>';
-    else if (rm.others.length || rm.unbacked <= 0) h += '<div style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><p class="exs-body" style="margin:0">Your record is in order. ' + (rm.others.length ? 'Your other devices have everything from this one, and it is backed up.' : 'Everything on this device is backed up.') + '</p></div>';
+    else if (rm.others.length || rm.unbacked <= 0) h += '<div style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><p class="exs-body" style="margin:0">Your record is in order. ' + (rm.others.length ? 'Your other devices have everything, and your last backup has it all.' : 'Your last backup has everything.') + '</p></div>';
     else h += '<p class="exs-body">You\u2019ve made ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since your last backup. A backup keeps a copy outside this device.</p>';
     h += '<p class="mc-link" style="margin:10px 0 0"><a href="#" onclick="App.mcOpen(\'recwhy\');return false">Why this matters</a></p>';
     h += '<div class="exs-cap mc-group">Your other devices</div>';
-    rm.others.forEach(function(d, i) { h += recRow(d.label, 'Last synced ' + (recFmtD(d.at) || 'when it was added'), 'App.recDev(' + i + ')'); });
-    h += recRow('Add a device', 'Put your record on another phone or computer', 'App.attachOldStart()');
+    rm.others.forEach(function(d, i) {
+      var cap = d.count ? 'Out of sync: ' + d.count + (d.count === 1 ? ' exchange' : ' exchanges') + ' not on it yet' : 'Last synced ' + (recFmtD(d.at) || 'when it was added');
+      h += recActRow(d.label, cap, 'App.recDev(' + i + ')', 'Sync', 'App.syncChoose(' + i + ')');
+    });
+    if (!rm.others.length) h += '<p class="exs-cap" style="margin:4px 0 0">Only this device so far.</p>';
+    h += ofAddCtl('Add a device', 'App.attachOldStart()');
     h += '<div class="exs-cap mc-group">Backup</div>';
-    h += recRow('Back up', rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '') : 'Not backed up yet', 'App.recBkOpen()');
+    h += recActRow('Your backup', rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '') : 'Not backed up yet', 'App.recBkOpen()', 'Back up', 'App.recBackupInline()', 'rec-bk-go');
     h += recRow('Restore from a backup', 'Replace this device\u2019s record with one from a backup file', 'App.importBackup()'); // v2.114.0: moved here from Settings
     el.innerHTML = h;
     var c = document.getElementById('rec-acct-cap'); if (c) c.textContent = recCaption(rm);
+    bkPrepare(); // the Back up pill opens the share panel at once, so the file is built ahead
   }
+  // From Home: one other device goes straight to the code; several open Sync and backup to pick one.
+  function recSyncHome() { var rm = recModel(); if (rm.others.length === 1) syncChoose(0); else recOpenHome(); }
+  async function recBackupInline() { var ok = await exportBackupAction('share'); if (ok) { recRender(); renderBrowserStorageBanner(); } }
   function recOpen() { _recFromHome = false; recRender(); mcOpen('record'); }
   function recOpenHome() { _recFromHome = true; openWallet(); recRender(); mcOpen('record'); }
   // v2.112.0: sheets live inside the account panel, so from Home open Record keeping first, Backup on top (X returns to Record keeping).
@@ -8348,6 +8363,7 @@ const PAIR_CODE_LENGTH = 4;
     return { text: text, name: name, file: file, subject: subject, len: state.chain.length };
   }
   function bkButton() {
+    var ib = document.getElementById('rec-bk-go'); if (ib) { ib.disabled = !_bkPrep; ib.textContent = _bkPrep ? 'Back up' : 'Preparing'; }
     var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
     if (!b) return;
     if (!_bkPrep) { b.disabled = true; b.textContent = 'Preparing your backup\u2026'; return; }
@@ -8379,6 +8395,24 @@ const PAIR_CODE_LENGTH = 4;
   }
   // mode 'share' (the Backup sheet's button): share panel if this browser has one, else save.
   // mode 'save': save the file. No mode (delete-chain's safety copy): save.
+  // Where a downloaded file usually lands, by device. Defaults only: a person may have changed them.
+  function bkWhere() {
+    var ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return 'Usually in the Files app, in Downloads.';
+    if (/Android/.test(ua)) return 'Usually in your Downloads folder. Open the Files app and look under Downloads.';
+    if (/Windows|Macintosh|Linux/.test(ua)) return 'Usually in your Downloads folder, unless your browser asked where to save it.';
+    return 'On this device.';
+  }
+  function bkSavedSheet(name) {
+    var h = '<div class="exs-sheet-head"><div class="exs-h">Backup saved</div><button class="exs-x" aria-label="Close" onclick="App.rsClose()">&#215;</button></div>';
+    h += '<div style="display:flex;gap:10px;align-items:center;margin-top:4px"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><div class="exs-t" style="margin:0">Saved to this device</div></div>';
+    h += '<div class="exs-cap mc-group">Where it is</div><p class="exs-body">' + esc(bkWhere()) + '</p>';
+    h += '<div class="exs-cap mc-group">The file</div><p class="exs-body" style="word-break:break-all">' + esc(name) + '</p>';
+    h += '<div class="exs-cap mc-group">Finding it later</div><p class="exs-body">Open your files and search for HEP. Every backup starts with that name.</p>';
+    h += '<p class="exs-body" style="margin-top:18px">This copy is still on this device. If you lose the device, you lose the copy, so send one to yourself as well.</p>';
+    h += '<p class="mc-link" style="margin-top:16px"><a href="#" onclick="App.faqOpen(\'backup\');return false">Why keep a backup off this device?</a></p>';
+    rsShow(h, 'bksaved');
+  }
   async function exportBackupAction(mode) {
     var b = _bkPrep && _bkPrep.len === state.chain.length ? _bkPrep : null;
     if (mode === 'share' && b && b.file) {
@@ -8397,7 +8431,7 @@ const PAIR_CODE_LENGTH = 4;
     try { if (!b) b = await bkBuild(); } catch (e) { toast('Backup failed'); return false; }
     if (!bkSaveLocal(b.text, b.name)) { toast('Backup failed'); return false; }
     markBackedUp(b.name); renderBrowserStorageBanner();
-    toast('Backup saved to this device. Move it somewhere outside this device too.');
+    bkSavedSheet(b.name); // v2.127.0 (Michael, Oct 6 walk): say where it went, its name, and how to find it later
     console.log('[backup] saved ' + b.name);
     return true;
   }
@@ -15267,7 +15301,7 @@ function init() {
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: bkOpenHome, recOpen, recOpenHome, recClose, recDev, recBkOpen, bkOpenHome, recBackup, faqOpen, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
+    exportBackup: bkOpenHome, recOpen, recOpenHome, recSyncHome, recBackupInline, bkSavedSheet, recClose, recDev, recBkOpen, bkOpenHome, recBackup, faqOpen, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };

@@ -842,6 +842,9 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-mark { color: var(--text-faint); flex-shrink: 0; }
 .exs-cancelrow { display: flex; justify-content: flex-start; padding-top: 12px; }
 .exs-cancel { background: none; border: none; padding: 10px 0; font-size: var(--fs-caption); color: var(--text-faint); opacity: .8; cursor: pointer; font-family: inherit; text-align: left; }
+/* v2.127.0 (Michael, Oct 6 walk: "those are actions"): an action at the right of a row is an accent pill with its word. The rest of the row still opens the details. */
+.rec-act { flex: none; border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 20px; padding: 7px 16px; min-height: 36px; font-family: inherit; font-size: var(--fs-label); font-weight: 600; cursor: pointer; }
+.rec-act:disabled { border-color: var(--border); color: var(--text-faint); cursor: default; }
 .exs-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 4px; background: none; border: none; border-bottom: 1px solid var(--border); text-align: left; cursor: pointer; font-family: inherit; }
 .exs-row.off { cursor: default; }
 .exs-row.off .exs-body { color: var(--text-dim); }
@@ -1607,7 +1610,8 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
         <div class="mc-idctl"><button class="mc-edit" onclick="App.openDeclarationsEdit();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-edit"/></svg>Edit</button><button class="mc-edit" onclick="App.acPreview();"><svg width="16" height="16" aria-hidden="true"><use href="#icon-eye"/></svg>Preview</button></div></div>
       <div class="mc-acct">
       <button class="exs-row" onclick="App.mcOpen('wallet')"><div class="exs-rowmain"><div class="exs-body">Standing</div><div class="exs-cap">Texture, wave, people, reach</div></div><span class="exs-rowval" id="mc-a-st"></span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
-      <button class="exs-row" onclick="App.mcOpen('records')"><div class="exs-rowmain"><div class="exs-body">Your records</div><div class="exs-cap" id="rec-acct-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.recOpen()"><div class="exs-rowmain"><div class="exs-body">Sync and backup</div><div class="exs-cap" id="rec-acct-cap">Keep your record on all your devices and a copy off them</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
+      <button class="exs-row" onclick="App.mcOpen('records')"><div class="exs-rowmain"><div class="exs-body">Your records</div><div class="exs-cap">Exchange history and pricing history</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.ofOpen()"><div class="exs-rowmain"><div class="exs-body">What you offer</div><div class="exs-cap" id="of-acct-cap">Services and products, with a usual price</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.secOpen()"><div class="exs-rowmain"><div class="exs-body">Security</div><div class="exs-cap">How your chain and device appear to others</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openLearnFromAccount()"><div class="exs-rowmain"><div class="exs-body">Learn</div><div class="exs-cap">How exchange works, and why HEP is built this way</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
@@ -1635,7 +1639,6 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-records" hidden>
       <div class="exs-sheet-head"><div class="exs-h">Your records</div><button class="exs-x" aria-label="Close" onclick="App.mcClose()">&#215;</button></div>
-      <button class="exs-row" onclick="App.recOpen()"><div class="exs-rowmain"><div class="exs-body">Record keeping</div><div class="exs-cap">Keep your record complete on all your devices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.exListOpen()"><div class="exs-rowmain"><div class="exs-body">Exchange history</div><div class="exs-cap">Every exchange on your chain</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
       <button class="exs-row" onclick="App.openMyPricingFromWallet()"><div class="exs-rowmain"><div class="exs-body">Pricing history</div><div class="exs-cap">Your services and prices</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>
     </div>
@@ -1788,7 +1791,7 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
     </div>
     <!-- Record keeping (v2.110.0, Step 4, Michael Oct 5): two states, caught up or new exchanges; housekeeping, no red. Spec writing/spec-4-device-sync-and-repair.md. -->
     <div class="exs-sheet mc-sheet" id="mc-sheet-record" hidden>
-      <div class="exs-sheet-head"><div class="exs-h">Record keeping</div><button class="exs-x" aria-label="Close" onclick="App.recClose()">&#215;</button></div>
+      <div class="exs-sheet-head"><div class="exs-h">Sync and backup</div><button class="exs-x" aria-label="Close" onclick="App.recClose()">&#215;</button></div>
       <div id="rec-body"></div>
     </div>
     <div class="exs-sheet mc-sheet" id="mc-sheet-recwhy" hidden>
