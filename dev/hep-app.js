@@ -1146,7 +1146,7 @@ const PAIR_CODE_LENGTH = 4;
         AT.devFp = await HCP.keyFingerprint(AT.devPubJwk);
       }
       AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code); AT.shared = null; AT.partnerPub = null;
-      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: AT.devFp, public_key: AT.devPubJwk });
+      await atPost('/session/join', await sessJoinBody(AT.code, AT.their, AT.devFp, AT.devPubJwk, AT.devPrivJwk));
     } catch (e) { console.log('[attach] new: join failed', e.message); toast('Could not reach the witness: ' + e.message); return; }
     var h = atHead('Attach chain', true, 'atNewName');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
@@ -1166,7 +1166,9 @@ const PAIR_CODE_LENGTH = 4;
       if (!d.connected || !d.partner) return;
       if (!AT.shared) {
         AT.partnerPub = d.partner.public_key; AT.partnerFp = d.partner.fingerprint;
-        AT.shared = await HCP.deriveSharedKey(AT.devPrivJwk, AT.partnerPub);
+        var estN = await sessEstablish(AT.code, d.partner, false); // the old device may be an attached one; its key is checked against the chain it sends
+        if (!estN.ok) { atStopPoll(); atProblem(sessFailMsg(estN)); return; }
+        AT.shared = estN.key;
         var hello = await HCP.encryptRelayPayload({ t: 'attach-hello', label: AT.label, deviceKey: AT.devPubJwk }, AT.shared);
         await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: hello });
         console.log('[attach] new: connected to ' + String(AT.partnerFp).slice(0, 12) + ', name sent');
@@ -1193,6 +1195,8 @@ const PAIR_CODE_LENGTH = 4;
       var cert = null;
       for (var i = 0; i < p.chain.length; i++) { var r = p.chain[i]; if (r.type === HCP.RECORD_TYPE_DEVICE && r.deviceKey && r.deviceKey.x === AT.devPubJwk.x && r.deviceKey.y === AT.devPubJwk.y) cert = r; }
       if (!cert) { atProblem('The chain has no certificate for this device.'); return; }
+      var pkFp = await HCP.keyFingerprint(AT.partnerPub);
+      if (pkFp !== v.rootFp && !v.devices.some(function(x) { return x.fp === pkFp; })) { atProblem('The phone you connected to does not hold a key of this chain.'); return; }
       if (!await HCP.verifyDeviceLabel(cert, p.label, p.salt)) { atProblem('The device name does not match its certificate.'); return; }
       AT.pack = p; AT.finished = true;
       console.log('[attach] new: chain received and verified, ' + p.chain.length + ' records, devices ' + v.devices.length);
@@ -1303,7 +1307,7 @@ const PAIR_CODE_LENGTH = 4;
     AT.connecting = true;
     var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
     try {
-      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: mySigningKeyJwk() });
+      await atPost('/session/join', await sessJoinBody(AT.code, AT.their, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk));
     } catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
     AT.connecting = false;
     var h = atHead('Add a device', true, 'atOldEnter');
@@ -1322,7 +1326,9 @@ const PAIR_CODE_LENGTH = 4;
       if (!AT.shared) {
         AT.partnerPub = d.partner.public_key;
         AT.devFp = await HCP.keyFingerprint(AT.partnerPub);
-        AT.shared = await HCP.deriveSharedKey(state.privateKeyJwk, AT.partnerPub);
+        var estO = await sessEstablish(AT.code, d.partner, true);
+        if (!estO.ok) { atStopPoll(); atProblem(sessFailMsg(estO)); return; }
+        AT.shared = estO.key;
       }
       if (d.partner.encrypted_snapshot && !AT.hello) {
         var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
@@ -1429,7 +1435,7 @@ const PAIR_CODE_LENGTH = 4;
     AT.url = getWitnessUrl();
     if (!AT.url) { AT.role = 'sync-choose'; toast('No witness reachable. Check your connection.'); return; }
     AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code);
-    try { await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: syMyFp(), public_key: mySigningKeyJwk() }); }
+    try { await atPost('/session/join', await sessJoinBody(AT.code, AT.their, syMyFp(), mySigningKeyJwk(), state.privateKeyJwk)); }
     catch (e) { console.log('[sync] join failed', e.message); AT.code = null; AT.role = 'sync-choose'; toast('Could not reach the witness. Check your connection and try again.'); return; }
     var h = atHead('Sync with ' + AT.label, true, 'syncBack');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
@@ -1458,7 +1464,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!AT.url) { atMsg('No witness reachable. Check your connection.'); return; }
     AT.connecting = true;
     var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
-    try { await atPost('/session/join', { my_code: deriveJoinCode(c), their_code: c, fingerprint: syMyFp(), public_key: mySigningKeyJwk() }); }
+    try { await atPost('/session/join', await sessJoinBody(deriveJoinCode(c), c, syMyFp(), mySigningKeyJwk(), state.privateKeyJwk)); }
     catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
     AT.connecting = false; AT.code = deriveJoinCode(c);
     syncConnecting(false);
@@ -1487,7 +1493,9 @@ const PAIR_CODE_LENGTH = 4;
         AT.partnerPub = d.partner.public_key; AT.partnerFp = await HCP.keyFingerprint(AT.partnerPub);
         if (AT.partnerFp === syMyFp()) { atProblem('That code came from this device. Type it on ' + AT.label + '.'); return; }
         if (AT.role === 'sync-show') syncConnecting(false);
-        AT.shared = await HCP.deriveSharedKey(state.privateKeyJwk, AT.partnerPub);
+        var estS = await sessEstablish(AT.code, d.partner, true);
+        if (!estS.ok) { atProblem(sessFailMsg(estS)); return; }
+        AT.shared = estS.key;
         if (d.partner.encrypted_snapshot) {
           var early = null;
           try { early = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared); } catch (de) {}
@@ -3924,6 +3932,41 @@ const PAIR_CODE_LENGTH = 4;
   // v2.107.0 (Step 3b): the key this device signs with. An attached device holds
   // its own device key; the chain's root key (state.publicKeyJwk) stays its identity.
   function mySigningKeyJwk() { return state.devicePublicKeyJwk || state.publicKeyJwk; }
+
+  // --- Session key agreement (v2.137.0, Oct 13 2026, outside scrutiny finding 1) ---
+  // Every join carries a fresh session key signed by this device's signing key over
+  // the codes and fingerprint; the sealed channel key is derived from the whole
+  // handshake transcript (see HCP.deriveSessionKey). The other side's key must
+  // belong to its fingerprint (directly, or through a device proof that arrives
+  // sealed) before this phone shares anything about the person. No fallback to the
+  // old unsigned agreement: an older app on the other side is refused.
+  var _sessKeys = {}; // my code -> this session's keys and transcript half
+  async function sessJoinBody(myCode, theirCode, fp, signPub, signPriv) {
+    var k = await HCP.makeSessionKey();
+    var sig = await HCP.signSessionKey(myCode, theirCode, fp, k.pub, signPriv);
+    _sessKeys[myCode] = { pub: k.pub, priv: k.priv, signPub: signPub, fp: fp, theirCode: theirCode };
+    return { my_code: myCode, their_code: theirCode, fingerprint: fp, public_key: signPub, session_key: k.pub, session_sig: sig };
+  }
+  // strict: the partner key must be the fingerprint itself (sync, attach). Otherwise a
+  // key that is not the fingerprint is allowed in while its device proof is awaited,
+  // and nothing about the person is sent until that proof verifies.
+  async function sessEstablish(myCode, partner, strict) {
+    var me = _sessKeys[myCode]; if (!me) return { ok: false, reason: 'no session key for code ' + myCode };
+    var v = await HCP.verifySessionKey(partner, myCode, me.theirCode);
+    if (!v.ok) return { ok: false, reason: v.error, old: v.error === 'no session key' };
+    var bind = await HCP.verifyKeyBinding(partner.fingerprint, partner.public_key, null);
+    if (!bind.ok && (strict || bind.mode !== 'unbound')) return { ok: false, reason: 'key does not belong to the fingerprint (' + bind.mode + ')' };
+    var key = await HCP.deriveSessionKey(me.priv, partner.session_key, { myCode: myCode, theirCode: me.theirCode, myFp: me.fp, theirFp: partner.fingerprint, mySignPub: me.signPub, theirSignPub: partner.public_key, mySkPub: me.pub, theirSkPub: partner.session_key });
+    console.log('[sess] established with ' + String(partner.fingerprint).slice(0, 12) + ', binding ' + (bind.ok ? bind.mode : 'awaiting proof'));
+    return { ok: true, key: key, bind: bind, verified: bind.ok };
+  }
+  function sessFailMsg(est) { return est && est.old ? 'The other device is running an older HEP. Update it there and try again.' : 'The connection did not check out. Nothing was shared. Try again, or try another witness.'; }
+  // The partner's device proof, from its sealed hello or snapshot.
+  async function sessVerifyProof(partner, proof) {
+    var r = await HCP.verifyKeyBinding(partner.fingerprint, partner.public_key, proof || null);
+    console.log('[sess] device proof ' + (r.ok ? 'ok (' + r.mode + ')' : 'FAILED: ' + r.mode + (r.error ? ', ' + r.error : '')) + ', ' + String(partner.fingerprint).slice(0, 12));
+    return r.ok;
+  }
   // The paperwork an attached device carries so the other phone can see that its
   // device key speaks for the chain: root key, parent record, the certificate for
   // this key (the latest one, if repeated attach attempts left several). Synchronous,
@@ -4066,12 +4109,12 @@ const PAIR_CODE_LENGTH = 4;
     return { valid: true };
   }
 
-  function sessionViolation(reason) {
+  function sessionViolation(reason, msg) {
     console.error('[state-machine] VIOLATION: ' + reason + ' -- dropping session');
     // Layer 4: Record failure against current server
     var url = getWitnessUrl();
     if (url) recordServerFailure(url, reason);
-    toast('Connection issue -- please try again');
+    toast(msg || 'Connection issue -- please try again');
     cleanupSession();
     exFlowActive = false;
     closeModal('exchange');
@@ -4174,8 +4217,28 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // Poll for partner's encrypted snapshot, decrypt when found
+  var _snapshotSeen = null;
+  function exSendSnapshotIfVerified() {
+    if (!sessionPartner || !sessionSharedKey) return;
+    if (sessionPartner._verified) {
+      if (!sessionPartner._ourSnapshotSent) { sessionPartner._ourSnapshotSent = true; sendEncryptedSnapshot(sessionPartner._extras || {}); }
+    } else if (state.devicePublicKeyJwk && !sessionPartner._helloSent) {
+      // Both sides may be attached devices; the hello carries only this device's paperwork.
+      sessionPartner._helloSent = true;
+      sendSealed({ t: 'proof-hello', device_proof: buildDeviceProof() });
+    }
+  }
+  async function sendSealed(obj) {
+    var url = getSessionWitnessUrl(); if (!url || !sessionCode || !sessionSharedKey) return;
+    try {
+      var enc = await HCP.encryptRelayPayload(obj, sessionSharedKey);
+      await serverFetch(url + '/session/' + sessionCode + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: enc }) });
+      console.log('[session] sealed ' + obj.t + ' sent');
+    } catch (e) { console.error('[session] sealed send failed:', e); }
+  }
   function startSnapshotPoll(onReceived) {
     stopSnapshotPoll();
+    _snapshotSeen = null;
     var url = getSessionWitnessUrl();
     if (!url || !sessionCode) return;
     var attempts = 0;
@@ -4186,9 +4249,23 @@ const PAIR_CODE_LENGTH = 4;
         return resp.json();
       }).then(function(data) {
         if (!data || !data.partner) return;
-        if (data.partner.encrypted_snapshot && sessionSharedKey) {
-          stopSnapshotPoll();
-          HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey).then(function(decrypted) {
+        if (data.partner.encrypted_snapshot && sessionSharedKey && data.partner.encrypted_snapshot !== _snapshotSeen) {
+          _snapshotSeen = data.partner.encrypted_snapshot;
+          HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey).then(async function(decrypted) {
+            // v2.137.0: a key that is not the fingerprint must prove itself before anything
+            // about this person goes out. The proof rides in a sealed hello or in the snapshot.
+            if (decrypted && decrypted.t === 'proof-hello') {
+              if (!sessionPartner._verified) {
+                if (!await sessVerifyProof(sessionPartner, decrypted.device_proof)) { stopSnapshotPoll(); sessionViolation('partner key unproven', sessFailMsg(null)); return; }
+                sessionPartner._verified = true; exSendSnapshotIfVerified();
+              }
+              return; // keep polling for the snapshot
+            }
+            if (!sessionPartner._verified) {
+              if (!await sessVerifyProof(sessionPartner, decrypted && decrypted.device_proof)) { stopSnapshotPoll(); sessionViolation('partner key unproven', sessFailMsg(null)); return; }
+              sessionPartner._verified = true; exSendSnapshotIfVerified();
+            }
+            stopSnapshotPoll();
             sessionPartner.thread_snapshot = decrypted;
             sessionPartner._snapshotDecrypted = true;
             console.log('[session] Partner snapshot decrypted');
@@ -4197,14 +4274,6 @@ const PAIR_CODE_LENGTH = 4;
           }).catch(function(de) {
             console.error('[session] Decrypt partner snapshot failed:', de);
           });
-        } else if (data.partner.thread_snapshot && !sessionPartner.thread_snapshot) {
-          // Backward compat: partner sent plaintext snapshot (old client)
-          stopSnapshotPoll();
-          sessionPartner.thread_snapshot = data.partner.thread_snapshot;
-          sessionPartner._snapshotDecrypted = true;
-          console.log('[session] Partner snapshot received (plaintext fallback)');
-          logPartnerBinding(sessionPartner);
-          if (onReceived) onReceived(data.partner.thread_snapshot);
         }
       }).catch(function(e) {});
     }
@@ -4318,12 +4387,7 @@ const PAIR_CODE_LENGTH = 4;
       const resp = await serverFetch(url + '/session/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          my_code: sessionCode,
-          their_code: sessionTheirCode,
-          fingerprint: state.fingerprint,
-          public_key: mySigningKeyJwk(),
-        }),
+        body: JSON.stringify(await sessJoinBody(sessionCode, sessionTheirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk)),
       });
 
 
@@ -4639,18 +4703,17 @@ const PAIR_CODE_LENGTH = 4;
     content.style.display = 'block';
     sessionActiveTab = 'texture';
 
-    // Derive ECDH shared key for encrypted relay
-    try {
-      if (sessionPartner && sessionPartner.public_key && state.privateKeyJwk) {
-        sessionSharedKey = await HCP.deriveSharedKey(state.privateKeyJwk, sessionPartner.public_key);
-      }
-    } catch(ek) { console.log('[session] ECDH key derivation failed:', ek.message); sessionSharedKey = null; }
-
-    // Send our encrypted snapshot (only once)
-    if (!sessionPartner._ourSnapshotSent && sessionSharedKey) {
-      sessionPartner._ourSnapshotSent = true;
-      sendEncryptedSnapshot();
+    // v2.137.0: signed fresh session key, transcript-bound channel, binding checked.
+    if (!sessionSharedKey) {
+      try {
+        var est = await sessEstablish(sessionCode, sessionPartner, false);
+        if (!est.ok) { sessionViolation('session: ' + est.reason, sessFailMsg(est)); return; }
+        sessionSharedKey = est.key; sessionPartner._verified = est.verified;
+      } catch(ek) { sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
     }
+    // Our snapshot goes out only once the partner's key is verified.
+    if (!sessionPartner._extras) sessionPartner._extras = {};
+    exSendSnapshotIfVerified();
 
     // Partner info
     let html = '<div class="session-partner">' +
@@ -10238,12 +10301,7 @@ function init() {
       var url = getSessionWitnessUrl();
       if (!url) { toast('No server available'); return; }
 
-      var joinPayload = {
-          my_code: myCode,
-          their_code: theirCode,
-          fingerprint: state.fingerprint,
-          public_key: mySigningKeyJwk(),
-      };
+      var joinPayload = await sessJoinBody(myCode, theirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk);
       // v2.134.0 (security tenet gate): the role (who is giving) never goes to the witness.
       // It travels sealed in the snapshot as _role; the joiner reads it there.
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
@@ -10390,16 +10448,17 @@ function init() {
     // from here too, not only once Verify is confirmed (ruled Oct 2).
     try { exPresenceStart(); } catch(_) {}
 
-    // Derive ECDH shared key for encrypted relay
-    try {
-      if (sessionPartner.public_key && state.privateKeyJwk) {
-        sessionSharedKey = await HCP.deriveSharedKey(state.privateKeyJwk, sessionPartner.public_key);
-      }
-    } catch(ek) { console.log('[ex-flow] ECDH key derivation failed:', ek.message); sessionSharedKey = null; }
+    // v2.137.0: signed fresh session key, transcript-bound channel, binding checked.
+    if (!sessionSharedKey) {
+      try {
+        var est = await sessEstablish(sessionCode, sessionPartner, false);
+        if (!est.ok) { console.log('[ex-flow] session refused: ' + est.reason); sessionViolation('session: ' + est.reason, sessFailMsg(est)); return; }
+        sessionSharedKey = est.key; sessionPartner._verified = est.verified;
+      } catch(ek) { console.log('[ex-flow] session key failed:', ek.message); sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
+    }
 
-    // Send our encrypted snapshot with ex-flow extras (only once)
-    if (!sessionPartner._ourSnapshotSent && sessionSharedKey) {
-      sessionPartner._ourSnapshotSent = true;
+    // Build our snapshot extras once; it is sent only once the partner's key is verified.
+    if (!sessionPartner._extras && sessionSharedKey) {
       // Build ex-flow extras: role, device reality, service pricing
       var extras = {};
       if (exInitiatorRole) extras._role = exInitiatorRole;
@@ -10475,7 +10534,8 @@ function init() {
         }
         extras._ppl = _hashes;
       } catch(ope) { console.log('[ex-flow] overlap extras failed:', ope.message); }
-      sendEncryptedSnapshot(extras);
+      sessionPartner._extras = extras;
+      exSendSnapshotIfVerified();
     }
 
     // Determine session role
