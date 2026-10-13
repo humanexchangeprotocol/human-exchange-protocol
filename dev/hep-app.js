@@ -3554,8 +3554,7 @@ const PAIR_CODE_LENGTH = 4;
       if (witnessUrl) {
         startSessionAsProposer();
       } else {
-        generatePairCode();
-        showExStep('pair');
+        toast('Pairing with codes needs a secure connection. Use scan or message instead.');
       }
       return;
     }
@@ -3662,6 +3661,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function uploadPairHalf(half) {
+    // v2.134.0 (security tenet gate): a pair half carries the terms in clear, so it is never
+    // sent to a witness. Pair-with-codes is withdrawn until it has a sealed design.
+    console.log('[pair] Upload refused: pair halves are not sealed');
+    return false;
     const url = getWitnessUrl();
     if (!url) return false;
     try {
@@ -4690,8 +4693,6 @@ const PAIR_CODE_LENGTH = 4;
 
     const pp = state.pendingProposal;
     try {
-      var proposePhotoHash = '';
-      try { if (state.declarations.photo) proposePhotoHash = await sensorSha256(state.declarations.photo); } catch(ph) {}
 
       // Exchange content to encrypt
       const exchangeContent = {
@@ -4717,14 +4718,17 @@ const PAIR_CODE_LENGTH = 4;
       sessionProposalIntegrityHash = Array.from(new Uint8Array(integrityBuf)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
       console.log('[nonce] Bound nonce to proposal, hash:', sessionProposalIntegrityHash.substring(0, 16) + '...');
 
-      // Build request body: attestation metadata always plaintext, exchange content encrypted if possible
+      // v2.134.0 (security tenet gate, Oct 13): nothing about this phone travels readable.
+      // Location, platform and the device hash ride inside the encrypted content; the
+      // witness sees only codes, timestamps, the act hash and signatures, and the blob.
+      exchangeContent.xd = {
+        sensorHash: _cachedDeviceHash || '',
+        platform: navigator.platform || '',
+        geo: _cachedGeo || null,
+        deviceHash: _cachedDeviceHash || '',
+      };
       const body = {
         device_ts: Date.now(),
-        sensor_hash: _cachedDeviceHash,
-        platform: navigator.platform,
-        geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '',
-        device_hash: _cachedDeviceHash,
-        photo_hash: proposePhotoHash,
       };
 
       // v2.121.0 (Michael, Oct 6): the receipt. The proposer signs the lines together with the act
@@ -4737,7 +4741,13 @@ const PAIR_CODE_LENGTH = 4;
           pp.breakdownSig = exchangeContent.breakdownSig;
         } catch (rsErr) { console.log('[receipt] sign failed:', rsErr.message); }
       }
-      if (sessionSharedKey) {
+      if (!sessionSharedKey) {
+        // No plaintext fallback (security tenet gate): no secure connection, no exchange.
+        console.log('[session] Propose refused: no secure connection');
+        toast('Could not set up a secure connection. Nothing was sent. Try again.');
+        return;
+      }
+      {
         // Encrypted path: server carries opaque blob
         body.encrypted_exchange = await HCP.encryptRelayPayload(exchangeContent, sessionSharedKey);
         // Placeholder values so server schema doesn't break
@@ -4747,14 +4757,6 @@ const PAIR_CODE_LENGTH = 4;
         body.category = '';
         body.duration = 0;
         body.photo = '';
-      } else {
-        // Fallback: plaintext (pre-encryption clients or key derivation failure)
-        body.value = exchangeContent.value;
-        body.direction = exchangeContent.direction;
-        body.description = exchangeContent.description;
-        body.category = exchangeContent.category;
-        body.duration = exchangeContent.duration;
-        body.photo = exchangeContent.photo;
       }
 
       // Countersignature, proposer side: hash the act as stated, sign it, and
@@ -4870,8 +4872,21 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.proposer_photo = dec.photo;
             sessionProposal.breakdown = dec.breakdown || null;
             sessionProposal.breakdownSig = dec.breakdownSig || null;
+            // v2.134.0: the proposer's device fields arrive inside the envelope only.
+            sessionProposal.sensor_hash = (dec.xd && dec.xd.sensorHash) || '';
+            sessionProposal.platform = (dec.xd && dec.xd.platform) || '';
+            sessionProposal.geo = (dec.xd && dec.xd.geo) || '';
+            sessionProposal.device_hash = (dec.xd && dec.xd.deviceHash) || '';
+            sessionProposal._sealed = true;
             console.log('[diag-confirmer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
           } catch(de) { console.log('[session] Decrypt failed:', de.message); }
+        }
+        if (!sessionProposal._sealed) {
+          // Security tenet gate: a proposal that did not arrive sealed is not shown or recorded.
+          console.log('[session] Proposal refused: not sealed (encrypted=' + !!sessionProposal.encrypted_exchange + ', key=' + !!sessionSharedKey + ')');
+          sessionProposal = null;
+          toast('Their proposal did not arrive over a secure connection, so it was not opened. Ask them to try again.');
+          return;
         }
         console.log('[diag-confirmer-post] desc=' + JSON.stringify(sessionProposal.description) + ' value=' + sessionProposal.value);
         if (exFlowActive) {
@@ -5044,8 +5059,10 @@ const PAIR_CODE_LENGTH = 4;
     _sessionWritten = true; // set immediately before any async work
 
     try {
-        var confirmPhotoHash = '';
-        try { if (state.declarations.photo) confirmPhotoHash = await sensorSha256(state.declarations.photo); } catch(ph) {}
+        // v2.134.0 (security tenet gate): this phone's device fields reach the proposer inside
+        // the sealed snapshot, refreshed here before confirming; nothing readable goes to the witness.
+        if (!sessionSharedKey) { toast('Could not set up a secure connection. Nothing was recorded.'); _sessionWritten = false; if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; } return; }
+        await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' } });
         // Countersignature, confirmer side. Passthrough (observe before enforce):
         // a mismatch or a bad proposer signature is logged, never blocks.
         var confirmActSig = '';
@@ -5064,7 +5081,7 @@ const PAIR_CODE_LENGTH = 4;
         const resp = await serverFetch(url + '/session/' + sessionCode + '/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmed: true, act_sig: confirmActSig, device_ts: Date.now(), sensor_hash: _cachedDeviceHash, platform: navigator.platform, geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '', device_hash: _cachedDeviceHash, photo: state.declarations.photo || '', photo_hash: confirmPhotoHash }),
+        body: JSON.stringify({ confirmed: true, act_sig: confirmActSig, device_ts: Date.now() }),
       });
 
       if (!resp.ok) {
@@ -5160,6 +5177,15 @@ const PAIR_CODE_LENGTH = 4;
       }
     }
     console.log('[diag-proposer-post] desc=' + JSON.stringify(data.proposal.description) + ' value=' + data.proposal.value);
+    // v2.134.0: the confirmer's device fields come from its sealed snapshot, refreshed just
+    // before it confirmed. Never from readable witness columns.
+    data._cpXd = null;
+    try {
+      if (data.partner && data.partner.encrypted_snapshot && sessionSharedKey) {
+        var cpSnap = await HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey);
+        if (cpSnap && cpSnap._xd) data._cpXd = cpSnap._xd;
+      }
+    } catch(xdErr) { console.log('[session] confirmer device fields unavailable:', xdErr.message); }
     sessionSetState('done');
     await writeSessionRecord('proposer', data, '');
   }
@@ -5195,9 +5221,9 @@ const PAIR_CODE_LENGTH = 4;
     // Extract counterparty device hash based on role
     var cpDeviceHash;
     if (role === 'confirmer') {
-      cpDeviceHash = (data.proposer && data.proposer.device_hash) || undefined;
+      cpDeviceHash = p.device_hash || undefined;
     } else {
-      cpDeviceHash = (data.proposal && data.proposal.confirmer_device_hash) || undefined;
+      cpDeviceHash = (data._cpXd && data._cpXd.deviceHash) || undefined;
     }
 
     // Counterparty's declared name from their thread snapshot. Both sides have
@@ -5318,21 +5344,13 @@ const PAIR_CODE_LENGTH = 4;
 
     // 5. Cross-device sensor hash, platform, and geo (non-serialized metadata)
     try {
-      if (role === 'confirmer') {
-        var cpSensor = p.sensor_hash || (data.proposal && data.proposal.sensor_hash);
-        var cpPlatform = p.platform || (data.proposal && data.proposal.platform);
-        var cpGeoRaw = p.geo || (data.proposal && data.proposal.geo);
-        if (cpSensor) record.counterpartySensorHash = cpSensor;
-        if (cpPlatform) record.counterpartyPlatform = cpPlatform;
-        if (cpGeoRaw) { try { record.counterpartyGeo = typeof cpGeoRaw === 'string' ? JSON.parse(cpGeoRaw) : cpGeoRaw; } catch(e) {} }
-      } else {
-        var cpSensor2 = (data.proposal && data.proposal.confirmer_sensor_hash) || p.confirmer_sensor_hash;
-        var cpPlatform2 = (data.proposal && data.proposal.confirmer_platform) || p.confirmer_platform;
-        var cpGeoRaw2 = (data.proposal && data.proposal.confirmer_geo) || p.confirmer_geo;
-        if (cpSensor2) record.counterpartySensorHash = cpSensor2;
-        if (cpPlatform2) record.counterpartyPlatform = cpPlatform2;
-        if (cpGeoRaw2) { try { record.counterpartyGeo = typeof cpGeoRaw2 === 'string' ? JSON.parse(cpGeoRaw2) : cpGeoRaw2; } catch(e) {} }
-      }
+      // v2.134.0: read only from sealed content (the decrypted proposal, or the confirmer's snapshot).
+      var cx = role === 'confirmer'
+        ? { sensorHash: p.sensor_hash, platform: p.platform, geo: p.geo }
+        : (data._cpXd || {});
+      if (cx.sensorHash) record.counterpartySensorHash = cx.sensorHash;
+      if (cx.platform) record.counterpartyPlatform = cx.platform;
+      if (cx.geo) { try { record.counterpartyGeo = typeof cx.geo === 'string' ? JSON.parse(cx.geo) : cx.geo; } catch(e) {} }
     } catch(xdErr) {}
 
     await appendRecord(record);
@@ -8730,7 +8748,6 @@ const PAIR_CODE_LENGTH = 4;
           pipe_code: pipeCode,
           fingerprint: state.fingerprint,
           public_key: mySigningKeyJwk(),
-          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
           max_redemptions: (cap === undefined ? 1 : cap), // 1 = single invite, 0 = uncapped room
         }),
         signal: AbortSignal.timeout(8000),
@@ -9136,7 +9153,6 @@ const PAIR_CODE_LENGTH = 4;
           redeemer_code: redeemerCode,
           fingerprint: state.fingerprint,
           public_key: mySigningKeyJwk(),
-          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
         }),
         signal: AbortSignal.timeout(8000),
       });
@@ -10174,13 +10190,13 @@ function init() {
           their_code: theirCode,
           fingerprint: state.fingerprint,
           public_key: mySigningKeyJwk(),
-          role: exInitiatorRole || null,
       };
+      // v2.134.0 (security tenet gate): the role (who is giving) never goes to the witness.
+      // It travels sealed in the snapshot as _role; the joiner reads it there.
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
         my_code: myCode, their_code: theirCode,
         fingerprint: (state.fingerprint || '').substring(0, 16) + '...',
         has_pubkey: !!mySigningKeyJwk(), device_key: !!state.devicePublicKeyJwk,
-        role: exInitiatorRole || null,
       }));
 
       var resp = await serverFetch(url + '/session/join', {
@@ -10456,6 +10472,11 @@ function init() {
     // Poll for partner's encrypted snapshot if not yet received
     if (!sessionPartner._snapshotDecrypted && sessionSharedKey) {
       startSnapshotPoll(function(decrypted) {
+        // v2.134.0: the joiner learns the starter's role from the sealed snapshot.
+        if (!exInitiatorRole && decrypted && decrypted._role) {
+          sessionRole = decrypted._role === 'provider' ? 'confirmer' : (decrypted._role === 'receiver' ? 'proposer' : sessionRole);
+          console.log('[ex-flow] Role from sealed snapshot: ' + sessionRole);
+        }
         // Update verify screen with partner name if still showing
         if (decrypted && decrypted._name) {
           var nameEl = document.getElementById('ex-verify-name');
