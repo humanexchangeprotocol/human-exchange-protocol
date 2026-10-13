@@ -4071,7 +4071,11 @@ const PAIR_CODE_LENGTH = 4;
       };
       threadSnap._name = state.declarations.name || '';
       var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
-      if (genesisRec) threadSnap._genesisPhoto = genesisRec.photoData;
+      if (genesisRec) { threadSnap._genesisPhoto = genesisRec.photoData; threadSnap._genesisPhotoTs = genesisRec.timestamp || null; }
+      // v2.133.0 (Michael, Oct 13): the photo check. The current photo travels in the
+      // snapshot beside the first one, so the other person can compare both to the face in
+      // front of them from the chain read on. Inside the encrypted snapshot only.
+      if (state.declarations.photo) { threadSnap._photo = state.declarations.photo; threadSnap._photoTs = state.declarations.photoDate || null; }
     }
     if (extras && threadSnap) {
       Object.keys(extras).forEach(function(k) { threadSnap[k] = extras[k]; });
@@ -5533,7 +5537,7 @@ const PAIR_CODE_LENGTH = 4;
     _exEndedBy = null;
     _exEndedByMe = false;
     sessionWitnessUrl = null;
-    try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false }; } catch(_) {}
+    try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false, photoOpen: false }; } catch(_) {}
     stopSnapshotPoll();
     sessionCode = null;
     sessionTheirCode = null;
@@ -11258,7 +11262,7 @@ function init() {
     var months = Math.floor(days / 30); if (months < 12) return months + (months === 1 ? ' month ago' : ' months ago');
     var years = Math.floor(days / 365); return years + (years === 1 ? ' year ago' : ' years ago');
   }
-  var _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false };
+  var _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false, photoOpen: false };
   function exRenderChainRead() {
     var container = document.getElementById('ex-texture-content');
     if (!container) return;
@@ -11287,7 +11291,11 @@ function init() {
     }
 
     var sh = exShieldRead(ts);
-    var html = '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
+    // v2.133.0 (Michael, Oct 13): the photo check. Their current photo above the name,
+    // the first photo peeking out behind it; tap opens both (exPhotoSheetHTML). No words
+    // (DESIGN.md rule 15 exception, ruled Oct 13). One photo: no fringe. None: the initial.
+    var html = exPhotoStackHTML(ts, name);
+    html += '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
     html += '<div style="height:8px"></div>';
     html += exOverlapSVG(mine, st.theirs, shared, 11); // v2.126.0 (Michael, Oct 6 walk): both phones see the rings; the starter had only the line.
     html += '<div style="height:10px"></div><div class="exs-m" style="text-align:center;">' + esc(line) + '</div>';
@@ -11301,6 +11309,7 @@ function init() {
     html += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
     if (st.shieldOpen) html += exShieldSheetHTML(ts, 'App.exToggleShieldPop()');
     if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
+    if (st.photoOpen) html += exPhotoSheetHTML(ts);
     container.innerHTML = html;
 
     exChainReadXRefresh();
@@ -11348,8 +11357,41 @@ function init() {
     var h = '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>' + (extra || '');
     return exSheetHTML('Chain', h, closeFn || 'App.exToggleThreadPanel()');
   }
-  function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; exRenderChainRead(); }
-  function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; exRenderChainRead(); }
+  // The photo check (v2.133.0). Two photos travel in the snapshot: the first, fixed in
+  // genesis and unchangeable, and the current one the person chose to show. Someone who
+  // copied a chain can swap the second but not the first. The app shows both; the person
+  // decides. It never says this is or is not them.
+  function exPhotosOf(ts) {
+    var first = (ts && ts._genesisPhoto) || '';
+    var now = (ts && ts._photo) || '';
+    if (now && first && now === first) now = '';
+    return { first: first, now: now, firstTs: ts && ts._genesisPhotoTs, nowTs: ts && ts._photoTs };
+  }
+  function exPhotoStackHTML(ts, name) {
+    var p = exPhotosOf(ts);
+    var h = '<div class="exs-person">';
+    if (!p.first && !p.now) {
+      h += '<div class="exs-stack single"><div class="exs-av">' + esc(exInitial(name)) + '</div></div>';
+    } else if (p.first && p.now) {
+      h += '<button class="exs-stack" aria-label="Photo check" onclick="App.exTogglePhotoSheet()"><div class="exs-av behind"><img src="' + p.first + '" alt=""></div><div class="exs-av"><img src="' + p.now + '" alt=""></div></button>';
+    } else {
+      h += '<button class="exs-stack single" aria-label="Photo check" onclick="App.exTogglePhotoSheet()"><div class="exs-av"><img src="' + (p.first || p.now) + '" alt=""></div></button>';
+    }
+    h += '</div><div style="height:8px"></div>';
+    return h;
+  }
+  function exPhotoSheetHTML(ts) {
+    var p = exPhotosOf(ts);
+    var one = function(src, lab, when) { return '<div class="exs-cmp-one"><div class="exs-cmp-pic"><img src="' + src + '" alt=""></div><div class="exs-cmp-lab">' + lab + '</div><div class="exs-f">' + esc(when ? exMonthYear(when) : '') + '</div></div>'; };
+    var body = '<div class="exs-cmp">';
+    if (p.first) body += one(p.first, 'First photo', p.firstTs);
+    if (p.now) body += one(p.now, 'Now', p.nowTs);
+    body += '</div>';
+    return exSheetHTML('Photo check', body, 'App.exTogglePhotoSheet()');
+  }
+  function exTogglePhotoSheet() { _exChainReadState.photoOpen = !_exChainReadState.photoOpen; _exChainReadState.shieldOpen = false; _exChainReadState.threadOpen = false; exRenderChainRead(); }
+  function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; _exChainReadState.photoOpen = false; exRenderChainRead(); }
+  function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; _exChainReadState.photoOpen = false; exRenderChainRead(); }
 
   function exRenderTexture() {
     var container = document.getElementById('ex-texture-content');
@@ -15305,7 +15347,7 @@ function init() {
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

@@ -772,6 +772,19 @@ div.exs-mark svg { width: 22px; height: 22px; color: var(--text-faint); }
 .exs-icons { display: flex; justify-content: center; gap: 34px; align-items: flex-end; }
 .exs-icon { text-align: center; cursor: pointer; background: none; border: none; padding: 4px; font-family: inherit; }
 .exs-icon .exs-f { margin-top: 2px; }
+/* v2.133.0 (Michael, Oct 13): the photo check on the chain read. The current photo with the first photo peeking out behind it; tap opens both. No words (rule 15 exception). */
+.exs-stack { position: relative; width: 124px; height: 112px; cursor: pointer; background: none; border: none; padding: 0; font-family: inherit; display: block; }
+.exs-stack.single { width: 104px; cursor: default; }
+.exs-stack .exs-av { position: absolute; top: 4px; left: 0; width: 104px; height: 104px; border-radius: 50%; overflow: hidden; background: var(--bg-input); border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 40px; color: var(--text-dim); z-index: 2; }
+.exs-stack .exs-av.behind { left: 20px; top: 0; z-index: 1; }
+.exs-stack .exs-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.exs-stack.single .exs-av { top: 4px; left: 0; }
+button.exs-stack.single { cursor: pointer; }
+.exs-cmp { display: flex; justify-content: center; gap: 22px; margin: 18px 0 6px; }
+.exs-cmp-one { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.exs-cmp-pic { width: 176px; height: 176px; border-radius: 50%; overflow: hidden; background: var(--bg-input); border: 1.5px solid var(--border); }
+.exs-cmp-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.exs-cmp-lab { font-size: var(--fs-label); font-weight: 600; color: var(--text); }
 .exs-sheet { position: absolute; inset: 0; background: var(--bg); padding: 0 20px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; z-index: 6; overflow-y: auto; }
 /* v2.125.0 (Michael, Oct 6 walk): the header stays put and the content scrolls under it, so X is always in reach. */
 .exs-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; margin: 0 -20px; position: sticky; top: 0; z-index: 3; background: var(--bg); }
