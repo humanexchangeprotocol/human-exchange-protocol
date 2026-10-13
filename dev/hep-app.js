@@ -3956,9 +3956,11 @@ const PAIR_CODE_LENGTH = 4;
     if (!v.ok) return { ok: false, reason: v.error, old: v.error === 'no session key' };
     var bind = await HCP.verifyKeyBinding(partner.fingerprint, partner.public_key, null);
     if (!bind.ok && (strict || bind.mode !== 'unbound')) return { ok: false, reason: 'key does not belong to the fingerprint (' + bind.mode + ')' };
-    var key = await HCP.deriveSessionKey(me.priv, partner.session_key, { myCode: myCode, theirCode: me.theirCode, myFp: me.fp, theirFp: partner.fingerprint, mySignPub: me.signPub, theirSignPub: partner.public_key, mySkPub: me.pub, theirSkPub: partner.session_key });
+    var tr = { myCode: myCode, theirCode: me.theirCode, myFp: me.fp, theirFp: partner.fingerprint, mySignPub: me.signPub, theirSignPub: partner.public_key, mySkPub: me.pub, theirSkPub: partner.session_key };
+    var key = await HCP.deriveSessionKey(me.priv, partner.session_key, tr);
+    var sid = await HCP.sessionId(tr);
     console.log('[sess] established with ' + String(partner.fingerprint).slice(0, 12) + ', binding ' + (bind.ok ? bind.mode : 'awaiting proof'));
-    return { ok: true, key: key, bind: bind, verified: bind.ok };
+    return { ok: true, key: key, sid: sid, bind: bind, verified: bind.ok };
   }
   function sessFailMsg(est) { return est && est.old ? 'The other device is running an older HEP. Update it there and try again.' : 'The connection did not check out. Nothing was shared. Try again, or try another witness.'; }
   // The partner's device proof, from its sealed hello or snapshot.
@@ -4035,6 +4037,7 @@ const PAIR_CODE_LENGTH = 4;
   let sessionCpActSig = null;
   let sessionActiveTab = 'texture';
   let sessionSharedKey = null; // ECDH-derived AES key for encrypted relay
+  let sessionSid = null; // v2.138.0: session id (hash of the handshake transcript), signed into sealed snapshots
   let sessionSASHash = null; // 16-byte SAS hash for automatic collision detection
   let _snapshotPollTimer = null;
 
@@ -4112,8 +4115,12 @@ const PAIR_CODE_LENGTH = 4;
   function sessionViolation(reason, msg) {
     console.error('[state-machine] VIOLATION: ' + reason + ' -- dropping session');
     // Layer 4: Record failure against current server
-    var url = getWitnessUrl();
+    var url = getSessionWitnessUrl() || getWitnessUrl();
     if (url) recordServerFailure(url, reason);
+    // v2.138.0: a failed integrity check (a swapped or unsigned key, a packet that will not
+    // open, a sealed message from the wrong chain or session) quarantines that witness on this
+    // phone: no attestations or invites through it. An older app on the other side is not counted.
+    if (url && /^(session: (?!no session key)|sealed|partner key)/.test(reason)) recordServerIntegrityFailure(url, reason);
     toast(msg || 'Connection issue -- please try again');
     cleanupSession();
     exFlowActive = false;
@@ -4204,6 +4211,9 @@ const PAIR_CODE_LENGTH = 4;
     var snap = buildSnapshotForSharing(extras);
     if (!snap) return;
     try {
+      // v2.138.0: signed to this session (from, to, session id) so a witness posing as
+      // someone cannot pass along another person's real snapshot as its own.
+      snap = await HCP.signSealed(snap, state.fingerprint, sessionPartner.fingerprint, sessionSid, state.privateKeyJwk);
       var encrypted = await HCP.encryptRelayPayload(snap, sessionSharedKey);
       await serverFetch(url + '/session/' + sessionCode + '/thread', {
         method: 'POST',
@@ -4231,6 +4241,7 @@ const PAIR_CODE_LENGTH = 4;
   async function sendSealed(obj) {
     var url = getSessionWitnessUrl(); if (!url || !sessionCode || !sessionSharedKey) return;
     try {
+      obj = await HCP.signSealed(obj, state.fingerprint, sessionPartner.fingerprint, sessionSid, state.privateKeyJwk);
       var enc = await HCP.encryptRelayPayload(obj, sessionSharedKey);
       await serverFetch(url + '/session/' + sessionCode + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: enc }) });
       console.log('[session] sealed ' + obj.t + ' sent');
@@ -4252,6 +4263,15 @@ const PAIR_CODE_LENGTH = 4;
         if (data.partner.encrypted_snapshot && sessionSharedKey && data.partner.encrypted_snapshot !== _snapshotSeen) {
           _snapshotSeen = data.partner.encrypted_snapshot;
           HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey).then(async function(decrypted) {
+            // v2.138.0: the sealed message must be signed by the partner's key, from the
+            // partner's chain, to this chain, in this session.
+            var vs = await HCP.verifySealed(decrypted, sessionPartner.fingerprint, state.fingerprint, sessionSid, sessionPartner.public_key);
+            if (!vs.ok) {
+              stopSnapshotPoll(); console.log('[sess] sealed message refused: ' + vs.error);
+              // An unsigned snapshot comes from an app before v2.138.0: ask for an update, do not blame the witness.
+              if (vs.error === 'unsigned') { sessionViolation('older app: unsigned snapshot', sessFailMsg({ old: true })); return; }
+              sessionViolation('sealed message ' + vs.error, sessFailMsg(null)); return;
+            }
             // v2.137.0: a key that is not the fingerprint must prove itself before anything
             // about this person goes out. The proof rides in a sealed hello or in the snapshot.
             if (decrypted && decrypted.t === 'proof-hello') {
@@ -4272,7 +4292,10 @@ const PAIR_CODE_LENGTH = 4;
             logPartnerBinding(sessionPartner);
             if (onReceived) onReceived(decrypted);
           }).catch(function(de) {
+            // v2.138.0: both phones derive the key from the same handshake; a packet that will
+            // not open means the handshake was changed in transit. Stop, and count it against the witness.
             console.error('[session] Decrypt partner snapshot failed:', de);
+            stopSnapshotPoll(); sessionViolation('sealed packet would not open', sessFailMsg(null));
           });
         }
       }).catch(function(e) {});
@@ -4708,7 +4731,7 @@ const PAIR_CODE_LENGTH = 4;
       try {
         var est = await sessEstablish(sessionCode, sessionPartner, false);
         if (!est.ok) { sessionViolation('session: ' + est.reason, sessFailMsg(est)); return; }
-        sessionSharedKey = est.key; sessionPartner._verified = est.verified;
+        sessionSharedKey = est.key; sessionSid = est.sid; sessionPartner._verified = est.verified;
       } catch(ek) { sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
     }
     // Our snapshot goes out only once the partner's key is verified.
@@ -5663,7 +5686,7 @@ const PAIR_CODE_LENGTH = 4;
     sessionPartner = null;
     sessionProposal = null;
     sessionRole = null;
-    sessionSharedKey = null;
+    sessionSharedKey = null; sessionSid = null;
     sessionSASHash = null;
     sessionExpectedState = null;
     sessionProposalNonce = null;
@@ -7414,12 +7437,21 @@ const PAIR_CODE_LENGTH = 4;
     saveServerReputation(rep);
   }
 
+  function recordServerIntegrityFailure(url, reason) {
+    var rep = getServerReputation();
+    if (!rep[url]) rep[url] = { trust: SERVER_TRUST_INITIAL, failures: 0, successes: 0, lastFailure: null };
+    rep[url].trust = 0; rep[url].integrity = (rep[url].integrity || 0) + 1;
+    rep[url].lastFailure = new Date().toISOString(); rep[url].lastReason = reason;
+    console.log('[reputation] Server', url, 'QUARANTINED on this phone, integrity check failed:', reason);
+    saveServerReputation(rep);
+  }
+
   function recordServerSuccess(url) {
     var rep = getServerReputation();
     if (!rep[url]) rep[url] = { trust: SERVER_TRUST_INITIAL, failures: 0, successes: 0, lastFailure: null };
     rep[url].successes++;
     // Slowly recover trust on success (max initial)
-    rep[url].trust = Math.min(SERVER_TRUST_INITIAL, rep[url].trust + 5);
+    if (!rep[url].integrity) rep[url].trust = Math.min(SERVER_TRUST_INITIAL, rep[url].trust + 5); // v2.138.0: a quarantine does not wear off
     saveServerReputation(rep);
   }
 
@@ -8966,11 +8998,12 @@ const PAIR_CODE_LENGTH = 4;
     var candidates = [];
     var seen = {};
     var primary = getWitnessUrl();
-    if (primary) { candidates.push(primary); seen[primary.toLowerCase()] = true; }
+    // v2.138.0: a witness this phone has quarantined never carries an invite.
+    if (primary && getServerTrust(primary) >= SERVER_TRUST_THRESHOLD) { candidates.push(primary); seen[primary.toLowerCase()] = true; }
     var trustSet = getEffectiveTrustSet();
     for (var i = 0; i < trustSet.length; i++) {
       var u = trustSet[i] && trustSet[i].url ? trustSet[i].url.trim().replace(/\/+$/, '') : null;
-      if (!u || seen[u.toLowerCase()]) continue;
+      if (!u || seen[u.toLowerCase()] || getServerTrust(u) < SERVER_TRUST_THRESHOLD) continue;
       seen[u.toLowerCase()] = true;
       candidates.push(u);
     }
@@ -10453,7 +10486,7 @@ function init() {
       try {
         var est = await sessEstablish(sessionCode, sessionPartner, false);
         if (!est.ok) { console.log('[ex-flow] session refused: ' + est.reason); sessionViolation('session: ' + est.reason, sessFailMsg(est)); return; }
-        sessionSharedKey = est.key; sessionPartner._verified = est.verified;
+        sessionSharedKey = est.key; sessionSid = est.sid; sessionPartner._verified = est.verified;
       } catch(ek) { console.log('[ex-flow] session key failed:', ek.message); sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
     }
 

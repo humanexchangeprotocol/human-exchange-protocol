@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.137.0';
+const APP_VERSION='2.138.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -846,12 +846,19 @@ async function skver(partner,myCode,theirCode){
   }catch(e){return{ok:false,error:e.message}}
 }
 function kstr(j){return j?(j.x||'')+'.'+(j.y||''):''}
+function stinfo(t){return[SESS_TAG,[t.myCode,t.theirCode].sort().join(','),[t.myFp,t.theirFp].sort().join(','),[kstr(t.mySignPub),kstr(t.theirSignPub)].sort().join(','),[kstr(t.mySkPub),kstr(t.theirSkPub)].sort().join(',')].join('|')}
+// Session id: the same on both phones, different for any other session or any tampered handshake.
+async function sthash(t){return bth(await crypto.subtle.digest(HALG,u8.encode(stinfo(t))))}
+// Sealed messages that carry who a person is are signed to the session: from, to, session id.
+// A witness pretending to be someone cannot pass along another person's real snapshot.
+async function ssnap(obj,fromFp,toFp,sid,signPrivJwk){const o=JSON.parse(JSON.stringify(Object.assign({},obj,{_from:fromFp,_to:toFp,_sid:sid})));delete o._sig;const sk=await isk(signPrivJwk);o._sig=btb(await crypto.subtle.sign(SALG,sk,u8.encode('hep-snap1|'+cjs(o))));return o}
+async function vsnap(o,fromFp,toFp,sid,signPubJwk){try{if(!o||!o._sig)return{ok:false,error:'unsigned'};if(o._from!==fromFp)return{ok:false,error:'from another chain'};if(o._to!==toFp)return{ok:false,error:'addressed to another chain'};if(o._sid!==sid)return{ok:false,error:'from another session'};const c=Object.assign({},o);const sig=c._sig;delete c._sig;const pk=await ipk(signPubJwk);return await crypto.subtle.verify(SALG,pk,btf(sig),u8.encode('hep-snap1|'+cjs(c)))?{ok:true}:{ok:false,error:'bad signature'}}catch(e){return{ok:false,error:e.message}}}
 // Transcript-bound session key. Both phones build the same transcript (sorted pairs).
 async function dssk(mySkPriv,partnerSkPub,t){
   const priv=await crypto.subtle.importKey('jwk',{kty:mySkPriv.kty,crv:mySkPriv.crv,x:mySkPriv.x,y:mySkPriv.y,d:mySkPriv.d},ECDH,false,['deriveBits']);
   const pub=await crypto.subtle.importKey('jwk',{kty:partnerSkPub.kty,crv:partnerSkPub.crv,x:partnerSkPub.x,y:partnerSkPub.y},ECDH,true,[]);
   const bits=await crypto.subtle.deriveBits({name:'ECDH',public:pub},priv,256);
-  const info=[SESS_TAG,[t.myCode,t.theirCode].sort().join(','),[t.myFp,t.theirFp].sort().join(','),[kstr(t.mySignPub),kstr(t.theirSignPub)].sort().join(','),[kstr(t.mySkPub),kstr(t.theirSkPub)].sort().join(',')].join('|');
+  const info=stinfo(t);
   const km=await crypto.subtle.importKey('raw',bits,'HKDF',false,['deriveKey']);
   return await crypto.subtle.deriveKey({name:'HKDF',hash:HALG,salt:u8.encode(SESS_TAG),info:u8.encode(info)},km,{name:AESN,length:256},false,['encrypt','decrypt']);
 }
@@ -955,7 +962,7 @@ async function vpa(r,chainFp){
   const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
   return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
 }
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
 })();
 
 // ============================================================
