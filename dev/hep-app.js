@@ -10152,6 +10152,24 @@ function init() {
       if (inp) { inp.value = ''; inp._exConnecting = false; exCodeInput(inp); inp.focus(); }
     }, 450);
   }
+  // v2.139.0 (Michael, Oct 13, wording ruled): remember the people you have met. The
+  // fingerprint is the identity; the name is only what someone typed. Same chain: say so.
+  // A familiar name on a different chain: say so in red, never block (the person decides).
+  // Reads this phone's own records only; nothing is stored or sent.
+  function exKnownLine(fp, name) {
+    var el = document.getElementById('ex-verify-known'); if (!el) return;
+    el.style.display = 'none'; el.classList.remove('rec-warn'); el.textContent = '';
+    if (!fp) return;
+    var same = 0, other = false, nm = String(name || '').trim().toLowerCase();
+    (state.chain || []).forEach(function(r) {
+      if (!HCP.isAct(r) || !r.counterparty) return;
+      if (r.counterparty === fp) same++;
+      else if (nm && String(r.counterpartyName || '').trim().toLowerCase() === nm) other = true;
+    });
+    if (same) { el.textContent = 'You\u2019ve exchanged with ' + (name || 'them') + ' before.'; el.style.display = ''; }
+    else if (other) { el.textContent = 'You\u2019ve exchanged with a ' + name + ' before, on a different chain. If this is the same person, ask them why before you go on.'; el.classList.add('rec-warn'); el.style.display = ''; }
+    console.log('[known] ' + (same ? 'same chain, ' + same + ' before' : (other ? 'familiar name on a different chain' : 'new')));
+  }
   function exVerifyWords(name) {
     var t = document.getElementById('ex-verify-title'), l = document.getElementById('ex-verify-line');
     if (t) t.textContent = name ? 'Confirm ' + name + ' has this mark' : 'Confirm they have this mark';
@@ -10475,6 +10493,7 @@ function init() {
   async function exOnConnected() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
     if (!sessionPartner || sessionPartner._self) return;
+    try { exKnownLine(null); } catch (_) {}
     sessionSetState('connected');
     _exConnT0 = Date.now(); try { exShowConnecting(false); } catch(_) {}
     // The pipe exists from here, so listen for the other side ending it
@@ -10624,6 +10643,7 @@ function init() {
           console.log('[ex-flow] Role from sealed snapshot: ' + sessionRole);
         }
         // Update verify screen with partner name if still showing
+        try { exKnownLine(sessionPartner && sessionPartner.fingerprint, decrypted && decrypted._name); } catch (ke) { console.log('[known] failed:', ke.message); }
         if (decrypted && decrypted._name) {
           var nameEl = document.getElementById('ex-verify-name');
           var avatarEl = document.getElementById('ex-verify-avatar');
