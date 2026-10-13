@@ -1108,7 +1108,7 @@ const PAIR_CODE_LENGTH = 4;
         AT.devFp = await HCP.keyFingerprint(AT.devPubJwk);
       }
       AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code); AT.shared = null; AT.partnerPub = null;
-      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: AT.devFp, public_key: AT.devPubJwk, role: 'attach-new' });
+      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: AT.devFp, public_key: AT.devPubJwk });
     } catch (e) { console.log('[attach] new: join failed', e.message); toast('Could not reach the witness: ' + e.message); return; }
     var h = atHead('Attach chain', true, 'atNewName');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
@@ -1265,7 +1265,7 @@ const PAIR_CODE_LENGTH = 4;
     AT.connecting = true;
     var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
     try {
-      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: mySigningKeyJwk(), role: 'attach-old' });
+      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: mySigningKeyJwk() });
     } catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
     AT.connecting = false;
     var h = atHead('Add a device', true, 'atOldEnter');
@@ -1391,7 +1391,7 @@ const PAIR_CODE_LENGTH = 4;
     AT.url = getWitnessUrl();
     if (!AT.url) { AT.role = 'sync-choose'; toast('No witness reachable. Check your connection.'); return; }
     AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code);
-    try { await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: syMyFp(), public_key: mySigningKeyJwk(), role: 'sync-show' }); }
+    try { await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: syMyFp(), public_key: mySigningKeyJwk() }); }
     catch (e) { console.log('[sync] join failed', e.message); AT.code = null; AT.role = 'sync-choose'; toast('Could not reach the witness. Check your connection and try again.'); return; }
     var h = atHead('Sync with ' + AT.label, true, 'syncBack');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
@@ -1420,7 +1420,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!AT.url) { atMsg('No witness reachable. Check your connection.'); return; }
     AT.connecting = true;
     var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
-    try { await atPost('/session/join', { my_code: deriveJoinCode(c), their_code: c, fingerprint: syMyFp(), public_key: mySigningKeyJwk(), role: 'sync-enter' }); }
+    try { await atPost('/session/join', { my_code: deriveJoinCode(c), their_code: c, fingerprint: syMyFp(), public_key: mySigningKeyJwk() }); }
     catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
     AT.connecting = false; AT.code = deriveJoinCode(c);
     syncConnecting(false);
@@ -1444,12 +1444,17 @@ const PAIR_CODE_LENGTH = 4;
       if (d.cancelled && !d.cancelled.by_me && !AT.finished) { atProblem(AT.label + ' stopped.'); return; }
       if (!d.connected || !d.partner) return;
       if (!AT.shared) {
-        var role = d.partner.role || '';
-        if (role && role.indexOf('sync-') !== 0) { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+        // v2.135.0 (security tenet gate): no role on the witness. What kind of session the
+        // other device is in shows only in its sealed packet, checked below after decrypt.
         AT.partnerPub = d.partner.public_key; AT.partnerFp = await HCP.keyFingerprint(AT.partnerPub);
         if (AT.partnerFp === syMyFp()) { atProblem('That code came from this device. Type it on ' + AT.label + '.'); return; }
         if (AT.role === 'sync-show') syncConnecting(false);
         AT.shared = await HCP.deriveSharedKey(state.privateKeyJwk, AT.partnerPub);
+        if (d.partner.encrypted_snapshot) {
+          var early = null;
+          try { early = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared); } catch (de) {}
+          if (early && early.t && early.t !== 'sync-pack') { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+        }
         console.log('[sync] connected to ' + AT.partnerFp.slice(0, 12) + (AT.partnerFp !== AT.rowFp ? ' (row was ' + String(AT.rowFp).slice(0, 12) + ')' : ''));
         syncConnecting(true);
         atStopPoll();
@@ -1460,6 +1465,7 @@ const PAIR_CODE_LENGTH = 4;
       if (AT.sent && !AT.theirs && d.partner.encrypted_snapshot) {
         var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
         if (p && p.t === 'sync-pack') { AT.theirs = p; atStopPoll(); await syncReceive(p); }
+        else if (p && p.t) { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
       }
     } catch (e) { console.log('[sync] poll error', e.message); }
     finally { if (AT) AT.busy = false; }
@@ -4748,15 +4754,9 @@ const PAIR_CODE_LENGTH = 4;
         return;
       }
       {
-        // Encrypted path: server carries opaque blob
+        // Sealed path, the only path: the witness carries an opaque blob. No placeholder
+        // fields (v2.135.0); witness v2.10.0 requires only encrypted_exchange.
         body.encrypted_exchange = await HCP.encryptRelayPayload(exchangeContent, sessionSharedKey);
-        // Placeholder values so server schema doesn't break
-        body.value = 0;
-        body.direction = '';
-        body.description = '';
-        body.category = '';
-        body.duration = 0;
-        body.photo = '';
       }
 
       // Countersignature, proposer side: hash the act as stated, sign it, and
@@ -7563,7 +7563,9 @@ const PAIR_CODE_LENGTH = 4;
       const resp = await serverFetch(url + '/witness', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mint_hash: mintHash, pubkey_a: pubkeyA, pubkey_b: pubkeyB, device_timestamp: deviceTs, chain_sig: chainSig, act_hash: actHash || undefined }),
+        // v2.135.0: only the hash, the time and the act hash; the keys and chain signature
+        // were never needed to attest a hash, and witness v2.10.0 drops them.
+        body: JSON.stringify({ mint_hash: mintHash, device_timestamp: deviceTs, act_hash: actHash || undefined }),
       });
       if (!resp.ok) return null;
       return await resp.json();
@@ -8100,16 +8102,21 @@ const PAIR_CODE_LENGTH = 4;
         console.log('[ping] Challenge request failed, submitting without:', ce.message);
       }
 
+      // v2.135.0 (registry Component 1, "PING ANCHORS THE CHAIN'S HISTORY"): the ping carries
+      // the hash of the ping record itself, which is linked to everything before it, and the
+      // witness signs it in. Rewriting any earlier record then breaks this signature. The
+      // signature stays on the phone; the witness keeps nothing. No sensor hash or sequence is
+      // sent (security tenet gate: not on the witness allowlist).
+      var headHash = await HCP.hashRecord(record);
       var rttStart = Date.now();
       var resp = await serverFetch(url + '/ping', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chain_fingerprint: chainFp,
-          sensor_hash: record.sensorHash || '',
           device_ts: Math.floor(Date.now() / 1000),
-          seq: record.seq,
           challenge_nonce: challengeNonce,
+          head_hash: headHash,
         }),
       });
       var rttMs = Date.now() - rttStart;
@@ -8123,6 +8130,13 @@ const PAIR_CODE_LENGTH = 4;
             rtt_ms: rttMs,
             challenged: data.challenged || false,
           };
+          // Witness v2.10.0 and later echo the head and sign it in; older witnesses do not.
+          if (data.head_hash) record.witnessAttestation.head_hash = data.head_hash;
+          // Observe before enforce: check the anchor now and log; nothing is refused yet.
+          try {
+            var anc = await HCP.verifyPingAnchor(record, state.fingerprint);
+            console.log('[ping-anchor] ' + anc.status + (anc.detail ? ' (' + anc.detail + ')' : ''));
+          } catch (ae) { console.log('[ping-anchor] check failed:', ae.message); }
           save();
           console.log('[ping] Server attestation received, RTT ' + rttMs + 'ms, challenged=' + (data.challenged || false));
         }
@@ -8951,7 +8965,8 @@ const PAIR_CODE_LENGTH = 4;
       attempts++;
       if (attempts > 2400) { stopInvitePoll(); return; } // ~2h; server TTL is the real lifetime
       try {
-        var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner?fingerprint=' + encodeURIComponent(state.fingerprint), { signal: AbortSignal.timeout(8000) });
+        // v2.135.0: fingerprint in the body, never the URL (needs witness v2.10.0).
+        var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fingerprint: state.fingerprint }), signal: AbortSignal.timeout(8000) });
         if (!resp.ok) return;
         var data = await resp.json();
         if (!data || !data.found || !Array.isArray(data.redemptions)) return;

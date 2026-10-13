@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.134.0';
+const APP_VERSION='2.135.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -903,7 +903,23 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+// Ping anchor (v2.135.0, registry Component 1 "PING ANCHORS THE CHAIN'S HISTORY").
+// A witness v2.10.0+ signs ping2:<chainFp>:<headHash>:<serverTs>, where headHash is
+// the hash of the ping record itself (hr, which links to every record before it).
+// Returns {status, detail}: 'ok' | 'no-anchor' (older witness, or no attestation) |
+// 'head-mismatch' (the record was changed after the ping) | 'bad-signature'.
+// Observe only for now: callers log the result. Enforcement, and checking that
+// server_pubkey is a known witness, come after a validation cycle.
+async function vpa(r,chainFp){
+  const a=r&&r.witnessAttestation;
+  if(!a)return{status:'no-anchor',detail:'not attested'};
+  if(!a.head_hash)return{status:'no-anchor',detail:'witness did not sign a head'};
+  const h=await hr(r);
+  if(h!==String(a.head_hash).toLowerCase())return{status:'head-mismatch',detail:'record hash '+h.slice(0,12)+' vs signed '+String(a.head_hash).slice(0,12)};
+  const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
+  return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
+}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
 })();
 
 // ============================================================
