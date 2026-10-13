@@ -241,7 +241,45 @@ const PAIR_CODE_LENGTH = 4;
   // keep their chain. Path-based, so the same file promotes unchanged.
   const SK = (function() {
     var prodKey = 'hcp_dev_data';
-    if (window.location.pathname.indexOf('/dev/') !== 0) return prodKey;
+    if (window.location.pathname.indexOf('/dev/') !== 0) {
+      // v2.136.0 (Michael, Oct 13): production jumps from v2.99.3 to the dev build, and testers'
+      // real chains have lived in the dev store since Oct 3. Once, on a production load: if this
+      // browser has a dev store for the same chain that holds every production record (by
+      // signature), carry it into production. The old production store is kept beside it, never
+      // deleted. A different chain, or a production record the dev store lacks, leaves production
+      // untouched. Local only: nothing leaves the device.
+      try {
+        var carried = 'hep_prod_carried_v2136';
+        var devKey0 = 'hep_devbuild_data';
+        if (localStorage.getItem(carried) === null) {
+          var dRaw = localStorage.getItem(devKey0), pRaw = localStorage.getItem(prodKey);
+          var dD = dRaw ? JSON.parse(dRaw) : null, pD = pRaw ? JSON.parse(pRaw) : null;
+          var dC = (dD && Array.isArray(dD.chain)) ? dD.chain : [], pC = (pD && Array.isArray(pD.chain)) ? pD.chain : [];
+          var why = 'no dev store';
+          if (dC.length && localStorage.getItem(devKey0 + '_keys') !== null) {
+            var take = false;
+            if (!pC.length) { take = true; why = 'production empty'; }
+            else if (pD.fingerprint && pD.fingerprint === dD.fingerprint) {
+              var have = {}; dC.forEach(function(r) { if (r && r.signature) have[r.signature] = 1; });
+              var missing = pC.filter(function(r) { return !(r && r.signature && have[r.signature]); }).length;
+              if (!missing && dC.length >= pC.length) { take = true; why = 'same chain, dev holds all ' + pC.length + ' production records'; }
+              else why = 'same chain, ' + missing + ' production records not in dev: left alone';
+            } else why = 'different chain: left alone';
+            if (take) {
+              ['', '_keys', '_backup'].forEach(function(sfx) {
+                var old = localStorage.getItem(prodKey + sfx);
+                if (old !== null) localStorage.setItem(prodKey + '_before_v2136' + sfx, old);
+                var v = localStorage.getItem(devKey0 + sfx);
+                if (v !== null) localStorage.setItem(prodKey + sfx, v); else localStorage.removeItem(prodKey + sfx);
+              });
+            }
+          }
+          localStorage.setItem(carried, '1');
+          console.log('[storage] production carry from dev: ' + why);
+        }
+      } catch (e) { console.warn('[storage] production carry failed:', e && e.message); }
+      return prodKey;
+    }
     var devKey = 'hep_devbuild_data';
     try {
       // v2.104.1: remember the copy so it happens once ever. Before this, deleting

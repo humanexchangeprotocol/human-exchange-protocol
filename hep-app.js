@@ -241,14 +241,58 @@ const PAIR_CODE_LENGTH = 4;
   // keep their chain. Path-based, so the same file promotes unchanged.
   const SK = (function() {
     var prodKey = 'hcp_dev_data';
-    if (window.location.pathname.indexOf('/dev/') !== 0) return prodKey;
+    if (window.location.pathname.indexOf('/dev/') !== 0) {
+      // v2.136.0 (Michael, Oct 13): production jumps from v2.99.3 to the dev build, and testers'
+      // real chains have lived in the dev store since Oct 3. Once, on a production load: if this
+      // browser has a dev store for the same chain that holds every production record (by
+      // signature), carry it into production. The old production store is kept beside it, never
+      // deleted. A different chain, or a production record the dev store lacks, leaves production
+      // untouched. Local only: nothing leaves the device.
+      try {
+        var carried = 'hep_prod_carried_v2136';
+        var devKey0 = 'hep_devbuild_data';
+        if (localStorage.getItem(carried) === null) {
+          var dRaw = localStorage.getItem(devKey0), pRaw = localStorage.getItem(prodKey);
+          var dD = dRaw ? JSON.parse(dRaw) : null, pD = pRaw ? JSON.parse(pRaw) : null;
+          var dC = (dD && Array.isArray(dD.chain)) ? dD.chain : [], pC = (pD && Array.isArray(pD.chain)) ? pD.chain : [];
+          var why = 'no dev store';
+          if (dC.length && localStorage.getItem(devKey0 + '_keys') !== null) {
+            var take = false;
+            if (!pC.length) { take = true; why = 'production empty'; }
+            else if (pD.fingerprint && pD.fingerprint === dD.fingerprint) {
+              var have = {}; dC.forEach(function(r) { if (r && r.signature) have[r.signature] = 1; });
+              var missing = pC.filter(function(r) { return !(r && r.signature && have[r.signature]); }).length;
+              if (!missing && dC.length >= pC.length) { take = true; why = 'same chain, dev holds all ' + pC.length + ' production records'; }
+              else why = 'same chain, ' + missing + ' production records not in dev: left alone';
+            } else why = 'different chain: left alone';
+            if (take) {
+              ['', '_keys', '_backup'].forEach(function(sfx) {
+                var old = localStorage.getItem(prodKey + sfx);
+                if (old !== null) localStorage.setItem(prodKey + '_before_v2136' + sfx, old);
+                var v = localStorage.getItem(devKey0 + sfx);
+                if (v !== null) localStorage.setItem(prodKey + sfx, v); else localStorage.removeItem(prodKey + sfx);
+              });
+            }
+          }
+          localStorage.setItem(carried, '1');
+          console.log('[storage] production carry from dev: ' + why);
+        }
+      } catch (e) { console.warn('[storage] production carry failed:', e && e.message); }
+      return prodKey;
+    }
     var devKey = 'hep_devbuild_data';
     try {
-      if (localStorage.getItem(devKey) === null && localStorage.getItem(prodKey) !== null) {
+      // v2.104.1: remember the copy so it happens once ever. Before this, deleting
+      // the dev chain and reloading copied production's chain straight back in.
+      // A dev store that already exists counts as copied.
+      var copiedFlag = 'hep_devbuild_copied';
+      if (localStorage.getItem(devKey) !== null) localStorage.setItem(copiedFlag, '1');
+      if (localStorage.getItem(copiedFlag) === null && localStorage.getItem(devKey) === null && localStorage.getItem(prodKey) !== null) {
         ['', '_keys', '_backup'].forEach(function(sfx) {
           var v = localStorage.getItem(prodKey + sfx);
           if (v !== null) localStorage.setItem(devKey + sfx, v);
         });
+        localStorage.setItem(copiedFlag, '1');
         console.log('[storage] dev build: copied chain from the shared key once');
       }
     } catch (e) { console.warn('[storage] dev key copy failed:', e && e.message); }
@@ -264,7 +308,7 @@ const PAIR_CODE_LENGTH = 4;
   }
   async function saveKeys(pin) {
     localStorage.setItem(SK + '_keys', JSON.stringify(
-      await HCP.encryptWithPIN({ publicKey: state.publicKeyJwk, privateKey: state.privateKeyJwk }, pin)
+      await HCP.encryptWithPIN(state.devicePublicKeyJwk ? { publicKey: state.publicKeyJwk, privateKey: state.privateKeyJwk, devicePublicKey: state.devicePublicKeyJwk } : { publicKey: state.publicKeyJwk, privateKey: state.privateKeyJwk }, pin)
     ));
   }
   function load() {
@@ -288,6 +332,8 @@ const PAIR_CODE_LENGTH = 4;
     const keys = await HCP.decryptWithPIN(JSON.parse(raw), pin);
     state.publicKeyJwk = keys.publicKey;
     state.privateKeyJwk = keys.privateKey;
+    // v2.105.0: an attached device signs with its own key; publicKey stays the chain's root (identity).
+    state.devicePublicKeyJwk = keys.devicePublicKey || null;
     const pair = await HCP.importKeyPair(keys.publicKey, keys.privateKey);
     state.publicKey = pair.publicKey;
     state.privateKey = pair.privateKey;
@@ -295,8 +341,16 @@ const PAIR_CODE_LENGTH = 4;
 
   // --- Chain append (handles genesis protocol commitment) ---
   async function appendRecord(record) {
-    // Duplicate guard: reject if last record matches counterparty + value + timestamp within 30s
-    if (state.chain.length > 0) {
+    // Same-owner rule (v2.108.0, protocol): a chain never records an exchange
+    // with itself, whichever path produced the record (session, pipe, offline).
+    if (HCP.isAct(record) && record.counterparty && record.counterparty === state.fingerprint) {
+      console.log('[self] refused to write an exchange with this chain\'s own fingerprint');
+      throw new Error('A chain cannot exchange with itself');
+    }
+    // Duplicate guard: reject if last record matches counterparty + value + timestamp within 30s.
+    // v2.101.0: acts only. A parent record has value 0 and no counterparty, like a ping,
+    // and would otherwise be dropped silently after a recent ping.
+    if (state.chain.length > 0 && HCP.isAct(record)) {
       const last = state.chain[state.chain.length - 1];
       if (last.counterparty === record.counterparty && last.value === record.value && last.energyState === record.energyState) {
         const timeDiff = Math.abs(new Date(record.timestamp).getTime() - new Date(last.timestamp).getTime());
@@ -315,6 +369,7 @@ const PAIR_CODE_LENGTH = 4;
   // --- Screens ---
   function showScreen(id) { document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; }); const el = document.getElementById(id); el.classList.add('active'); el.style.display = 'flex'; }
   var _returnToWallet = false;
+  var _walletSub = null; // v2.114.0: which Account sheet to reopen on return
   function showModal(id) {
     if (fabOpen) toggleFab();
     const el = document.getElementById(id + '-overlay');
@@ -336,7 +391,7 @@ const PAIR_CODE_LENGTH = 4;
     // Return to wallet if this was a child modal
     if (_returnToWallet && (id === 'chain')) {
       _returnToWallet = false;
-      setTimeout(() => openWallet(), 340);
+      setTimeout(() => { var fh = _mcFromHome; openWallet(); _mcFromHome = fh; if (_walletSub) mcOpen(_walletSub); _walletSub = null; }, 340);
     }
     // Refresh active tab after modal closes (e.g., exchange completed)
     if (activeTab) setTimeout(function() { switchTab(activeTab); }, 350);
@@ -387,13 +442,31 @@ const PAIR_CODE_LENGTH = 4;
     if (step === 'name' && inviteOnboardingActive()) {
       var nameStepEl = document.getElementById('setup-name');
       if (nameStepEl && !document.getElementById('invite-name-hint')) {
-        nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size:14px; color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
+        nameStepEl.insertAdjacentHTML('afterbegin', '<div id="invite-name-hint" style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.5;">Someone invited you to record an exchange together. Use your name, an alias, whatever you want in this moment. You can ground it further later.</div>');
       }
     }
-    if (step === 'pin') buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
-    else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { state.pin = pin; setupStep(inviteOnboardingActive() ? 'name' : 'photo'); } else shake(); });
+    if (step === 'pin') {
+      var pinStepEl = document.getElementById('setup-pin');
+      var gEl = pinStepEl && pinStepEl.querySelector('.guidance'), lEl = pinStepEl && pinStepEl.querySelector('.pin-label');
+      if (gEl && gEl.dataset.orig === undefined) { gEl.dataset.orig = gEl.innerHTML; lEl.dataset.orig = lEl.textContent; }
+      if (attachPendingPin && attachPinCheckData) {
+        if (gEl) gEl.textContent = 'Enter the PIN you use on your other device. It will be your PIN here too, so there is only one to remember.';
+        if (lEl) lEl.textContent = 'Your PIN';
+        buildNumpad('setup-numpad', 'setup-pin-display', 4, async (pin, reset, shake) => {
+          var c = await atPinCheck(pin, attachPinCheckData.salt);
+          if (c.hash === attachPinCheckData.hash) { attachFinishPin(pin); return; }
+          if (gEl) gEl.textContent = 'That is not the PIN from your other device. Try again.';
+          shake();
+        });
+      } else {
+        if (gEl && gEl.dataset.orig !== undefined) { gEl.innerHTML = gEl.dataset.orig; lEl.textContent = lEl.dataset.orig; }
+        buildNumpad('setup-numpad', 'setup-pin-display', 4, (pin, reset) => { setupPIN = pin; reset(); setupStep('confirm'); });
+      }
+    }
+    else if (step === 'confirm') buildNumpad('setup-confirm-numpad', 'setup-confirm-display', 4, async (pin, reset, shake) => { if (pin === setupPIN) { if (attachPendingPin) { attachFinishPin(pin); return; } state.pin = pin; setupStep(inviteOnboardingActive() ? 'name' : 'photo'); } else shake(); });
   }
 
+  function setupChoose() { setupStep('choose'); }
   function capturePhoto() { document.getElementById('photo-capture-input').click(); }
   function uploadPhoto() { document.getElementById('photo-file-input').click(); }
   function handlePhotoFile(event) {
@@ -521,12 +594,12 @@ const PAIR_CODE_LENGTH = 4;
 
     // Callout box
     html += '<div style="margin-top:12px; border-left:2px solid var(--green); padding:14px 0 14px 14px; background:var(--bg-raised); border-radius:0 var(--radius) var(--radius) 0;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">Your values on the shared scale:</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:12px;">Your values on the shared scale:</div>';
 
     // Simple
     html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">';
     html += '<div style="width:10px; height:10px; border-radius:50%; background:var(--green); flex-shrink:0;"></div>';
-    html += '<div style="font-size:14px;"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(sv) + '</span><span style="color:var(--text-dim);">' + sd + '</span></div>';
+    html += '<div style="font-size: var(--fs-label);"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(sv) + '</span><span style="color:var(--text-dim);">' + sd + '</span></div>';
     html += '</div>';
     var stags = getValTags('vt-simple');
     if (stags.length) html += '<div style="font-size:11px; color:var(--text-faint); margin:-6px 0 10px 18px;">' + stags.join(' · ') + '</div>';
@@ -535,7 +608,7 @@ const PAIR_CODE_LENGTH = 4;
     if (dv > 0) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">';
       html += '<div style="width:10px; height:10px; border-radius:50%; background:var(--blue, #6ba3d6); flex-shrink:0;"></div>';
-      html += '<div style="font-size:14px;"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(dv) + '</span><span style="color:var(--text-dim);">' + dd + '</span></div>';
+      html += '<div style="font-size: var(--fs-label);"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(dv) + '</span><span style="color:var(--text-dim);">' + dd + '</span></div>';
       html += '</div>';
       var dtags = getValTags('vt-daily');
       if (dtags.length) html += '<div style="font-size:11px; color:var(--text-faint); margin:-6px 0 10px 18px;">' + dtags.join(' · ') + '</div>';
@@ -544,7 +617,7 @@ const PAIR_CODE_LENGTH = 4;
     // Complex / Personal ceiling
     html += '<div style="display:flex; align-items:center; gap:8px;">';
     html += '<div style="width:10px; height:10px; border-radius:50%; background:var(--red, #d66b6b); flex-shrink:0;"></div>';
-    html += '<div style="font-size:14px;"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(cv) + '</span><span style="color:var(--text-dim);">' + cd + '</span></div>';
+    html += '<div style="font-size: var(--fs-label);"><span style="font-weight:500; color:var(--accent); margin-right:6px;">' + fmt(cv) + '</span><span style="color:var(--text-dim);">' + cd + '</span></div>';
     html += '</div>';
     var ctags = getValTags('vt-complex');
     if (ctags.length) html += '<div style="font-size:11px; color:var(--text-faint); margin:4px 0 0 18px;">' + ctags.join(' · ') + '</div>';
@@ -552,7 +625,7 @@ const PAIR_CODE_LENGTH = 4;
     html += '</div>'; // close callout
 
     // Context message
-    html += '<div style="font-size:13px; color:var(--text-dim); margin-top:14px; line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:14px; line-height:1.6;">';
     html += 'Almost everything you will ever exchange fits in a small portion of the full scale. That is completely normal. The range exists so that when something truly extraordinary happens, the scale can hold it. You and every other person share this same ruler.';
     html += '</div>';
 
@@ -941,6 +1014,7 @@ const PAIR_CODE_LENGTH = 4;
         state.initialized = true;
         showScreen('home');
         refreshHome();
+        chainMultiObserve();
         showPendingUpdateBanner();
         checkForUpdates();
         handleIncomingPayload();
@@ -971,11 +1045,673 @@ const PAIR_CODE_LENGTH = 4;
   // top one. Every drawing reads only the person's own chain, on this phone.
   var _mcStack = [];
   var MC_AMB = 'var(--amber)';
+  // ==== Attach a device (Step 3, v2.105.0; spec writing/spec-3b-...). ====
+  // Two flows over the existing session pipe; the witness only relays.
+  // New device: name it, show a code, send its key and name, receive the
+  // chain and its certificate. Your phone (root key, parent key): enter the
+  // code, see the name and fingerprint, unlock the parent with the device
+  // password, sign the certificate, append it, send the chain back encrypted.
+  // The device name travels only inside the encrypted relay payload; the
+  // record carries a salted hash of it (Option B).
+  var AT = null;
+  function detectDeviceType() {
+    var ua = navigator.userAgent || '';
+    if (/iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'iPad';
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/Android/.test(ua)) return /Mobile/.test(ua) ? 'Android phone' : 'Android tablet';
+    if (/Windows/.test(ua)) return 'Windows PC';
+    if (/Mac/.test(ua)) return 'Mac';
+    if (/Linux/.test(ua)) return 'Linux computer';
+    return 'This device';
+  }
+  function atFp(fp) { var s = String(fp || '').slice(0, 12).toUpperCase(); return s.slice(0, 4) + ' ' + s.slice(4, 8) + ' ' + s.slice(8, 12); }
+  var AT_X = '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
+  function atHead(title, centered, xFn) {
+    var x = xFn ? '<button class="exs-x" onclick="App.' + xFn + '()" aria-label="Back">' + AT_X + '</button>' : '<span style="width:40px"></span>';
+    if (centered) return '<div class="exs-sheet-head" style="justify-content:center;"><span class="exs-t">' + esc(title) + '</span><span style="position:absolute;right:20px;top:50%;transform:translateY(-50%);">' + (xFn ? x : '') + '</span></div>';
+    return '<div class="exs-sheet-head"><span class="exs-t">' + esc(title) + '</span>' + x + '</div>';
+  }
+  // v2.106.0: password field with Show/Hide (DESIGN rule 13a; the word, not an eye, per rule 15).
+  function atPwField(id, label, ac) {
+    return '<div class="exs-fl"><label for="' + id + '">' + esc(label) + '</label><div class="exs-pw"><input class="exs-box-in" type="password" id="' + id + '" autocomplete="' + ac + '"><button type="button" class="exs-pw-t" onclick="App.atPwToggle(\'' + id + '\', this)">Show</button></div></div>';
+  }
+  function atPwToggle(id, btn) {
+    var i = document.getElementById(id); if (!i) return;
+    var show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    btn.textContent = show ? 'Hide' : 'Show';
+  }
+  function atPin(inner) { return '<div style="position:sticky;bottom:0;background:var(--bg);padding-top:12px;">' + inner + '</div>'; }
+  function atShow(html) {
+    var o = document.getElementById('attach-ov');
+    if (!o) {
+      o = document.createElement('div'); o.id = 'attach-ov';
+      o.style.cssText = 'position:fixed;inset:0;z-index:2000;background:var(--bg);display:flex;justify-content:center;';
+      o.innerHTML = '<div class="exs-sheet" id="attach-sh" style="position:relative;max-width:480px;width:100%;"></div>';
+      document.body.appendChild(o);
+    }
+    o.style.display = 'flex';
+    document.getElementById('attach-sh').innerHTML = html;
+  }
+  function atStopPoll() { if (AT && AT.poll) { clearInterval(AT.poll); AT.poll = null; } }
+  function atClose() {
+    atStopPoll();
+    if (AT && AT.code && AT.url && !AT.finished) {
+      serverFetch(AT.url + '/session/' + AT.code + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'cancelled' }) }).catch(function() {});
+    }
+    var o = document.getElementById('attach-ov'); if (o) o.style.display = 'none';
+    AT = null;
+    try { refreshHome(); } catch (e) {}
+  }
+  function atMsg(t) { var m = document.getElementById('at-msg'); if (m) { m.textContent = t; m.style.color = 'var(--red)'; } }
+  function atCheckDone(title, sub, btnFn, btnLabel) {
+    return '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">'
+      + '<div style="width:112px;height:112px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;"><svg width="54" height="54" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+      + '<div class="exs-t">' + esc(title) + '</div><div class="exs-body" style="color:var(--text-dim);">' + esc(sub) + '</div></div>'
+      + '<div class="exs-grow"></div><button class="btn btn-primary" style="width:100%;" onclick="App.' + btnFn + '()">' + esc(btnLabel) + '</button>';
+  }
+  function atProblem(text) {
+    atStopPoll();
+    atShow(atHead('Something did not check out', false, 'atClose') + '<p class="exs-body">' + esc(text) + '</p><p class="exs-cap" style="margin-top:10px;">Nothing was changed. You can close this and try again.</p>');
+  }
+  async function atPost(path, body) {
+    var r = await serverFetch(AT.url + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { var t = ''; try { t = await r.text(); } catch (e) {} throw new Error('Server ' + r.status + (t ? ': ' + t.slice(0, 120) : '')); }
+    return r.json();
+  }
+  function atNewCode() { var b = crypto.getRandomValues(new Uint8Array(4)); return Array.from(b).map(function(x) { return PAIR_CHARS[x % PAIR_CHARS.length]; }).join(''); }
+
+  // ---- New device ----
+  function attachNewStart() { atStopPoll(); AT = AT && AT.role === 'new' ? AT : { role: 'new' }; atNewName(); }
+  function atNewName() {
+    atStopPoll();
+    var v = (AT && AT.label) || detectDeviceType();
+    var h = atHead('Name this device', false, 'atClose');
+    h += '<div class="exs-fl"><label for="at-name">Device name</label><input class="exs-box-in" id="at-name" maxlength="60" value="' + esc(v) + '"></div>';
+    h += '<p class="exs-body" style="color:var(--text-dim);">This isn\u2019t your name. It\u2019s just how you tell your devices apart, like \u201cMy PC\u201d or \u201cWork phone\u201d. Only your own devices see it.</p>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" style="width:100%;" onclick="App.atNewCodeScreen()">Continue</button>');
+    atShow(h);
+  }
+  async function atNewCodeScreen() {
+    var nm = ((document.getElementById('at-name') || {}).value || '').trim();
+    AT.label = (nm || detectDeviceType()).slice(0, 60);
+    AT.url = getWitnessUrl();
+    if (!AT.url) { toast('No witness reachable. Check your connection.'); return; }
+    try {
+      if (!AT.devPubJwk) {
+        var pair = await HCP.generateKeyPair();
+        AT.devPriv = pair.privateKey;
+        AT.devPrivJwk = await HCP.exportKey(pair.privateKey);
+        AT.devPubJwk = await HCP.exportKey(pair.publicKey);
+        AT.devFp = await HCP.keyFingerprint(AT.devPubJwk);
+      }
+      AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code); AT.shared = null; AT.partnerPub = null;
+      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: AT.devFp, public_key: AT.devPubJwk });
+    } catch (e) { console.log('[attach] new: join failed', e.message); toast('Could not reach the witness: ' + e.message); return; }
+    var h = atHead('Attach chain', true, 'atNewName');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
+    h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Enter this code on your other phone</div><div class="exs-cap">Account, then Add a device</div></div>';
+    h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Waiting for your other phone</span></div>';
+    atShow(h);
+    console.log('[attach] new: code ' + AT.code + ', device ' + AT.devFp.slice(0, 12));
+    AT.poll = setInterval(atNewPoll, 2000);
+  }
+  async function atNewPoll() {
+    if (!AT || AT.role !== 'new' || AT.busy) return;
+    AT.busy = true;
+    try {
+      var r = await serverFetch(AT.url + '/session/' + AT.code); if (!r.ok) return;
+      var d = await r.json();
+      if (d.cancelled && !d.cancelled.by_me) { atProblem('Your other phone stopped adding this device.'); return; }
+      if (!d.connected || !d.partner) return;
+      if (!AT.shared) {
+        AT.partnerPub = d.partner.public_key; AT.partnerFp = d.partner.fingerprint;
+        AT.shared = await HCP.deriveSharedKey(AT.devPrivJwk, AT.partnerPub);
+        var hello = await HCP.encryptRelayPayload({ t: 'attach-hello', label: AT.label, deviceKey: AT.devPubJwk }, AT.shared);
+        await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: hello });
+        console.log('[attach] new: connected to ' + String(AT.partnerFp).slice(0, 12) + ', name sent');
+        var h = atHead('Check your other phone', true, null);
+        h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
+        h += '<div style="font-family:var(--font-mono);font-size:var(--fs-title);font-weight:600;letter-spacing:2px;color:var(--text);">' + esc(atFp(AT.devFp)) + '</div><div class="exs-body">Your other phone shows the same</div></div>';
+        h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Waiting for your password there</span></div>';
+        h += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.atClose()">Stop</button></div>';
+        atShow(h);
+        return;
+      }
+      if (d.partner.encrypted_snapshot) {
+        var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
+        if (p && p.t === 'attach-pack') { atStopPoll(); await atNewReceive(p); }
+      }
+    } catch (e) { console.log('[attach] new: poll error', e.message); }
+    finally { if (AT) AT.busy = false; }
+  }
+  async function atNewReceive(p) {
+    try {
+      if (!p.rootPublicKey || await HCP.keyFingerprint(p.rootPublicKey) !== AT.partnerFp) { atProblem('The chain sent does not belong to the phone you connected to.'); return; }
+      var v = await HCP.verifyChainMulti(p.chain || [], p.rootPublicKey);
+      if (!v.valid) { console.log('[attach] new: chain invalid', v.errors.slice(0, 3)); atProblem('The chain did not verify: ' + v.errors.slice(0, 2).join('; ')); return; }
+      var cert = null;
+      for (var i = 0; i < p.chain.length; i++) { var r = p.chain[i]; if (r.type === HCP.RECORD_TYPE_DEVICE && r.deviceKey && r.deviceKey.x === AT.devPubJwk.x && r.deviceKey.y === AT.devPubJwk.y) cert = r; }
+      if (!cert) { atProblem('The chain has no certificate for this device.'); return; }
+      if (!await HCP.verifyDeviceLabel(cert, p.label, p.salt)) { atProblem('The device name does not match its certificate.'); return; }
+      AT.pack = p; AT.finished = true;
+      console.log('[attach] new: chain received and verified, ' + p.chain.length + ' records, devices ' + v.devices.length);
+      var nm = (p.declarations && p.declarations.name) || '';
+      atShow(atCheckDone('Your chain is on this device', nm, 'atNewContinue', 'Continue'));
+    } catch (e) { console.log('[attach] new: receive failed', e.message); atProblem('Could not read what your other phone sent: ' + e.message); }
+  }
+  // v2.106.0: one PIN per chain (ruled Oct 5). The phone sends a one-time check of its
+  // PIN inside the encrypted pack; the new device asks for that PIN, not a new one.
+  // The check is used once to catch a typo and never stored or written to the chain.
+  async function atPinCheck(pin, salt) {
+    salt = salt || HCP.bufToHex(crypto.getRandomValues(new Uint8Array(16)));
+    var h = HCP.bufToHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hp1|' + salt + '|' + pin)));
+    return { salt: salt, hash: h };
+  }
+  var attachPinCheckData = null;
+  var attachPendingPin = false;
+  async function atNewContinue() {
+    var p = AT.pack;
+    state.chain = p.chain;
+    state.publicKeyJwk = p.rootPublicKey;
+    state.publicKey = await HCP.importPublicKey(p.rootPublicKey);
+    state.privateKeyJwk = AT.devPrivJwk; state.privateKey = AT.devPriv;
+    state.devicePublicKeyJwk = AT.devPubJwk;
+    state.fingerprint = AT.partnerFp;
+    if (p.declarations) state.declarations = Object.assign(state.declarations, p.declarations);
+    state.settings.deviceLabels = Object.assign({}, p.deviceLabels || {});
+    state.settings.deviceLabels[AT.devFp] = { label: p.label, salt: p.salt };
+    state.settings.thisDeviceFp = AT.devFp;
+    state.settings.witnessUrl = DEFAULT_WITNESS_URL;
+    var o = document.getElementById('attach-ov'); if (o) o.style.display = 'none';
+    attachPinCheckData = (p.pinCheck && p.pinCheck.salt && p.pinCheck.hash) ? p.pinCheck : null;
+    AT = null;
+    attachPendingPin = true;
+    showScreen('setup'); setupStep('pin');
+  }
+  async function attachFinishPin(pin) {
+    attachPendingPin = false; attachPinCheckData = null;
+    state.pin = pin;
+    await saveKeys(pin); save(); state.initialized = true;
+    refreshHome(); showScreen('home');
+    toast('Your chain is on this device');
+    console.log('[attach] new: finished, keys saved under PIN');
+  }
+
+  // ---- Your phone (holds the root key and the parent) ----
+  function attachOldStart() {
+    atStopPoll();
+    AT = { role: 'old' };
+    if (state.devicePublicKeyJwk) {
+      atShow(atHead('Add a device', false, 'atClose') + '<p class="exs-body">Devices are added from your original phone, the one that holds your device password.</p>');
+      return;
+    }
+    var st = pkState();
+    if (st.stored) { atOldEnter(); return; }
+    if (st.rec) { atShow(atHead('Add a device', false, 'atClose') + '<p class="exs-body">Your device password was set on another phone. Add devices from that phone.</p>'); return; }
+    atOldSetPw();
+  }
+  function atOldSetPw() {
+    var h = atHead('Set a device password', false, 'atClose');
+    h += '<p class="exs-body" style="color:var(--text-dim);margin-bottom:14px;">You enter this each time you add a device. It stays on this phone and nobody can reset it, so pick one you will remember.</p>';
+    h += atPwField('at-pw', 'Password', 'new-password');
+    h += atPwField('at-pw2', 'Same password again', 'new-password');
+    h += '<div class="exs-fl"><label for="at-hint">Hint (optional)</label><input class="exs-box-in" type="text" id="at-hint" autocomplete="off"></div>';
+    h += '<p class="exs-cap" id="at-msg"></p>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.atOldCreatePw()">Continue</button>');
+    atShow(h);
+  }
+  async function atOldCreatePw() {
+    var pw = (document.getElementById('at-pw') || {}).value || '';
+    var pw2 = (document.getElementById('at-pw2') || {}).value || '';
+    var hint = ((document.getElementById('at-hint') || {}).value || '').trim();
+    if (pw.length < 8) { atMsg('Use at least 8 characters.'); return; }
+    if (pw !== pw2) { atMsg('The two passwords do not match.'); return; }
+    if (hint && (pw.toLowerCase().indexOf(hint.toLowerCase()) >= 0 || hint.toLowerCase().indexOf(pw.toLowerCase()) >= 0)) { atMsg('The hint gives the password away. Change one of them.'); return; }
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Setting\u2026'; }
+    try {
+      var P = await HCP.makeParent(state.publicKeyJwk, pw, hint);
+      localStorage.setItem(SK + '_parent', JSON.stringify(P.stored));
+      try { await appendRecord(P.record); } catch (ae) { localStorage.removeItem(SK + '_parent'); throw ae; }
+      save();
+      console.log('[attach] old: parent created, fp ' + P.stored.parentFp);
+      atOldEnter();
+    } catch (e) { atMsg('Could not set the password: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Continue'; } }
+  }
+  function atOldEnter() {
+    atStopPoll();
+    var h = atHead('Add a device', true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
+    h += '<input class="exs-box-in" id="at-code" maxlength="4" enterkeyhint="go" oninput="App.atCodeInput(this)" onkeydown="if(event.key===\'Enter\')App.atOldConnect()" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:200px;text-align:center;font-family:var(--font-mono);font-size:var(--fs-display);font-weight:600;letter-spacing:10px;text-transform:uppercase;color:var(--accent);">';
+    h += '<div class="exs-body">Enter the code on the other device</div><p class="exs-cap" id="at-msg"></p></div>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.atOldConnect()">Connect</button>');
+    atShow(h);
+    setTimeout(function() { var i = document.getElementById('at-code'); if (i) i.focus(); }, 50);
+  }
+  // v2.106.0: connect on the 4th letter (the keyboard hides the button on a phone); Enter also works.
+  function atCodeInput(el) {
+    var c = String(el.value || '').toUpperCase();
+    if (c.length === 4 && !(AT && AT.connecting)) atOldConnect();
+  }
+  async function atOldConnect() {
+    if (!AT || AT.connecting) return;
+    var c = (((document.getElementById('at-code') || {}).value) || '').trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(c) || c.split('').some(function(ch) { return PAIR_CHARS.indexOf(ch) < 0; })) { atMsg('Enter the 4 letters shown on the other device.'); return; }
+    AT.url = getWitnessUrl();
+    if (!AT.url) { atMsg('No witness reachable. Check your connection.'); return; }
+    AT.their = c; AT.code = deriveJoinCode(c); AT.shared = null; AT.hello = null;
+    AT.connecting = true;
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
+    try {
+      await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: state.fingerprint, public_key: mySigningKeyJwk() });
+    } catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
+    AT.connecting = false;
+    var h = atHead('Add a device', true, 'atOldEnter');
+    h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Waiting for the other device</span></div><div class="exs-grow"></div>';
+    atShow(h);
+    AT.poll = setInterval(atOldPoll, 2000);
+  }
+  async function atOldPoll() {
+    if (!AT || AT.role !== 'old' || AT.busy) return;
+    AT.busy = true;
+    try {
+      var r = await serverFetch(AT.url + '/session/' + AT.code); if (!r.ok) return;
+      var d = await r.json();
+      if (d.cancelled && !d.cancelled.by_me) { atProblem('The other device stopped.'); return; }
+      if (!d.connected || !d.partner) return;
+      if (!AT.shared) {
+        AT.partnerPub = d.partner.public_key;
+        AT.devFp = await HCP.keyFingerprint(AT.partnerPub);
+        AT.shared = await HCP.deriveSharedKey(state.privateKeyJwk, AT.partnerPub);
+      }
+      if (d.partner.encrypted_snapshot && !AT.hello) {
+        var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
+        if (p && p.t === 'attach-hello' && p.deviceKey && p.deviceKey.x === AT.partnerPub.x && p.deviceKey.y === AT.partnerPub.y) {
+          AT.hello = p; atStopPoll();
+          console.log('[attach] old: device ' + AT.devFp.slice(0, 12) + ' named "' + p.label + '"');
+          atOldConfirm();
+        }
+      }
+    } catch (e) { console.log('[attach] old: poll error', e.message); }
+    finally { if (AT) AT.busy = false; }
+  }
+  function atOldConfirm() {
+    var st = pkState();
+    var h = atHead('Is this your device?', false, 'atOldEnter');
+    h += '<div class="exs-row" style="cursor:default;"><div class="exs-rowmain"><div class="exs-lab">Name</div></div><div class="exs-body">' + esc(String(AT.hello.label || '').slice(0, 60)) + '</div></div>';
+    h += '<div class="exs-row" style="cursor:default;"><div class="exs-rowmain"><div class="exs-lab">Fingerprint</div></div><div class="exs-body" style="font-family:var(--font-mono);font-weight:600;letter-spacing:1px;">' + esc(atFp(AT.devFp)) + '</div></div>';
+    h += '<p class="exs-cap" style="margin:8px 4px 18px;">The other device shows the same fingerprint. If it does not, stop here.</p>';
+    h += atPwField('at-pw', 'Device password', 'current-password');
+    if (st.stored && st.stored.hint) h += '<p class="exs-cap" style="margin:-6px 0 0 2px;">Hint: ' + esc(st.stored.hint) + '</p>';
+    h += '<p class="exs-cap" id="at-msg" style="margin-top:8px;"></p>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.atOldAdd()">Add this device</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.atClose()">Not my device</button></div>');
+    atShow(h);
+  }
+  async function atOldAdd() {
+    var pw = (document.getElementById('at-pw') || {}).value || '';
+    var st = pkState();
+    if (!st.stored) { atMsg('The device password is not on this phone.'); return; }
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Adding\u2026'; }
+    var parentPriv;
+    try { parentPriv = await HCP.unlockParent(st.stored, pw); }
+    catch (e) { atMsg('That password is not right.'); if (btn) { btn.disabled = false; btn.textContent = 'Add this device'; } return; }
+    try {
+      var m = await HCP.makeDeviceCert(parentPriv, st.stored.publicKey, AT.partnerPub, AT.hello.label);
+      // v2.106.0: send before write. Sign the certificate onto a copy of the chain,
+      // send that copy, and commit only after the send succeeds. A failed send
+      // leaves this chain untouched (Oct 5 walk left orphan certificates).
+      var draft = state.chain.slice();
+      await HCP.appendToChain(draft, m.record, state.privateKey);
+      var labels = Object.assign({}, state.settings.deviceLabels || {});
+      labels[m.local.deviceFp] = { label: m.local.label, salt: m.local.salt };
+      var pack = { t: 'attach-pack', chain: draft, rootPublicKey: state.publicKeyJwk, label: m.local.label, salt: m.local.salt, declarations: state.declarations, deviceLabels: labels };
+      if (state.pin) pack.pinCheck = await atPinCheck(state.pin);
+      var enc = await HCP.encryptRelayPayload(pack, AT.shared);
+      console.log('[attach] old: certificate signed at seq ' + m.record.seq + ', sending ' + Math.round(enc.length / 1024) + ' kB');
+      await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: enc });
+      state.chain = draft;
+      state.settings.deviceLabels = labels;
+      if (!state.settings.thisDeviceLabel) state.settings.thisDeviceLabel = detectDeviceType();
+      save();
+      console.log('[attach] old: sent, certificate committed');
+      AT.finished = true;
+      atShow(atCheckDone('Device added', m.local.label + ' can now exchange as you', 'atClose', 'Done'));
+    } catch (e) {
+      console.log('[attach] old: add failed', e.message);
+      atMsg('Could not finish: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Add this device'; }
+    }
+  }
+  // ==== Sync two of your own devices (Step 4, v2.111.0; spec writing/spec-4-...). ====
+  // Same plumbing as attach: a 4-letter code, the witness relays, ECDH between the
+  // two signing keys. A separate session type (roles sync-show / sync-enter), never
+  // the exchange handlers, so the same-owner guard does not fire and nothing awaits
+  // on the exchange path. No password (Ruling 2): both devices are unlocked and in
+  // hand. After the mark check each sends its chain encrypted; each, on its own,
+  // verifies the other under the same root, refuses an uncertified sender, appends
+  // repair records for what it lacked (mergeFrom), and records the meeting locally.
+  // Repairs go onto a draft with appendToChain, not appendRecord: the self-exchange
+  // guard and the duplicate guard there are for new exchanges, not copies.
+  function syMyName() {
+    var labels = (state.settings && state.settings.deviceLabels) || {}, me = state.settings && state.settings.thisDeviceFp;
+    if (me && labels[me] && labels[me].label) return labels[me].label;
+    return (labels[state.fingerprint] && labels[state.fingerprint].label) || 'Your first device';
+  }
+  function syMyFp() { return (state.settings && state.settings.thisDeviceFp) || state.fingerprint; }
+  // v2.111.1 (Michael, Oct 5): one Sync now button, then a plain choice of which side
+  // this device takes. X on the code and enter screens goes back to this choice (rule 2a).
+  function syncChoose(i) {
+    var d = recModel().others[i]; if (!d) return;
+    atStopPoll(); AT = { role: 'sync-choose', rowFp: d.fp, label: d.label, idx: i };
+    syncChooseScreen();
+  }
+  function syncChooseScreen() {
+    var L = esc(AT.label);
+    var h = atHead('Sync with ' + AT.label, false, 'atClose');
+    h += '<p class="exs-body" style="margin:4px 0 18px;">Have ' + L + ' with you. One device shows a code, the other enters it.</p>';
+    h += '<button class="exs-row" onclick="App.syncPick(\'show\')"><div class="exs-rowmain"><div class="exs-body">Show a code here</div><div class="exs-cap">Then enter it on ' + L + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    h += '<button class="exs-row" onclick="App.syncPick(\'enter\')"><div class="exs-rowmain"><div class="exs-body">Enter a code from ' + L + '</div><div class="exs-cap">If ' + L + ' is already showing one</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    atShow(h);
+  }
+  function syncPick(side) {
+    if (!AT) return;
+    if (side === 'show') { AT.role = 'sync-show'; syncShowCode(); }
+    else { AT.role = 'sync-enter'; syncEnterScreen(); }
+  }
+  function syncBack() { if (!AT) return; atClose2Keep(); AT.role = 'sync-choose'; AT.connecting = false; syncChooseScreen(); }
+  // Leave a half-open session cleanly before switching sides (cancel it on the witness).
+  function atClose2Keep() {
+    atStopPoll();
+    if (AT && AT.code && AT.url && !AT.finished) serverFetch(AT.url + '/session/' + AT.code + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'cancelled' }) }).catch(function() {});
+    AT.code = null; AT.shared = null; AT.partnerPub = null; AT.partnerFp = null; AT.sent = false; AT.theirs = null;
+  }
+  async function syncShowCode() {
+    AT.url = getWitnessUrl();
+    if (!AT.url) { AT.role = 'sync-choose'; toast('No witness reachable. Check your connection.'); return; }
+    AT.code = atNewCode(); AT.their = deriveJoinCode(AT.code);
+    try { await atPost('/session/join', { my_code: AT.code, their_code: AT.their, fingerprint: syMyFp(), public_key: mySigningKeyJwk() }); }
+    catch (e) { console.log('[sync] join failed', e.message); AT.code = null; AT.role = 'sync-choose'; toast('Could not reach the witness. Check your connection and try again.'); return; }
+    var h = atHead('Sync with ' + AT.label, true, 'syncBack');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
+    h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Enter this code on ' + esc(AT.label) + '</div>';
+    h += '<div class="exs-cap">Record keeping, ' + esc(syMyName()) + ', Sync now</div></div>';
+    h += '<div class="exs-grow"></div><div class="exs-wait" style="padding-bottom:24px;"><i></i><span>Waiting for ' + esc(AT.label) + '</span></div>';
+    atShow(h);
+    console.log('[sync] show: code ' + AT.code);
+    AT.poll = setInterval(syncPoll, 2000);
+  }
+  function syncEnterScreen() {
+    var h = atHead('Sync with ' + AT.label, true, 'syncBack');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;">';
+    h += '<input class="exs-box-in" id="at-code" maxlength="4" enterkeyhint="go" oninput="App.syncCodeInput(this)" onkeydown="if(event.key===\'Enter\')App.syncConnect()" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:200px;text-align:center;font-family:var(--font-mono);font-size:var(--fs-display);font-weight:600;letter-spacing:10px;text-transform:uppercase;color:var(--accent);">';
+    h += '<div class="exs-body">Enter the code shown on ' + esc(AT.label) + '</div><p class="exs-cap" id="at-msg"></p></div>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.syncConnect()">Connect</button>');
+    atShow(h);
+    setTimeout(function() { var i = document.getElementById('at-code'); if (i) i.focus(); }, 50);
+  }
+  function syncCodeInput(el) { if (String(el.value || '').length === 4 && !(AT && AT.connecting)) syncConnect(); }
+  async function syncConnect() {
+    if (!AT || AT.connecting || AT.code) return;
+    var c = (((document.getElementById('at-code') || {}).value) || '').trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(c) || c.split('').some(function(ch) { return PAIR_CHARS.indexOf(ch) < 0; })) { atMsg('Enter the 4 letters shown on ' + AT.label + '.'); return; }
+    AT.url = getWitnessUrl();
+    if (!AT.url) { atMsg('No witness reachable. Check your connection.'); return; }
+    AT.connecting = true;
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Connecting\u2026'; }
+    try { await atPost('/session/join', { my_code: deriveJoinCode(c), their_code: c, fingerprint: syMyFp(), public_key: mySigningKeyJwk() }); }
+    catch (e) { AT.connecting = false; atMsg('Could not reach the witness: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Connect'; } return; }
+    AT.connecting = false; AT.code = deriveJoinCode(c);
+    syncConnecting(false);
+    AT.poll = setInterval(syncPoll, 2000);
+  }
+  // Connecting state (registry C2): the lock and "Setting up a secure connection" until
+  // the key agreement has finished on this device; only then "Secure connection open".
+  function syncConnecting(open) {
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;">';
+    h += '<div style="width:72px;height:72px;border-radius:50%;background:' + (open ? 'var(--green)' : 'var(--surface-2, var(--border))') + ';display:flex;align-items:center;justify-content:center;transition:background .3s;' + (open ? '' : 'animation:pulse 1.5s infinite;') + '"><svg class="icon" width="30" height="30" style="color:' + (open ? '#fff' : 'var(--text-dim)') + '"><use href="#icon-lock"/></svg></div>';
+    h += '<div class="exs-body">' + (open ? 'Secure connection open' : 'Setting up a secure connection') + '</div></div><div class="exs-grow"></div>';
+    atShow(h);
+  }
+  async function syncPoll() {
+    if (!AT || (AT.role !== 'sync-show' && AT.role !== 'sync-enter') || AT.busy || !AT.code) return;
+    AT.busy = true;
+    try {
+      var r = await serverFetch(AT.url + '/session/' + AT.code); if (!r.ok) return;
+      var d = await r.json();
+      if (d.cancelled && !d.cancelled.by_me && !AT.finished) { atProblem(AT.label + ' stopped.'); return; }
+      if (!d.connected || !d.partner) return;
+      if (!AT.shared) {
+        // v2.135.0 (security tenet gate): no role on the witness. What kind of session the
+        // other device is in shows only in its sealed packet, checked below after decrypt.
+        AT.partnerPub = d.partner.public_key; AT.partnerFp = await HCP.keyFingerprint(AT.partnerPub);
+        if (AT.partnerFp === syMyFp()) { atProblem('That code came from this device. Type it on ' + AT.label + '.'); return; }
+        if (AT.role === 'sync-show') syncConnecting(false);
+        AT.shared = await HCP.deriveSharedKey(state.privateKeyJwk, AT.partnerPub);
+        if (d.partner.encrypted_snapshot) {
+          var early = null;
+          try { early = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared); } catch (de) {}
+          if (early && early.t && early.t !== 'sync-pack') { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+        }
+        console.log('[sync] connected to ' + AT.partnerFp.slice(0, 12) + (AT.partnerFp !== AT.rowFp ? ' (row was ' + String(AT.rowFp).slice(0, 12) + ')' : ''));
+        syncConnecting(true);
+        atStopPoll();
+        var mark = await computeSAS(syMyFp(), AT.partnerFp);
+        setTimeout(function() { if (AT && AT.shared && !AT.sent) syncMark(mark.code); }, 700);
+        return;
+      }
+      if (AT.sent && !AT.theirs && d.partner.encrypted_snapshot) {
+        var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
+        if (p && p.t === 'sync-pack') { AT.theirs = p; atStopPoll(); await syncReceive(p); }
+        else if (p && p.t) { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+      }
+    } catch (e) { console.log('[sync] poll error', e.message); }
+    finally { if (AT) AT.busy = false; }
+  }
+  function syncMark(code) {
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;">';
+    h += '<div class="exs-h" style="margin-bottom:6px;">Check ' + esc(AT.label) + ' shows this mark</div>';
+    h += '<div class="exs-m" style="margin-bottom:28px;">Both screens should show the same two letters.</div>';
+    h += '<div class="exs-mark"><svg class="icon"><use href="#icon-lock"/></svg><span>' + esc(code) + '</span></div></div>';
+    h += '<div class="exs-grow"></div>' + atPin('<button class="btn btn-primary" id="at-btn" style="width:100%;" onclick="App.syncMatch()">It matches</button><div class="exs-cancelrow"><button class="exs-cancel" onclick="App.atClose()">It does not match</button></div>');
+    atShow(h);
+  }
+  async function syncMatch() {
+    if (!AT || AT.sent) return;
+    var btn = document.getElementById('at-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Sending\u2026'; }
+    try {
+      var enc = await HCP.encryptRelayPayload({ t: 'sync-pack', chain: state.chain, rootPublicKey: state.publicKeyJwk, deviceLabels: state.settings.deviceLabels || {} }, AT.shared);
+      await atPost('/session/' + AT.code + '/thread', { encrypted_snapshot: enc });
+      AT.sent = true;
+      console.log('[sync] sent ' + state.chain.length + ' records, ' + Math.round(enc.length / 1024) + ' kB');
+    } catch (e) { console.log('[sync] send failed', e.message); if (btn) { btn.disabled = false; btn.textContent = 'It matches'; } toast('Could not send: ' + e.message); return; }
+    var h = atHead('Sync with ' + AT.label, true, 'atClose');
+    h += '<div class="exs-grow"></div><div class="exs-wait"><i></i><span>Comparing with ' + esc(AT.label) + '</span></div><div class="exs-grow"></div>';
+    atShow(h);
+    AT.poll = setInterval(syncPoll, 1500);
+    syncPoll();
+  }
+  async function syncReceive(p) {
+    try {
+      var theirs = p.chain;
+      if (!Array.isArray(theirs) || !theirs.length) { atProblem(AT.label + ' sent an empty record.'); return; }
+      if (!p.rootPublicKey || await HCP.keyFingerprint(p.rootPublicKey) !== state.fingerprint) { atProblem('This is a different chain. Sync only works between your own devices.'); return; }
+      var v = await HCP.verifyChainMulti(theirs, state.publicKeyJwk);
+      if (!v.valid) { console.log('[sync] their chain invalid', v.errors.slice(0, 3)); atProblem('The record on ' + AT.label + ' did not verify: ' + v.errors.slice(0, 2).join('; ')); return; }
+      var certified = AT.partnerFp === v.rootFp || v.devices.some(function(x) { return x.fp === AT.partnerFp; });
+      if (!certified) { atProblem('The other device is not one of your devices. Nothing was copied.'); return; }
+      var reps = await HCP.mergeFrom(state.chain, theirs, v.signers);
+      var went = (await HCP.mergeFrom(theirs, state.chain, null)).length;
+      var draft = state.chain.slice();
+      for (var i = 0; i < reps.length; i++) await HCP.appendToChain(draft, reps[i], state.privateKey);
+      if (reps.length) {
+        var vd = await HCP.verifyChainMulti(draft, state.publicKeyJwk);
+        if (!vd.valid) { console.log('[sync] draft invalid', vd.errors.slice(0, 3)); atProblem('Copying did not verify on this device: ' + vd.errors.slice(0, 2).join('; ')); return; }
+      }
+      state.chain = draft;
+      try {
+        var need = {}; draft.forEach(function(r) { if (r.type === HCP.RECORD_TYPE_REPAIR && r.originalHash && !r.city && !r.state) need[r.originalHash] = 1; });
+        if (Object.keys(need).length) {
+          var info = copyInfo(), filled = 0;
+          for (var k = 0; k < theirs.length; k++) {
+            var o = theirs[k]; if (!HCP.isAct(o) || !(o.city || o.state || o.street || o.geo)) continue;
+            var oh = o.type === HCP.RECORD_TYPE_REPAIR ? o.originalHash : await HCP.hashRecord(o);
+            if (need[oh]) { info[oh] = { street: o.street || '', city: o.city || '', state: o.state || '', geo: o.geo || null }; filled++; }
+          }
+          if (filled) { localStorage.setItem(COPY_INFO_KEY, JSON.stringify(info)); console.log('[sync] filled location for ' + filled + ' earlier copies'); }
+        }
+      } catch (e) { console.log('[sync] copy info failed', e.message); }
+      var labels = Object.assign({}, p.deviceLabels || {}, state.settings.deviceLabels || {});
+      state.settings.deviceLabels = labels;
+      var ds = Object.assign({}, state.settings.devSync || {});
+      var mark = { at: new Date().toISOString(), mySeq: draft.length - 1, theirSeq: theirs.length - 1 };
+      ds[AT.partnerFp] = mark;
+      if (AT.rowFp && AT.rowFp !== AT.partnerFp) ds[AT.rowFp] = mark; // the row this was opened from (collapsed leftover certificates)
+      state.settings.devSync = ds;
+      save();
+      AT.finished = true;
+      console.log('[sync] done: ' + reps.length + ' came here, ' + went + ' went to ' + AT.partnerFp.slice(0, 12) + ', head seq ' + mark.mySeq);
+      try { chainMultiObserve(); refreshHome(); renderHistoryTab(); recRender(); renderBrowserStorageBanner(); } catch (e) {}
+      var wentReps = await HCP.mergeFrom(theirs, state.chain, null);
+      syncDone(reps.length, went, HCP.walletBalance(state.chain), HCP.walletBalance(theirs.concat(wentReps)));
+    } catch (e) { console.log('[sync] receive failed', e.message); atProblem('Could not finish syncing: ' + e.message); }
+  }
+  // v2.111.1 (Michael, Oct 5): Done leads with the standing both devices now show.
+  // Says "on both devices" only when the other device's standing, computed here from
+  // its chain plus what it is copying, is the same number.
+  function syncDone(came, went, st, theirSt) {
+    var lab = AT.label, part = AT.partnerFp, row = AT.rowFp;
+    var both = st === theirSt;
+    var side = st > 0 ? ' mc-blue' : (st < 0 ? ' mc-amber' : '');
+    var num = st === 0 ? 'Even' : mcFmt(Math.abs(st)) + ' ' + exMarkSVG(22) + ' ' + (st > 0 ? 'above' : 'below');
+    var moved = (went === 0 && came === 0) ? 'Nothing was missing on either device.' : came + ' came here, ' + went + ' went to ' + lab + '.';
+    var next = -1, nextLab = '';
+    recModel().others.forEach(function(d, i) { if (next < 0 && d.fp !== part && d.fp !== row && (d.count > 0 || !d.synced)) { next = i; nextLab = d.label; } });
+    var h = '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">'
+      + '<div style="width:112px;height:112px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;"><svg width="54" height="54" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+      + '<div class="exs-t">Synced</div>'
+      + '<div class="mc-display' + side + '" style="margin-top:8px;">' + num + '</div>'
+      + '<div class="exs-body" style="color:var(--text-dim);">' + (both ? 'Your standing on both devices' : 'Your standing on this device') + '</div>'
+      + '<div class="exs-cap">' + esc(moved) + '</div></div>'
+      + '<div class="exs-grow"></div><button class="btn btn-primary" style="width:100%;" onclick="App.atClose()">Done</button>';
+    if (next >= 0) h += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.syncNext(' + next + ')">Sync with ' + esc(nextLab) + ' next</button></div>';
+    if (!both) console.log('[sync] standing differs after sync: here ' + st + ', other ' + theirSt);
+    atShow(h);
+  }
+  function syncNext(i) { AT = null; var o = document.getElementById('attach-ov'); if (o) o.style.display = 'none'; recDev(i); }
+  // ---- Parent key (Step 1, v2.101.0). Dev test entry under This phone; the
+  // real entry point is "Add a device" (Step 3). The parent private key is
+  // encrypted under the person's password and stored only here (SK + '_parent').
+  // A stored key counts only if a parent record on this chain carries the same
+  // public key (a restored or different chain leaves an orphan, ignored).
+  function pkState() {
+    var stored = null;
+    try { stored = JSON.parse(localStorage.getItem(SK + '_parent') || 'null'); } catch (e) { stored = null; }
+    var rec = null;
+    for (var i = 0; i < state.chain.length; i++) {
+      var r = state.chain[i];
+      if (r.type === HCP.RECORD_TYPE_PARENT && r.parentKey) { rec = r; }
+    }
+    var match = !!(stored && rec && stored.publicKey && stored.publicKey.x === rec.parentKey.x && stored.publicKey.y === rec.parentKey.y);
+    return { stored: match ? stored : null, rec: rec, orphan: !!(stored && !match) };
+  }
+  // Step 2 (v2.102.0): observe the multi-key verifier on real chains. Runs only
+  // when the chain holds a parent or device record; logs, never blocks, never
+  // awaited by anything (not on the session path).
+  function chainMultiObserve() {
+    try {
+      var has = state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_PARENT || r.type === HCP.RECORD_TYPE_DEVICE; });
+      if (!has || !state.publicKeyJwk) return;
+      HCP.verifyChainMulti(state.chain, state.publicKeyJwk).then(function(v) {
+        state.myParentFp = v.parentFp || null;
+        state.recDevs = v.devices || [];
+        try { renderBrowserStorageBanner(); recRender(); } catch (e) {}
+        if (v.selfActs && v.selfActs.length) console.log('[chain-multi] records exchanging with this chain itself (observe only): seq ' + v.selfActs.join(', '));
+        console.log('[chain-multi] ' + (v.valid ? 'valid' : 'INVALID (observe only): ' + v.errors.slice(0, 3).join('; ')) + ', parent ' + (v.parentFp || 'none') + ', devices ' + v.devices.length);
+      }).catch(function(e) { console.log('[chain-multi] check failed:', e.message); });
+    } catch (e) {}
+  }
+  function pkRowCaption() {
+    var el = document.getElementById('pk-row-cap'); if (!el) return;
+    var st = pkState();
+    el.textContent = st.stored ? 'Set on this phone' : (st.rec ? 'On your chain, not on this phone' : 'Not set');
+  }
+  function pkOpen() { pkRender(); mcOpen('parent'); }
+  function pkRender() {
+    var body = document.getElementById('pk-body'), foot = document.getElementById('pk-foot');
+    if (!body || !foot) return;
+    var st = pkState(), h = '';
+    if (st.stored) {
+      h += '<div class="exs-cap mc-group">Your parent key</div>';
+      h += '<div class="exs-body">Fingerprint</div><div class="exs-cap" style="font-family:var(--font-mono);">' + esc(st.stored.parentFp) + '</div>';
+      h += '<div class="exs-body" style="margin-top:12px;">Created</div><div class="exs-cap">' + esc(new Date(st.stored.created).toLocaleString()) + '</div>';
+      if (st.stored.hint) h += '<div class="exs-body" style="margin-top:12px;">Hint</div><div class="exs-cap">' + esc(st.stored.hint) + '</div>';
+      h += '<div class="exs-fl" style="margin-top:20px;"><label for="pk-check">Check your password</label><input class="exs-box-in" type="password" id="pk-check" autocomplete="off"></div>';
+      h += '<p class="exs-cap" id="pk-msg" style="margin-top:8px;"></p>';
+      body.innerHTML = h;
+      foot.innerHTML = '<button class="btn btn-primary" id="pk-btn" style="width:100%;" onclick="App.pkCheck()">Check password</button>';
+      return;
+    }
+    if (st.rec) {
+      h += '<p class="exs-body">Your chain has a parent key, but its locked copy is not on this phone. It stays on the phone where it was made.</p>';
+      body.innerHTML = h; foot.innerHTML = ''; return;
+    }
+    h += '<p class="exs-body">A parent key sits above this phone\u2019s key. Later it is what lets you add another device to this chain.</p>';
+    h += '<p class="exs-body" style="margin-top:10px;">It is locked by a password you choose. The password is stored nowhere, the locked key stays on this phone, and neither is ever sent to a server.</p>';
+    h += '<p class="exs-cap" style="margin-top:10px;">Test build. Your exchanges do not depend on this key: if you forget the password, nothing on your chain is lost.</p>';
+    h += '<div class="exs-fl" style="margin-top:20px;"><label for="pk-pw">Password</label><input class="exs-box-in" type="password" id="pk-pw" autocomplete="new-password"></div>';
+    h += '<div class="exs-fl"><label for="pk-pw2">Type it again</label><input class="exs-box-in" type="password" id="pk-pw2" autocomplete="new-password"></div>';
+    h += '<div class="exs-fl"><label for="pk-hint">Hint (optional)</label><input class="exs-box-in" type="text" id="pk-hint" autocomplete="off"></div>';
+    h += '<p class="exs-cap">The hint is kept on this phone as plain text. Never put the password in it.</p>';
+    h += '<p class="exs-cap" id="pk-msg" style="margin-top:8px;"></p>';
+    body.innerHTML = h;
+    foot.innerHTML = '<button class="btn btn-primary" id="pk-btn" style="width:100%;" onclick="App.pkCreate()">Create parent key</button>';
+  }
+  function pkMsg(t, red) { var m = document.getElementById('pk-msg'); if (m) { m.textContent = t; m.style.color = red ? 'var(--red)' : 'var(--green)'; } }
+  async function pkCreate() {
+    var pw = (document.getElementById('pk-pw') || {}).value || '';
+    var pw2 = (document.getElementById('pk-pw2') || {}).value || '';
+    var hint = ((document.getElementById('pk-hint') || {}).value || '').trim();
+    if (pw.length < 8) { pkMsg('Use at least 8 characters.', true); return; }
+    if (pw !== pw2) { pkMsg('The two passwords do not match.', true); return; }
+    if (hint && pw.toLowerCase().indexOf(hint.toLowerCase()) >= 0 || (hint && hint.toLowerCase().indexOf(pw.toLowerCase()) >= 0)) { pkMsg('The hint gives the password away. Change one of them.', true); return; }
+    var st = pkState();
+    if (st.stored || st.rec) { pkRender(); return; }
+    if (!state.publicKeyJwk || !state.privateKey) { pkMsg('This phone\u2019s key is not loaded.', true); return; }
+    var btn = document.getElementById('pk-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Creating\u2026'; }
+    try {
+      var P = await HCP.makeParent(state.publicKeyJwk, pw, hint);
+      localStorage.setItem(SK + '_parent', JSON.stringify(P.stored));
+      try {
+        await appendRecord(P.record);
+      } catch (ae) { localStorage.removeItem(SK + '_parent'); throw ae; }
+      save();
+      var ok = await HCP.verifyParentRecord(state.chain[state.chain.length - 1], state.publicKeyJwk);
+      console.log('[parent] record appended at seq ' + P.record.seq + ', parent signature ' + (ok ? 'verified' : 'FAILED') + ', fp ' + P.stored.parentFp);
+      pkRowCaption(); pkRender();
+      toast('Parent key created');
+    } catch (e) {
+      console.log('[parent] create failed:', e.message);
+      pkMsg('Could not create the key: ' + e.message, true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Create parent key'; }
+    }
+  }
+  async function pkCheck() {
+    var pw = (document.getElementById('pk-check') || {}).value || '';
+    var st = pkState(); if (!st.stored) return;
+    var btn = document.getElementById('pk-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Checking\u2026'; }
+    try { await HCP.unlockParent(st.stored, pw); pkMsg('That is the right password.', false); console.log('[parent] unlock ok'); }
+    catch (e) { pkMsg('That is not the password.', true); console.log('[parent] unlock failed'); }
+    if (btn) { btn.disabled = false; btn.textContent = 'Check password'; }
+  }
+
   function mcOpen(k) {
     var el = document.getElementById('mc-sheet-' + k);
     if (!el) return;
     try {
       if (k === 'wave') mcDrawWave();
+      else if (k === 'rise') mcDrawRise();
       else if (k === 'people') mcDrawPeople();
       else if (k === 'reach') mcDrawReach();
       else if (k === 'learn') lrRenderHome();
@@ -984,7 +1720,9 @@ const PAIR_CODE_LENGTH = 4;
     el.hidden = false; el.scrollTop = 0;
     _mcStack.push(el);
   }
-  function mcClose() { var el = _mcStack.pop(); if (el) el.hidden = true; }
+  // v2.125.0 (Michael, Oct 6 walk): a sheet opened straight from Home (Standing) closes back to Home, not to Account.
+  var _mcFromHome = false;
+  function mcClose() { var el = _mcStack.pop(); if (el) el.hidden = true; if (!_mcStack.length && _mcFromHome) { _mcFromHome = false; closeModal('wallet'); } }
   function mcFmt(n) { return Math.round(n).toLocaleString('en-US'); }
   function mcStandWords(st) { return st === 0 ? 'even' : mcFmt(Math.abs(st)) + ' ' + (st > 0 ? 'above' : 'below'); }
   function mcRatioSentence(p, r) {
@@ -999,8 +1737,17 @@ const PAIR_CODE_LENGTH = 4;
   function mcEl(t, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', t); for (var k in a) e.setAttribute(k, a[k]); return e; }
   function mcText(svg, x, y, txt, anchor) { var t = mcEl('text', { x: x, y: y, 'font-size': '12', fill: 'var(--text-faint)', 'text-anchor': anchor || 'start' }); t.textContent = txt; svg.appendChild(t); }
   // The chain as the drawings need it: time in days from the first exchange.
+  // v2.111.3: copies made before v2.111.3 carry no location. At each sync the other device's
+  // originals fill a local, display-only table (originalHash -> street/city/state/geo); readers
+  // fall back to it. Never written to the chain; the chain record stays as it was signed.
+  var COPY_INFO_KEY = SK + '_copyinfo';
+  function copyInfo() { try { return JSON.parse(localStorage.getItem(COPY_INFO_KEY) || '{}'); } catch (e) { return {}; } }
+  function withCopyInfo(r) {
+    if (r.type !== HCP.RECORD_TYPE_REPAIR || r.city || r.state || !r.originalHash) return r;
+    var c = copyInfo()[r.originalHash]; return c ? Object.assign({}, r, c) : r;
+  }
   function mcActs() {
-    var ex = state.chain.filter(HCP.isAct).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
+    var ex = HCP.acts(state.chain).map(withCopyInfo).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
     if (!ex.length) return { list: [], span: 1 };
     var t0 = new Date(ex[0].timestamp).getTime();
     var list = ex.map(function(r) {
@@ -1241,6 +1988,35 @@ const PAIR_CODE_LENGTH = 4;
     });
     return { list: out, flagged: n };
   }
+  // v2.129.0: produced and received as two rising step lines; the gap between them shaded by side (rule 16).
+  function mcDrawRise() {
+    var A = mcActs(), SPAN = A.span, X0 = 14, X1 = 262, YB = 166, YT = 14;
+    var w = document.getElementById('mc-r-svg'); w.innerHTML = '';
+    w.appendChild(mcEl('line', { x1: X0, y1: YB, x2: X1, y2: YB, stroke: 'var(--text-faint)', 'stroke-width': '.8' }));
+    mcText(w, X0, 190, 'first exchange'); mcText(w, X1, 190, 'today', 'end');
+    if (!A.list.length) { mcText(w, X0, 90, 'Your lines start with your first exchange.'); return; }
+    var P = 0, R = 0, pts = [{ t: 0, p: 0, r: 0 }];
+    A.list.forEach(function(e) { if (e.dir === 'p') P += e.v; else R += e.v; pts.push({ t: e.t, p: P, r: R }); });
+    pts.push({ t: SPAN, p: P, r: R });
+    var mx = Math.max(1, P, R);
+    function X(t) { return X0 + (X1 - X0) * Math.min(t, SPAN) / SPAN; } function Y(v) { return YB - (YB - YT) * v / mx; }
+    // the gap, one band per step, coloured by who is ahead in that step
+    for (var i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], x1 = X(a.t), x2 = X(pts[i + 1].t); if (x2 - x1 < 0.05 || a.p === a.r) continue;
+      w.appendChild(mcEl('rect', { x: x1.toFixed(1), y: Y(Math.max(a.p, a.r)).toFixed(1), width: (x2 - x1).toFixed(1), height: (Y(Math.min(a.p, a.r)) - Y(Math.max(a.p, a.r))).toFixed(1), fill: a.p > a.r ? 'var(--accent)' : 'var(--amber)', 'fill-opacity': a.p > a.r ? '.14' : '.22', 'shape-rendering': 'crispEdges' }));
+    }
+    function line(key, col) {
+      var L = [];
+      for (var j = 0; j < pts.length; j++) { if (j) L.push(X(pts[j].t).toFixed(1) + ',' + Y(pts[j - 1][key]).toFixed(1)); L.push(X(pts[j].t).toFixed(1) + ',' + Y(pts[j][key]).toFixed(1)); }
+      w.appendChild(mcEl('polyline', { points: L.join(' '), fill: 'none', stroke: col, 'stroke-width': '2', 'stroke-linejoin': 'round' }));
+    }
+    line('r', 'var(--amber)'); line('p', 'var(--accent)');
+    // totals at the line ends, nudged apart when they would touch
+    var yp = Y(P), yr = Y(R);
+    if (Math.abs(yp - yr) < 15) { if (P >= R) { yp = Math.min(yp, yr) - 0; yr = yp + 15; } else { yr = Math.min(yp, yr); yp = yr + 15; } }
+    function end(y, v, col) { var t = mcEl('text', { x: X1 + 6, y: (y + 4.5).toFixed(1), 'font-size': '13', 'font-weight': '600', fill: col }); t.textContent = mcFmt(v); w.appendChild(t); }
+    end(yp, P, 'var(--accent)'); end(yr, R, 'var(--amber)');
+  }
   function mcDrawWave() {
     var A = mcActs(), SPAN = A.span, typ = mcTypical(A.list);
     var nP = A.list.filter(function(e) { return e.dir === 'p'; }).length, nR = A.list.length - nP;
@@ -1381,6 +2157,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function openWallet() {
+    _mcFromHome = false;
     _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
     document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
     var ex = state.chain.filter(HCP.isAct);
@@ -1412,6 +2189,9 @@ const PAIR_CODE_LENGTH = 4;
     document.getElementById('mc-s-ratio').textContent = mcRatioSentence(cur, cos);
     // Numbers
     set('mc-n-cur', mcFmt(cur) + M); set('mc-n-cos', mcFmt(cos) + M);
+    var ast = document.getElementById('mc-a-st'); if (ast) { ast.className = 'exs-rowval' + (side ? ' ' + side : ''); ast.innerHTML = mcStandWords(st) + M; }
+    try { recRender(); } catch (e) {}
+    try { ofAcctCap(); } catch (e) {}
     var nst = document.getElementById('mc-n-st'); nst.className = 'exs-rowval mc-big' + (side ? ' ' + side : ''); nst.innerHTML = mcStandWords(st) + M;
     set('mc-n-ex', String(ex.length)); set('mc-n-p', nP + ' times'); set('mc-n-r', nR + ' times');
     set('mc-n-w', ex.length ? wit + ' of ' + ex.length : '0'); set('mc-n-pe', String(people)); set('mc-n-mo', String(more));
@@ -1419,12 +2199,396 @@ const PAIR_CODE_LENGTH = 4;
     var idEl = document.getElementById('wallet-identity-panel');
     if (idEl) idEl.innerHTML = renderIdentityPanelHTML();
     try { renderStandingTab(); } catch(e) { console.log('[wallet] Standing render failed:', e.message); }
+    try { pkRowCaption(); } catch (e) {}
     showModal('wallet');
   }
 
-  function openMyTextureFromWallet() { closeModal('wallet'); _returnToWallet = true; openMyTexture(); }
-  function openMyPricingFromWallet() { closeModal('wallet'); _returnToWallet = true; openMyPricing(); }
-  function openChainViewerFromWallet() { closeModal('wallet'); _returnToWallet = true; openChainViewer(); }
+  // v2.114.0: these open from a sheet inside Account (Standing or Your records); closing returns to that sheet (rule 2a).
+  function openMyTextureFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'wallet'; openMyTexture(); }
+  function openMyPricingFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openMyPricing(); }
+  function openChainViewerFromWallet() { closeModal('wallet'); _returnToWallet = true; _walletSub = 'records'; openChainViewer(); }
+  function openStanding() { openWallet(); _mcFromHome = true; mcOpen('wallet'); }
+  function stOpen() { renderSettingsTab(); mcOpen('settings'); }
+  // v2.115.0 (Michael, Oct 6): Preview beside Edit. Your profile (declarations) as a counterparty sees it, from saved values.
+  function acProfileData() {
+    var d = state.declarations || {};
+    return { name: d.name || '', about: d.about || '', photo: mcPhoto(), skills: Array.isArray(d.skills) ? d.skills : [], education: Array.isArray(d.education) ? d.education : [] };
+  }
+  function acPreview() {
+    document.getElementById('ac-prev-body').innerHTML = aboutSheetHTML(acProfileData(), { skills: "App.acPList('skills')", edu: "App.acPList('edu')" });
+    mcOpen('profile');
+  }
+  function acPList(which) {
+    var d = acProfileData();
+    document.getElementById('ac-plist-title').textContent = which === 'edu' ? 'Education' : 'Skills and qualifications';
+    document.getElementById('ac-plist-body').innerHTML = aboutListHTML(d.name, which === 'edu' ? d.education : d.skills);
+    mcOpen('plist');
+  }
+  // v2.115.0 (Michael, Oct 6): Security. Your chain (the thread) and your device (the shield), read the way
+  // a counterparty reads them on the chain read, so the two icons mean the same thing everywhere.
+  // The device's switches and Change PIN live here; the full signal reading opens below.
+  function secSnapshot() {
+    var ts = null;
+    try { ts = state.chain.length ? HCP.chainSnapshot(state.chain) : { n: 0 }; } catch (e) { ts = { n: 0 }; }
+    try { ts._people = exDistinctPeople(state.chain).length; } catch (e) {}
+    try { if (state.chain.length && typeof POH !== 'undefined' && POH.rollupForBroadcast) ts.pohVerdict = POH.rollupForBroadcast({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() }); } catch (e) {}
+    return ts;
+  }
+  function secRender() {
+    var el = document.getElementById('sec-body'); if (!el) return;
+    var ts = secSnapshot(), sh = exShieldRead(ts), h = '';
+    h += '<p class="exs-cap" style="margin:0 0 4px">When you exchange, the other person sees a thread for your chain and a shield for your device. This is what they see.</p>';
+    // Your chain
+    h += '<div class="sec-hd">' + exThreadSVG(26) + '<div class="exs-body">Your chain</div></div>';
+    var L = [];
+    if (ts.t0) L.push('Started ' + esc(exMonthYear(ts.t0)));
+    L.push((ts.n || 0) + ((ts.n || 0) === 1 ? ' exchange' : ' exchanges') + (typeof ts._people === 'number' ? ' with ' + ts._people + (ts._people === 1 ? ' person' : ' people') : ''));
+    var cats = ts.cats ? Object.keys(ts.cats).filter(function(k) { return k !== 'uncategorized' && k !== 'other'; }).sort(function(a, b) { return ts.cats[b].n - ts.cats[a].n; }).slice(0, 2) : [];
+    if (cats.length) L.push('Mostly ' + cats.map(function(c) { return esc(c.toLowerCase()); }).join(' and '));
+    if (ts.t1) L.push('Last exchange ' + esc(exAgo(ts.t1)));
+    h += '<div class="exs-body sec-lines">' + L.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>';
+    // Your device
+    h += '<div class="sec-hd">' + exShieldSVG(sh.color, 26) + '<div class="exs-body">Your device</div></div>';
+    h += '<p class="exs-body" style="margin:0">' + esc(sh.title.replace('This phone', 'Your phone')) + '</p>';
+    h += '<p class="exs-cap" style="margin:4px 0 0">The shield reads the phone. It never reads the person.</p>';
+    h += stSwitchRow('Motion sensors', 'Proves a real hand holds a real phone', state.settings.sensorMotion, 'switch-motion-tab', 'App.toggleMotionTab()');
+    h += stSwitchRow('Location', 'Proves your chain spans real places over time', state.settings.locationAuto, 'switch-location-tab', 'App.toggleLocationTab()');
+    var parts = [];
+    if (_sensor.battery) parts.push('battery'); if (_sensor.network) parts.push('network');
+    if (_sensor.light !== null) parts.push('light'); if (_sensor.pressure !== null) parts.push('pressure');
+    h += '<p class="exs-cap" style="margin:8px 0 6px">' + (parts.length ? 'Also captured automatically: ' + parts.join(', ') + '. ' : '') + 'Only hashes are stored. Raw data never leaves your device.</p>';
+    h += stRow('What your phone contributes', 'The signals behind your shield, and how each one reads', 'App.secSignals()');
+    // Keys
+    h += '<div class="exs-cap mc-group">Your key</div>';
+    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="font-family:var(--mono);font-size: var(--fs-label)">' + esc((state.fingerprint || '').substring(0, 16)) + '</div><div class="exs-cap">Your chain\u2019s fingerprint</div></div></div>';
+    h += stRow('Change PIN', 'The PIN that opens HEP on this device', 'App.changePIN()');
+    el.innerHTML = h;
+  }
+  function secOpen() { secRender(); mcOpen('security'); }
+  // v2.117.0 (Michael, Oct 6): What you offer, piece 1. The same list the exchange flow reads
+  // (state.declarations.services, local, never a record). Each item: description (its name),
+  // about (optional), price ('fixed' | 'time' | 'unit'), unit ('hour' | 'day' | typed), value
+  // (the price, or the rate per unit). Older entries without price read as fixed.
+  var _ofEd = null; // { i: index or -1, price, unit }
+  function ofPriceLine(it) {
+    var v = mcFmt(Number(it.value) || 0) + ' ' + exMarkSVG(12);
+    if (it.price === 'time') return v + ' per ' + esc(it.unit || 'hour');
+    if (it.price === 'unit') return v + ' per ' + esc(it.unit || 'unit');
+    return v;
+  }
+  function ofAcctCap() {
+    var n = exServices().length, np = pkList().length, c = document.getElementById('of-acct-cap');
+    if (c) c.textContent = (n || np) ? [n ? n + (n === 1 ? ' item' : ' items') : '', np ? np + (np === 1 ? ' package' : ' packages') : ''].filter(Boolean).join(', ') : 'Services and products, with a usual price';
+  }
+  function ofRender() {
+    var el = document.getElementById('of-body'); if (!el) return;
+    var list = exServices(), h = '';
+    h += '<p class="exs-cap" style="margin:0 0 6px">The things you offer, each with a usual price. When you exchange, pick one and the details fill in. The price can always change in the moment.</p>';
+    var pks = pkList();
+    if (pks.length) {
+      h += '<div class="exs-cap mc-group" style="margin-top:14px">Packages</div>';
+      pks.forEach(function(pk, i) { h += '<button class="exs-row" onclick="App.pkEdit(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(pk.name || 'Untitled') + '</div><div class="exs-cap">' + pk.lines.length + (pk.lines.length === 1 ? ' part' : ' parts') + '</div></div><span class="exs-rowval" style="font-weight:400">' + mcFmt(pkTotal(pk)) + ' ' + exMarkSVG(12) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>'; });
+      if (list.some(function(it) { return !(it.group || '').trim(); })) h += '<div class="exs-cap mc-group">Single items</div>';
+    }
+    var groups = ofGroups();
+    list.forEach(function(it, i) { it._i = i; });
+    [''].concat(groups).forEach(function(g, gi) {
+      var inG = list.filter(function(it) { return (it.group || '') === g; });
+      if (!inG.length) return;
+      if (g) h += '<div class="exs-cap mc-group">' + esc(g) + '</div>';
+      inG.forEach(function(it) { var i = it._i;
+      h += '<button class="exs-row" onclick="App.ofEdit(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(it.description || 'Untitled') + '</div>' + (it.about ? '<div class="exs-cap">' + esc(it.about.length > 70 ? it.about.slice(0, 68) + '\u2026' : it.about) + '</div>' : '') + '</div><span class="exs-rowval" style="font-weight:400">' + ofPriceLine(it) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+      });
+    });
+    list.forEach(function(it) { delete it._i; });
+    if (!list.length && !pks.length) h += '<p class="exs-body" style="margin:14px 0 4px">Nothing listed yet. A meal, a ride, a dozen eggs, an hour of help: anything you do or make for others.</p>';
+    h += ofAddCtl('Add something you offer', 'App.ofEdit(-1)');
+    h += '<br>' + ofAddCtl('Add a package', 'App.pkEdit(-1)');
+    el.innerHTML = h;
+    ofAcctCap();
+  }
+  function ofOpen() { ofRender(); mcOpen('offer'); }
+  // Rule 11b: the add control (plus and words, accent, under the list).
+  function ofAddCtl(words, on) { return '<button class="mc-add" onclick="' + on + '"><svg width="16" height="16" aria-hidden="true"><use href="#icon-plus"/></svg>' + esc(words) + '</button>'; }
+  function ofEnc(x) { return encodeURIComponent(x).replace(/'/g, '%27'); }
+  function ofGroups() { var seen = {}, out = []; exServices().forEach(function(it) { var g = (it.group || '').trim(); if (g && !seen[g]) { seen[g] = 1; out.push(g); } }); return out; }
+  var OF_UNITS = [['Count', ['each', 'dozen']], ['Weight', ['lb', 'oz', 'kg', 'g']], ['Volume', ['cup', 'fl oz', 'litre', 'gallon']]];
+  // One picker sheet for the unit, the group, and skills and education (rule 10: no drop-downs).
+  function ofPick(kind) {
+    var t = document.getElementById('of-pick-title'), b = document.getElementById('of-pick-body'), h = '';
+    var row = function(word, on, sel) { return '<button class="exs-row' + (sel ? ' of-pickrow-on' : '') + '" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div></div>' + (sel ? '<svg width="18" height="18" style="color:var(--accent)"><use href="#icon-check"/></svg>' : '') + '</button>'; };
+    if (kind === 'unit') {
+      t.textContent = 'Priced per';
+      OF_UNITS.forEach(function(g, gi) {
+        h += '<div class="exs-cap' + (gi ? ' mc-group' : '') + '"' + (gi ? '' : ' style="margin-top:4px"') + '>' + g[0] + '</div>';
+        g[1].forEach(function(u) { h += row(u, "App.ofPickSet('unit','" + u + "')", _ofEd.unit === u); });
+      });
+      var known = OF_UNITS.some(function(g) { return g[1].indexOf(_ofEd.unit) >= 0; });
+      h += '<div class="exs-cap mc-group">Other</div><div class="exs-fl" style="margin-top:6px"><input class="exs-box-in" id="of-pick-other" placeholder="window, ride, bundle, metre" value="' + esc(known ? '' : _ofEd.unit || '') + '"></div>';
+      h += '<button class="btn btn-primary" style="width:100%" onclick="App.ofPickSet(\'unit\', document.getElementById(\'of-pick-other\').value)">Use this</button>';
+    } else if (kind === 'group') {
+      t.textContent = 'Group';
+      h += '<p class="exs-cap" style="margin:0 0 4px">Groups keep your list tidy, like sections on a menu. They have no price of their own.</p>';
+      h += row('No group', "App.ofPickSet('group','')", !_ofEd.group);
+      ofGroups().forEach(function(g) { h += row(g, "App.ofPickSet('group', decodeURIComponent('" + ofEnc(g) + "'))", _ofEd.group === g); });
+      h += '<div class="exs-cap mc-group">New group</div><div class="exs-fl" style="margin-top:6px"><input class="exs-box-in" id="of-pick-other" placeholder="Carpentry, eggs and meat, rides"></div>';
+      h += '<button class="btn btn-primary" style="width:100%" onclick="App.ofPickSet(\'group\', document.getElementById(\'of-pick-other\').value)">Use this</button>';
+    } else if (kind === 'pkitem') {
+      t.textContent = 'Add from what you offer';
+      var L = exServices();
+      if (!L.length) h += '<p class="exs-body">Nothing listed yet. Add things you offer first, or add a line of your own.</p>';
+      L.forEach(function(it, i) { h += '<button class="exs-row" onclick="App.pkAddItem(' + i + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(it.description || 'Untitled') + '</div></div><span class="exs-rowval" style="font-weight:400">' + ofPriceLine(it) + '</span></button>'; });
+    } else if (kind === 'decl') {
+      t.textContent = 'Skills and education';
+      var d = state.declarations || {}, sk = Array.isArray(d.skills) ? d.skills : [], ed = Array.isArray(d.education) ? d.education : [];
+      h += '<p class="exs-cap" style="margin:0 0 4px">Tick the skills and education behind this offering. They stay on your phone with it.</p>';
+      if (!sk.length && !ed.length) h += '<p class="exs-body" style="margin-top:12px">You have not listed any skills or education yet. Add them with Edit on your profile, then tick them here.</p>';
+      [['Skills and qualifications', sk, 'skills'], ['Education', ed, 'edu']].forEach(function(g) {
+        if (!g[1].length) return;
+        h += '<div class="exs-cap mc-group">' + g[0] + '</div>';
+        g[1].forEach(function(x) { var on = _ofEd[g[2]].indexOf(x) >= 0; h += row(x, "App.ofPickDecl('" + g[2] + "', decodeURIComponent('" + ofEnc(x) + "'))", on); });
+      });
+    }
+    b.innerHTML = h;
+    var open = document.getElementById('mc-sheet-ofpick'); if (open.hidden) mcOpen('ofpick');
+  }
+  function ofPickSet(kind, v) {
+    v = String(v || '').trim();
+    if (kind === 'unit') { if (!v) { toast('Type what the price is per'); return; } _ofEd.unit = v; mcClose(); ofPriceFields(); }
+    else if (kind === 'group') { _ofEd.group = v; mcClose(); ofEdMetaRows(); }
+  }
+  function ofPickDecl(which, x) {
+    var a = _ofEd[which], k = a.indexOf(x); if (k >= 0) a.splice(k, 1); else a.push(x);
+    ofPick('decl'); ofEdMetaRows();
+  }
+  // v2.119.0 (Michael, Oct 6): packages, piece 3 on the list side. A package is a priced set of
+  // lines (an enhanced product: a sauna build, a Thanksgiving dinner). Lines are copies, so a
+  // package keeps its own prices when an item's usual price changes later; each line can be
+  // adjusted for the person it is for. The exchange flow does not offer packages yet.
+  var _pkEd = null, _pkLn = null;
+  function pkList() { var d = state.declarations || {}; if (!Array.isArray(d.packages)) d.packages = []; return d.packages; }
+  function pkLineTotal(l) { return (Number(l.value) || 0) * (l.qty === undefined || l.qty === '' ? 1 : (Number(l.qty) || 0)); }
+  function pkTotal(pk) { return (pk.lines || []).reduce(function(a, l) { return a + pkLineTotal(l); }, 0); }
+  function pkQtyWord(l) { return l.price === 'time' ? (l.unit === 'day' ? 'days' : 'hours') : (l.price === 'unit' ? (l.unit || 'units') : 'how many'); }
+  function pkLineCap(l) {
+    var q = Number(l.qty) || 0, v = mcFmt(Number(l.value) || 0);
+    if (l.price === 'time') return q + ' ' + (l.unit === 'day' ? (q === 1 ? 'day' : 'days') : (q === 1 ? 'hour' : 'hours')) + ' at ' + v;
+    if (l.price === 'unit') return q + ' ' + esc(l.unit || 'units') + ' at ' + v;
+    return q > 1 ? q + ' at ' + v : '';
+  }
+  function pkEdit(i) {
+    var pk = i >= 0 ? pkList()[i] : null;
+    _pkEd = { i: i, name: pk ? pk.name : '', about: pk ? pk.about || '' : '', lines: pk ? JSON.parse(JSON.stringify(pk.lines || [])) : [] };
+    document.getElementById('pk-ed-title').textContent = pk ? 'Edit package' : 'New package';
+    pkEdRender(); mcOpen('pkedit');
+  }
+  function pkEdKeep() { var n = document.getElementById('pk-name'), a = document.getElementById('pk-about'); if (n) _pkEd.name = n.value; if (a) _pkEd.about = a.value; }
+  function pkEdRender() {
+    var h = '';
+    h += '<div class="exs-fl"><label for="pk-name">Package name</label><input class="exs-box-in" id="pk-name" placeholder="Sauna build, Thanksgiving dinner" value="' + esc(_pkEd.name) + '"></div>';
+    h += '<div class="exs-fl"><label for="pk-about">Description (optional)</label><textarea class="exs-box-in" id="pk-about" placeholder="What the package covers, what the other person provides">' + esc(_pkEd.about) + '</textarea></div>';
+    h += '<div class="exs-cap" style="margin-top:6px">What is in it</div>';
+    _pkEd.lines.forEach(function(l, k) {
+      var cap = pkLineCap(l);
+      h += '<button class="exs-row" onclick="App.pkLine(' + k + ')"><div class="exs-rowmain"><div class="exs-body">' + esc(l.desc || 'Untitled') + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><span class="exs-rowval" style="font-weight:400">' + mcFmt(pkLineTotal(l)) + ' ' + exMarkSVG(12) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    if (!_pkEd.lines.length) h += '<p class="exs-cap" style="margin:8px 0 0">Nothing in it yet.</p>';
+    h += ofAddCtl('Add from what you offer', "App.pkFromList()") + '<br>' + ofAddCtl('Add a line of your own', 'App.pkLine(-1)');
+    h += '<div class="pk-total"><span>Total</span><span class="exs-rowval">' + mcFmt(pkTotal(_pkEd)) + ' ' + exMarkSVG(16) + '</span></div>';
+    h += '<p class="exs-cap" style="margin:4px 0 0">The total is a usual price. It can change in the moment, like any price.</p>';
+    if (_pkEd.i >= 0) h += '<button class="of-rm" onclick="App.pkRemove()">Remove package</button>';
+    document.getElementById('pk-ed-body').innerHTML = h;
+  }
+  function pkFromList() { pkEdKeep(); ofPick('pkitem'); }
+  function pkAddItem(i) {
+    var it = exServices()[i]; if (!it) return;
+    _pkEd.lines.push({ desc: it.description || '', price: it.price || 'fixed', unit: it.unit || '', value: Number(it.value) || 0, qty: 1 });
+    mcClose(); pkEdRender(); pkLine(_pkEd.lines.length - 1);
+  }
+  function pkLine(k) {
+    pkEdKeep();
+    var l = k >= 0 ? _pkEd.lines[k] : { desc: '', price: 'fixed', unit: '', value: '', qty: 1 };
+    _pkLn = { k: k, price: l.price || 'fixed', unit: l.unit || '' };
+    document.getElementById('pk-ln-title').textContent = k >= 0 ? (l.desc || 'Line') : 'A line of your own';
+    var h = '<div class="exs-fl"><label for="pk-ln-desc">Description</label><input class="exs-box-in" id="pk-ln-desc" placeholder="Site prep, the turkey, delivery" value="' + esc(l.desc || '') + '"></div>';
+    var qLab = l.price === 'fixed' ? 'How many' : (l.price === 'time' ? (l.unit === 'day' ? 'Days' : 'Hours') : 'How many ' + (l.unit || 'units'));
+    var vLab = l.price === 'fixed' ? 'Price' : (l.price === 'time' ? 'Rate, per ' + (l.unit || 'hour') : 'Price, per ' + (l.unit || 'unit'));
+    h += '<div class="exs-fl2"><div class="exs-fl"><label for="pk-ln-qty">' + esc(qLab) + '</label><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="pk-ln-qty" value="' + esc(String(l.qty === undefined ? 1 : l.qty)) + '" oninput="App.pkLineTot()"></div>';
+    h += '<div class="exs-fl"><label for="pk-ln-val">' + esc(vLab) + '</label><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="pk-ln-val" placeholder="0" value="' + esc(String(l.value === '' ? '' : l.value)) + '" oninput="App.pkLineTot()"></div></div>';
+    h += '<div class="pk-total"><span>Line total</span><span class="exs-rowval" id="pk-ln-tot"></span></div>';
+    if (k >= 0) h += '<button class="of-rm" onclick="App.pkLineRemove()">Remove this line</button>';
+    document.getElementById('pk-ln-body').innerHTML = h;
+    pkLineTot();
+    var open = document.getElementById('mc-sheet-pkline'); if (open.hidden) mcOpen('pkline');
+  }
+  function pkLineTot() {
+    var q = parseFloat(document.getElementById('pk-ln-qty').value) || 0, v = parseFloat(document.getElementById('pk-ln-val').value) || 0;
+    document.getElementById('pk-ln-tot').innerHTML = mcFmt(q * v) + ' ' + exMarkSVG(16);
+  }
+  function pkLineSave() {
+    var desc = (document.getElementById('pk-ln-desc').value || '').trim();
+    if (!desc) { toast('Describe this line first'); return; }
+    var line = { desc: desc, price: _pkLn.price, unit: _pkLn.unit, value: parseFloat(document.getElementById('pk-ln-val').value) || 0, qty: parseFloat(document.getElementById('pk-ln-qty').value) || 0 };
+    if (_pkLn.k >= 0) _pkEd.lines[_pkLn.k] = line; else _pkEd.lines.push(line);
+    mcClose(); pkEdRender();
+  }
+  function pkLineRemove() { if (_pkLn.k >= 0) _pkEd.lines.splice(_pkLn.k, 1); mcClose(); pkEdRender(); }
+  function pkSave() {
+    pkEdKeep();
+    var name = (_pkEd.name || '').trim();
+    if (!name) { toast('Name the package first'); return; }
+    var list = pkList(), prev = _pkEd.i >= 0 ? list[_pkEd.i] : {};
+    var pk = Object.assign({}, prev, { name: name, about: (_pkEd.about || '').trim(), lines: _pkEd.lines });
+    if (_pkEd.i >= 0) list[_pkEd.i] = pk; else list.push(pk);
+    save(); mcClose(); ofRender();
+  }
+  function pkRemove() {
+    if (_pkEd.i < 0) return;
+    if (!confirm('Remove the package "' + (pkList()[_pkEd.i].name || '') + '"? Past exchanges are not affected.')) return;
+    pkList().splice(_pkEd.i, 1); save(); mcClose(); ofRender();
+  }
+  function ofEdMetaRows() {
+    var el = document.getElementById('of-ed-meta'); if (!el) return;
+    var n = _ofEd.skills.length + _ofEd.edu.length;
+    el.innerHTML = stRow('Group', _ofEd.group || 'No group', "App.ofPick('group')") + stRow('Skills and education', n ? n + ' attached' : 'None attached', "App.ofPick('decl')");
+  }
+  function ofEdit(i) {
+    var it = i >= 0 ? exServices()[i] : null;
+    _ofEd = { i: i, price: (it && it.price) || 'fixed', unit: (it && it.unit) || (it && it.price === 'time' ? 'hour' : ''), group: (it && it.group) || '', skills: (it && Array.isArray(it.skills) ? it.skills : []).slice(), edu: (it && Array.isArray(it.edu) ? it.edu : []).slice() };
+    document.getElementById('of-ed-title').textContent = it ? 'Edit' : 'Add something you offer';
+    var h = '';
+    h += '<div class="exs-fl"><label for="of-name">What you offer</label><input class="exs-box-in" id="of-name" placeholder="A meal, a dozen eggs, a ride" value="' + esc(it ? it.description || '' : '') + '"></div>';
+    h += '<div class="exs-fl"><label for="of-about">Description (optional)</label><textarea class="exs-box-in" id="of-about" placeholder="What is included, what you need from the other person">' + esc(it ? it.about || '' : '') + '</textarea></div>';
+    h += '<div class="exs-fl" style="margin-bottom:6px"><label>How you price it</label></div>';
+    h += '<div class="mc-seg of-seg" id="of-price">' + [['fixed', 'Fixed price'], ['time', 'By time'], ['unit', 'By the unit']].map(function(o) { return '<button data-v="' + o[0] + '" aria-pressed="' + (_ofEd.price === o[0]) + '" onclick="App.ofPrice(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += '<div id="of-price-fields"></div>';
+    h += '<div id="of-ed-meta" style="margin-top:6px"></div>';
+    if (it) h += '<button class="of-rm" onclick="App.ofRemove()">Remove</button>';
+    document.getElementById('of-ed-body').innerHTML = h;
+    ofPriceFields(it ? it.value : '');
+    ofEdMetaRows();
+    mcOpen('ofedit');
+  }
+  function ofPriceFields(val) {
+    var host = document.getElementById('of-price-fields'); if (!host) return;
+    var cur = document.getElementById('of-value'); if (val === undefined && cur) val = cur.value;
+    var p = _ofEd.price, h = '';
+    if (p === 'time') {
+      if (_ofEd.unit !== 'hour' && _ofEd.unit !== 'day') _ofEd.unit = 'hour';
+      h += '<div class="mc-seg of-seg" id="of-tunit">' + [['hour', 'Per hour'], ['day', 'Per day']].map(function(o) { return '<button aria-pressed="' + (_ofEd.unit === o[0]) + '" onclick="App.ofTimeUnit(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>';
+    }
+    if (p === 'unit') h += '<div style="margin:-6px 0 8px">' + stRow('Priced per', _ofEd.unit || 'Choose a unit', "App.ofPick('unit')") + '</div>';
+    var lab = p === 'fixed' ? 'Usual price' : (p === 'time' ? 'Usual rate, per ' + _ofEd.unit : 'Usual price, per ' + (_ofEd.unit || 'unit'));
+    h += '<div class="exs-fl"><label for="of-value" id="of-value-lab">' + esc(lab) + '</label><div class="exs-bigrow"><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="of-value" placeholder="0" value="' + esc(val === null || val === undefined ? '' : String(val)) + '">' + exMarkSVG(16) + '</div></div>';
+    host.innerHTML = h;
+  }
+  function ofPrice(p) {
+    _ofEd.price = p; if (p === 'fixed') _ofEd.unit = ''; else if (p === 'time') _ofEd.unit = 'hour'; else if (_ofEd.unit === 'hour' || _ofEd.unit === 'day') _ofEd.unit = '';
+    document.querySelectorAll('#of-price button').forEach(function(b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === p)); });
+    ofPriceFields();
+  }
+  function ofTimeUnit(u) { _ofEd.unit = u; ofPriceFields(); }
+  function ofUnitField(v) { _ofEd.unit = v.trim(); var l = document.getElementById('of-value-lab'); if (l) l.textContent = 'Usual price, per ' + (_ofEd.unit || 'unit'); }
+  function ofSave() {
+    var name = (document.getElementById('of-name').value || '').trim();
+    if (!name) { toast('Say what you offer first'); return; }
+    var about = (document.getElementById('of-about').value || '').trim();
+    var value = parseFloat(document.getElementById('of-value').value) || 0;
+    if (_ofEd.price === 'unit' && !_ofEd.unit) { toast('Choose what the price is per'); return; }
+    var list = exServices(), prev = _ofEd.i >= 0 ? list[_ofEd.i] : {};
+    var entry = Object.assign({}, prev, { description: name, about: about, price: _ofEd.price, unit: _ofEd.price === 'fixed' ? '' : _ofEd.unit, value: value, group: _ofEd.group, skills: _ofEd.skills.slice(), edu: _ofEd.edu.slice() });
+    if (_ofEd.i >= 0) list[_ofEd.i] = entry; else list.push(entry);
+    save(); mcClose(); ofRender();
+  }
+  function ofRemove() {
+    if (_ofEd.i < 0) return;
+    var it = exServices()[_ofEd.i];
+    if (!confirm('Remove "' + (it.description || 'this') + '" from what you offer? Past exchanges are not affected.')) return;
+    exServices().splice(_ofEd.i, 1); save(); mcClose(); ofRender();
+  }
+  // v2.116.0 (Michael, Oct 6): the signal reading in the current design. Base reading first (the shield,
+  // and how many sources each place gives), then the full breakdown, one signal, and its technical details,
+  // each a reading sheet over the last. Colours per rules 8a and 16: green for a signal that reads normal,
+  // red only for alarming, nothing amber. The old card (renderPOHVerdict) stays for the exchange flow.
+  var SIG_ORIGINS = [
+    ['device', 'From this phone', 'Hardware on your phone adds to each record.'],
+    ['external', 'From others and the witness', 'What reaches you from the people you exchange with and from the witness.'],
+    ['chain', 'From your chain over time', 'Patterns that show as your chain grows.']
+  ];
+  var _sigV = null;
+  function sigTxt(t) { return String(t || '').replace(/\s*\u2014\s*/g, ': '); } // the registry's lines use em dashes; none on screen
+  function sigRollup() { _sigV = null; try { _sigV = POH.rollup({ chain: state.chain, deviceCapabilities: pohDeviceCapabilities() }); } catch (e) { console.log('[signals] rollup failed:', e.message); } return _sigV; }
+  function sigState(x) {
+    if (x.presence === 'absent') return x.expected ? 'Not yet' : 'Not on this phone';
+    if (x.behavior === 'alarming') return 'Unusual';
+    if (x.behavior === 'worth-noting') return 'Worth a look';
+    return '';
+  }
+  function secSignals() {
+    var v = sigRollup(), ts = secSnapshot(), sh = exShieldRead(ts), h = '';
+    h += '<div style="display:flex;justify-content:center;margin:6px 0 12px">' + exShieldSVG(sh.color, 48) + '</div>';
+    h += '<p class="exs-body" style="margin:0">' + esc(sh.title.replace('This phone', 'Your phone')) + '</p>';
+    h += '<p class="exs-cap" style="margin:6px 0 0">' + esc(sh.body.replace('This phone', 'Your phone')) + '</p>';
+    if (!v) { document.getElementById('sig-base').innerHTML = h + '<p class="exs-cap" style="margin-top:16px">Nothing to read yet. The reading starts with your first exchange.</p>'; mcOpen('signals'); return; }
+    var pres = Math.min(v.countPresentExpected || 0, v.totalAvailable);
+    h += '<div class="exs-cap mc-group">Where the reading comes from</div>';
+    SIG_ORIGINS.forEach(function(o) {
+      var b = v.byOrigin[o[0]]; if (!b || !b.expected) return;
+      h += '<div class="exs-row mc-vrow st-row"><div class="exs-rowmain"><div class="exs-body">' + o[1] + '</div><div class="exs-cap">' + o[2] + '</div></div><div class="exs-rowval">' + b.contributing + ' of ' + b.expected + '</div></div>';
+    });
+    h += '<p class="exs-cap" style="margin:10px 0 6px">' + pres + ' of ' + v.totalAvailable + ' expected sources are giving a reading' + (v.countBonus ? ', plus ' + v.countBonus + ' this phone gives beyond those' : '') + '.' + (v.countAlarming ? ' ' + v.countAlarming + ' ' + (v.countAlarming === 1 ? 'reads' : 'read') + ' unusually.' : (v.countWorthNoting ? ' ' + v.countWorthNoting + ' ' + (v.countWorthNoting === 1 ? 'is' : 'are') + ' worth a look.' : '')) + '</p>';
+    h += stRow('Full breakdown', 'Every signal, what it means, and what your phone shows', 'App.sigAll()');
+    document.getElementById('sig-base').innerHTML = h;
+    mcOpen('signals');
+  }
+  function sigAll() {
+    var v = _sigV || sigRollup(); if (!v) return;
+    var order = { device: 0, external: 1, chain: 2 }, h = '';
+    var sorted = v.signals.slice().sort(function(a, b) { var d = (order[a.origin] || 9) - (order[b.origin] || 9); if (d) return d; var p = (a.presence === 'present' ? 0 : 1) - (b.presence === 'present' ? 0 : 1); return p || (b.tier || 0) - (a.tier || 0); });
+    SIG_ORIGINS.forEach(function(o, gi) {
+      var list = sorted.filter(function(x) { return x.origin === o[0]; }); if (!list.length) return;
+      h += '<div class="exs-cap' + (gi ? ' mc-group' : '') + '"' + (gi ? '' : ' style="margin-top:4px"') + '>' + o[1] + '</div>';
+      list.forEach(function(x) {
+        var st = sigState(x), col = x.behavior === 'alarming' && x.presence !== 'absent' ? 'var(--red)' : 'var(--text-faint)';
+        var mark = (x.presence === 'present' && x.behavior === 'normal') ? '<svg width="16" height="16" style="color:var(--green);flex:none" aria-label="Reads normal"><use href="#icon-check"/></svg>' : '';
+        h += '<button class="exs-row' + (x.presence === 'absent' ? ' off' : '') + '" style="cursor:pointer" onclick="App.sigOne(\'' + esc(x.id) + '\')"><div class="exs-rowmain"><div class="exs-body">' + esc(x.humanName) + (!x.expected && x.presence === 'present' ? '<span class="exs-cap"> \u00b7 extra</span>' : '') + '</div><div class="exs-cap">' + esc(sigTxt(x.summary)) + '</div></div>' +
+          (st ? '<span class="exs-cap" style="color:' + col + ';flex:none">' + st + '</span>' : mark) + '<svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+      });
+    });
+    document.getElementById('sig-all').innerHTML = h;
+    mcOpen('sigall');
+  }
+  function sigOne(id) {
+    var v = _sigV || sigRollup(); if (!v) return;
+    var x = v.signals.find(function(q) { return q.id === id; }); if (!x) return;
+    document.getElementById('sig-one-title').textContent = x.humanName;
+    var h = '', st = sigState(x);
+    if (st) h += '<p class="exs-cap" style="margin:0 0 4px' + (x.behavior === 'alarming' && x.presence !== 'absent' ? ';color:var(--red)' : '') + '">' + st + '</p>';
+    if (x.summary) h += '<p class="exs-body" style="margin:0">' + esc(sigTxt(x.summary)) + '</p>';
+    var hasCopy = x.copy && x.copy.whatItMeans && x.copy.whatItMeans !== 'TODO';
+    if (hasCopy) h += '<div class="exs-body sig-hd">What it means</div><p class="exs-body" style="margin:0">' + esc(sigTxt(x.copy.whatItMeans)) + '</p>';
+    h += '<div class="exs-body sig-hd">What your phone shows</div><div class="sig-data">' + sigTxt(renderPOHSignalData(x).replace(/ \u2013 /g, ' to ')) + '</div>';
+    if (hasCopy && x.copy.whyItMatters) h += '<div class="exs-body sig-hd">Why it matters</div><p class="exs-body" style="margin:0">' + esc(sigTxt(x.copy.whyItMatters)) + '</p>';
+    if (!hasCopy) h += '<p class="exs-cap" style="margin-top:14px">A fuller explanation of this signal is still to be written.</p>';
+    h += '<div style="height:14px"></div>' + stRow('Technical details', 'How this signal is weighed, and the raw reading', "App.sigTech('" + esc(x.id) + "')");
+    document.getElementById('sig-one').innerHTML = h;
+    mcOpen('sigone');
+  }
+  function sigTech(id) {
+    var v = _sigV || sigRollup(); if (!v) return;
+    var x = v.signals.find(function(q) { return q.id === id; }), sig = (POH.SIGNALS || {})[id]; if (!x || !sig) return;
+    var tier = sig.tier === 3 ? 'Critical' : sig.tier === 2 ? 'Supporting' : 'Enrichment';
+    function r(k, val, mono) { return '<div class="exs-row mc-vrow st-row"><div class="exs-rowmain"><div class="exs-body">' + k + '</div></div><div class="exs-rowval" style="font-weight:400' + (mono ? ';font-family:var(--mono);font-size: var(--fs-caption)' : '') + '">' + esc(String(val)) + '</div></div>'; }
+    var h = '<div class="exs-cap" style="margin-top:4px">How it is weighed</div>';
+    h += r('Signal', sig.id, true) + r('Weight', tier + ' (' + sig.tier + ')') + r('Expected on', (sig.expectedOn || []).join(', ')) + r('This device', v.deviceClass) + r('Expected here', x.expected ? 'Yes' : 'No');
+    h += '<div class="exs-cap mc-group">How it reads</div>';
+    h += r('Presence', x.presence) + r('Behaviour', x.behavior) + r('Adds to the reading', x.contribution);
+    h += '<div class="exs-cap mc-group">Raw reading on this device</div>';
+    h += '<div class="sig-data" style="margin-top:6px">' + (x.raw ? '<pre>' + esc(JSON.stringify(x.raw, null, 2)) + '</pre>' : 'No reading captured yet.') + '</div>';
+    h += '<p class="exs-cap" style="margin-top:14px">This is the raw readout for this signal, as worked out on this phone from your device and your chain. It stays on this phone.</p>';
+    document.getElementById('sig-tech').innerHTML = h;
+    mcOpen('sigtech');
+  }
 
   function showMyPhotos() {
     var genesis = null;
@@ -1444,35 +2608,35 @@ const PAIR_CODE_LENGTH = 4;
     html += '<h2 style="font-size:18px; color:var(--text); margin:0;">My Photos</h2>';
     html += '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
     html += '</div>';
-    html += '<p style="font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Show this screen to the person you are exchanging with. They can compare your genesis photo with how you look now.</p>';
+    html += '<p style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:20px; line-height:1.5;">Show this screen to the person you are exchanging with. They can compare your genesis photo with how you look now.</p>';
 
     // Genesis photo
     html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Genesis photo</div>';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Genesis photo</div>';
     if (genesis && genesis.photoHash) {
       html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:8px; text-align:center;">';
       if (genesis.photoData) {
         html += '<img src="' + genesis.photoData + '" style="max-width:100%; max-height:300px; border-radius:8px;">';
       }
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-top:8px;">Hash: ' + genesis.photoHash.substring(0, 16) + '...</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); margin-top:4px;">' + new Date(genesis.timestamp).toLocaleDateString() + '</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:8px;">Hash: ' + genesis.photoHash.substring(0, 16) + '...</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-top:4px;">' + new Date(genesis.timestamp).toLocaleDateString() + '</div>';
       html += '</div>';
     } else {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size:14px;">No genesis photo recorded</div>';
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size: var(--fs-label);">No genesis photo recorded</div>';
     }
     html += '</div>';
 
     // Current photo
     html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Current photo</div>';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Current photo</div>';
     if (current) {
       html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:8px; text-align:center;">';
       html += '<img src="' + current + '" style="max-width:100%; max-height:300px; border-radius:8px;">';
-      if (currentDate) html += '<div style="font-size:12px; color:var(--text-faint); margin-top:8px;">' + new Date(currentDate).toLocaleDateString() + '</div>';
+      if (currentDate) html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-top:8px;">' + new Date(currentDate).toLocaleDateString() + '</div>';
       if (state.declarations.photoSource) html += '<div style="font-size:11px; color:var(--text-faint);">Source: ' + state.declarations.photoSource + '</div>';
       html += '</div>';
     } else {
-      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size:14px;">No photo set. Add one in your declarations.</div>';
+      html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; color:var(--text-faint); font-size: var(--fs-label);">No photo set. Add one in your declarations.</div>';
     }
     html += '</div>';
 
@@ -1621,7 +2785,7 @@ const PAIR_CODE_LENGTH = 4;
     const body = document.getElementById('pending-body');
     const items = loadPending();
     if (!items.length) { body.innerHTML = '<div class="empty-state">No pending exchanges.</div>'; return; }
-    body.innerHTML = '<div style="text-align:right; margin-bottom:12px;"><button style="font-size:13px; color:var(--red); background:none; text-decoration:underline;" onclick="App.deleteAllPending()">Delete all</button></div>';
+    body.innerHTML = '<div style="text-align:right; margin-bottom:12px;"><button style="font-size: var(--fs-label); color:var(--red); background:none; text-decoration:underline;" onclick="App.deleteAllPending()">Delete all</button></div>';
     items.forEach(p => {
       const card = document.createElement('div');
       card.className = 'pending-card';
@@ -1648,7 +2812,7 @@ const PAIR_CODE_LENGTH = 4;
       let pairInfo = '';
       if (p.transport === 'pair' && p.pairCode) {
         pairInfo = '<div style="margin-top:8px;padding:8px 12px;background:var(--bg-input);border-radius:var(--radius-sm);border:1px solid var(--border);text-align:center;">' +
-          '<div style="font-size: 13px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Your code</div>' +
+          '<div style="font-size: var(--fs-label);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Your code</div>' +
           '<div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--accent);letter-spacing:6px;">' + esc(p.pairCode) + '</div>' +
           '</div>';
       }
@@ -1699,6 +2863,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function refreshHome() {
+    try {
+      var adl = document.getElementById('home-adddev');
+      if (adl) adl.hidden = !(state.initialized && !state.devicePublicKeyJwk && !state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_DEVICE; }));
+    } catch (e) {}
     const name = state.declarations.name || '';
     var hour = new Date().getHours();
     var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -1717,7 +2885,7 @@ const PAIR_CODE_LENGTH = 4;
   // and says how many. Saving a backup (or restoring one) records the act
   // count in SK_backup; the line returns when a new exchange lands.
   function backupMarker() { try { return JSON.parse(localStorage.getItem(SK + '_backup') || 'null'); } catch(e) { return null; } }
-  function markBackedUp() { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, at: new Date().toISOString() })); } catch(e) {} }
+  function markBackedUp(file) { try { localStorage.setItem(SK + '_backup', JSON.stringify({ acts: state.chain.filter(HCP.isAct).length, seq: state.chain.length - 1, at: new Date().toISOString(), file: file || '' })); } catch(e) {} }
   function renderBrowserStorageBanner() {
     var existing = document.getElementById('browser-storage-banner');
     if (existing) existing.remove();
@@ -1727,6 +2895,19 @@ const PAIR_CODE_LENGTH = 4;
     var acts = state.chain.filter(HCP.isAct).length;
     var m = backupMarker();
     var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
+    var rm = recModel();
+    if (rm.others.length) {
+      // v2.110.0 (Michael, Oct 5): with other devices, one neutral line, no icon, one button into Record keeping.
+      // v2.127.0 (Michael, Oct 6 walk): out of sync says so, and the button syncs (straight to the code with one other device).
+      var cap = rm.syncN > 0 ? 'Your records are out of sync' : (unbacked > 0 ? unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up' : '');
+      if (!cap) return;
+      var hero2 = document.querySelector('#tab-home-content .home-hero');
+      if (!hero2) return;
+      var b2 = document.createElement('div'); b2.id = 'browser-storage-banner'; b2.className = 'home-backup';
+      b2.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') + '<div class="exs-cap' + (rm.syncN > 0 ? ' rec-warn' : '') + '">' + cap + '</div></div>' + (rm.syncN > 0 ? '<button class="exs-save" onclick="App.recSyncHome()">' + recIcon('icon-sync') + 'Sync now</button>' : '<button class="exs-save" onclick="App.bkOpenHome()">Back up now</button>');
+      hero2.appendChild(b2);
+      return;
+    }
     if (unbacked <= 0) return;
     var hero = document.querySelector('#tab-home-content .home-hero');
     if (!hero) return;
@@ -1735,7 +2916,7 @@ const PAIR_CODE_LENGTH = 4;
     b.className = 'home-backup';
     b.innerHTML = '<div class="home-backup-row">' + (iosBrowser ? '<button class="home-backup-warn" aria-label="Why this matters" onclick="App.openBackupInfo()"><svg width="18" height="18"><use href="#icon-warning"/></svg></button>' : '') +
       '<div class="exs-cap">You have ' + unbacked + (unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up</div></div>' +
-      '<button class="exs-save" onclick="App.exportBackup()">Back up now</button>';
+      '<button class="exs-save" onclick="App.bkOpenHome()">Back up now</button>';
     hero.appendChild(b);
   }
 
@@ -1743,6 +2924,151 @@ const PAIR_CODE_LENGTH = 4;
   // v2.93.0: the warning sheet behind the amber icon (Michael, Oct 3).
   function openBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) { el.hidden = false; el.scrollTop = 0; } }
   function closeBackupInfo() { var el = document.getElementById('backup-sheet'); if (el) el.hidden = true; }
+
+  // ---- Record keeping (v2.110.0, Step 4, Michael Oct 5) ----
+  // A device knows only what it has that another device has not seen. For each
+  // other device: the seq on this chain where they last matched (a recorded
+  // sync, else the moment the copy was made: that device's certificate on the
+  // first phone, this device's own certificate on an attached one). New since
+  // = exchanges written on this device after that point (repairs came from
+  // elsewhere, so they never count).
+  var _recFromHome = false;
+  function recFmtD(ts) { try { var d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
+  function recModel() {
+    var m = backupMarker();
+    var acts = state.chain.filter(HCP.isAct).length;
+    var unbacked = acts - (m && typeof m.acts === 'number' ? m.acts : 0);
+    var out = { others: [], syncN: 0, unbacked: Math.max(0, unbacked), backupAt: m && m.at ? m.at : null };
+    var devs = state.recDevs || [];
+    if (!devs.length) return out;
+    var me = (state.settings && state.settings.thisDeviceFp) || state.fingerprint;
+    var labels = (state.settings && state.settings.deviceLabels) || {}, ds = (state.settings && state.settings.devSync) || {};
+    var myCert = null; devs.forEach(function(d) { if (d.fp === me) myCert = d; });
+    var list = [];
+    if (me !== state.fingerprint) list.push({ fp: state.fingerprint, label: (labels[state.fingerprint] && labels[state.fingerprint].label) || 'Your first device', base: myCert ? myCert.seq : 0, at: myCert ? myCert.certTs : '' });
+    var byLabel = {}, nk = function(x) { return String(x || '').trim().replace(/\s+/g, ' ').toLowerCase(); };
+    var myKey = labels[me] && labels[me].label ? nk(labels[me].label) : null; // leftover certificates under this device's own name are this device
+    devs.forEach(function(d) {
+      if (d.fp === me) return;
+      var lab = labels[d.fp] && labels[d.fp].label; if (!lab) return; // a certificate with no label never finished attaching
+      var e = { fp: d.fp, label: lab, seq: d.seq, base: myCert ? myCert.seq : d.seq, at: myCert ? myCert.certTs : d.certTs };
+      var key = nk(lab); if (key === myKey) return; // "My PC" and "my pc " are one device
+      if (!byLabel[key] || byLabel[key].seq < d.seq) byLabel[key] = e; // repeated attach attempts: the latest certificate stands
+    });
+    Object.keys(byLabel).forEach(function(k) { list.push(byLabel[k]); });
+    list.forEach(function(d) {
+      if (ds[d.fp] && typeof ds[d.fp].mySeq === 'number') { d.base = ds[d.fp].mySeq; d.at = ds[d.fp].at; d.synced = true; }
+      d.count = state.chain.filter(function(r, i) { return i > d.base && HCP.isAct(r) && r.type !== HCP.RECORD_TYPE_REPAIR; }).length;
+      if (d.count > out.syncN) out.syncN = d.count;
+    });
+    out.others = list;
+    return out;
+  }
+  function recCaption(rm) {
+    if (rm.syncN > 0) return 'Out of sync: ' + rm.syncN + (rm.syncN === 1 ? ' exchange' : ' exchanges') + ' not on your other devices';
+    if (rm.unbacked > 0) return rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up';
+    return 'Your record is in order';
+  }
+  function recRow(word, cap, on) { return '<button class="exs-row" onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap">' + esc(cap) + '</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>'; }
+  // v2.127.0 (Michael, Oct 6 walk): Sync and backup. Sync and Back up are actions, so each sits as a
+  // pill at the right of its row; the rest of the row opens the details (device, backup) as before.
+  function recIcon(id) { return '<svg aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  function recActRow(word, cap, on, actWord, act, actId, icon, warn, rowId) {
+    return '<div class="exs-row" role="button" tabindex="0"' + (rowId ? ' id="' + rowId + '"' : '') + ' onclick="' + on + '"><div class="exs-rowmain"><div class="exs-body">' + esc(word) + '</div><div class="exs-cap' + (warn ? ' rec-warn' : '') + '">' + esc(cap) + '</div></div>' +
+      '<button class="rec-act"' + (actId ? ' id="' + actId + '"' : '') + ' onclick="event.stopPropagation();' + act + '">' + (icon ? recIcon(icon) : '') + '<span>' + esc(actWord) + '</span></button></div>';
+  }
+  function recRender() {
+    var el = document.getElementById('rec-body'); if (!el) return;
+    var rm = recModel(), h = '';
+    if (rm.others.length && rm.syncN > 0) h += '<p class="exs-body"><span class="rec-warn">Your records are out of sync.</span> ' + rm.syncN + (rm.syncN === 1 ? ' exchange on this device is' : ' exchanges on this device are') + ' not on your other devices yet. Next time you\u2019re near them, sync.</p>';
+    else if (rm.others.length && rm.unbacked > 0) h += '<p class="exs-body">Your other devices have everything from this one. One more copy outside your devices keeps it safe if you lose them all.</p>';
+    else if (rm.others.length || rm.unbacked <= 0) h += '<div style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><p class="exs-body" style="margin:0">Your record is in order. ' + (rm.others.length ? 'Your other devices have everything, and your last backup has it all.' : 'Your last backup has everything.') + '</p></div>';
+    else h += '<p class="exs-body">You\u2019ve made ' + rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' since your last backup. A backup keeps a copy outside this device.</p>';
+    h += '<p class="mc-link" style="margin:10px 0 0"><a href="#" onclick="App.mcOpen(\'recwhy\');return false">Why this matters</a></p>';
+    h += '<div class="exs-cap mc-group">Your other devices</div>';
+    rm.others.forEach(function(d, i) {
+      var cap = d.count ? 'Out of sync: ' + d.count + (d.count === 1 ? ' exchange' : ' exchanges') + ' not on it yet' : 'Last synced ' + (recFmtD(d.at) || 'when it was added');
+      h += recActRow(d.label, cap, 'App.recDev(' + i + ')', 'Sync', 'App.syncChoose(' + i + ')', null, 'icon-sync', d.count > 0);
+    });
+    if (!rm.others.length) h += '<p class="exs-cap" style="margin:4px 0 0">Only this device so far.</p>';
+    h += ofAddCtl('Add a device', 'App.attachOldStart()');
+    h += '<div class="exs-cap mc-group">Backup</div>';
+    // v2.128.0 (Michael, Oct 6 walk): both ways to back up are on the sheet, send and save.
+    h += '<p class="exs-cap" style="margin:2px 0 0">' + esc(rm.backupAt ? 'Last backup ' + recFmtD(rm.backupAt) + (rm.unbacked ? '. ' + rm.unbacked + ' since.' : '. Nothing new since.') : 'Not backed up yet') + '</p>';
+    h += recActRow('Send a backup', 'To your email, or a cloud folder', 'App.recBkOpen()', 'Send', 'App.recBackupInline(\'share\')', 'rec-bk-go', 'icon-send', false, 'rec-bk-sendrow');
+    h += recActRow('Save a backup here', 'A file on this device', 'App.recBkOpen()', 'Save', 'App.recBackupInline(\'save\')', 'rec-bk-save', 'icon-save');
+    h += recRow('Restore from a backup', 'Replace this device\u2019s record with one from a backup file', 'App.importBackup()'); // v2.114.0: moved here from Settings
+    el.innerHTML = h;
+    var c = document.getElementById('rec-acct-cap'); if (c) { c.textContent = recCaption(rm); c.classList.toggle('rec-warn', rm.syncN > 0); }
+  }
+  // From Home: one other device goes straight to the code; several open Sync and backup to pick one.
+  function recSyncHome() { var rm = recModel(); if (rm.others.length === 1) syncChoose(0); else recOpenHome(); }
+  async function recBackupInline(mode) { var ok = await exportBackupAction(mode || 'share'); if (ok) { recRender(); renderBrowserStorageBanner(); bkPrepare(); } }
+  // The Send pill opens the share panel at once, so the file is built when the sheet opens (not on every Account open).
+  function recOpen() { _recFromHome = false; recRender(); mcOpen('record'); bkPrepare(); }
+  function recOpenHome() { _recFromHome = true; openWallet(); recRender(); mcOpen('record'); bkPrepare(); }
+  // v2.112.0: sheets live inside the account panel, so from Home open Record keeping first, Backup on top (X returns to Record keeping).
+  function bkOpenHome() { recOpenHome(); recBkOpen(); }
+  function recClose() { mcClose(); if (_recFromHome) { _recFromHome = false; closeModal('wallet'); } }
+  function recDev(i) {
+    var d = recModel().others[i]; if (!d) return;
+    document.getElementById('recdev-title').textContent = d.label;
+    var fp = d.fp.replace(/(.{4})/g, '$1 ').trim();
+    document.getElementById('recdev-body').innerHTML = '<div class="exs-cap mc-group">Last synced</div><div class="exs-body">' + esc(d.at ? new Date(d.at).toLocaleString() : 'When it was added') + '</div>' +
+      '<div class="exs-cap mc-group">Since then</div><div class="exs-body">' + (d.count ? d.count + (d.count === 1 ? ' exchange here is' : ' exchanges here are') + ' not on ' + esc(d.label) + ' yet' : esc(d.label) + ' has everything from here') + '</div>' +
+      '<div class="exs-cap mc-group">Device key</div><div class="exs-cap" style="font-family:var(--font-mono)">' + esc(fp) + '</div>' +
+      '<p class="exs-cap" style="margin-top:16px">Put both devices side by side. Each copies over the exchanges the other is missing.</p>';
+    document.getElementById('recdev-foot').innerHTML = '<button class="btn btn-primary" style="width:100%;" onclick="App.mcClose();App.syncChoose(' + i + ')">Sync now</button>';
+    mcOpen('recdev');
+  }
+  // v2.113.0 (Michael, Oct 6): the sheet leads with the last backup, plainly; the why lives in
+  // two explainers (FAQ) opened by underlined questions (rule 9).
+  function bkWhen(ts) { try { var d = new Date(ts); return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+  function recBkOpen() {
+    bkPrepare();
+    var rm = recModel(), m = backupMarker() || {}, h = '';
+    var icon = function(id, col) { return '<svg width="22" height="22" style="flex:none;color:' + col + '"><use href="#' + id + '"/></svg>'; };
+    var head = function(ic, t) { return '<div style="display:flex;align-items:center;gap:10px;margin-top:4px;">' + ic + '<div class="exs-t" style="margin:0">' + t + '</div></div>'; };
+    if (!rm.backupAt) {
+      h += head(icon('icon-warning', 'var(--red)'), 'Not backed up yet');
+      h += '<p class="exs-body" style="margin-top:8px">Your record is only on your devices.</p>';
+    } else if (rm.unbacked) {
+      h += head(icon('icon-warning', 'var(--red)'), rm.unbacked + (rm.unbacked === 1 ? ' exchange' : ' exchanges') + ' not backed up');
+      h += '<p class="exs-body" style="margin-top:8px">Last backup ' + esc(bkWhen(rm.backupAt)) + '</p>';
+    } else {
+      h += head(icon('icon-check', 'var(--green)'), 'Backed up');
+      h += '<p class="exs-body" style="margin-top:8px">' + esc(bkWhen(rm.backupAt)) + '. Nothing new since.</p>';
+    }
+    if (m.file) h += '<p class="exs-cap" style="margin-top:4px;word-break:break-all;">' + esc(m.file) + '</p>';
+    h += '<p class="exs-body" style="margin-top:20px" id="bk-how"></p>';
+    h += '<p class="exs-cap" style="margin-top:10px">It is locked with your PIN. To bring it back, open HEP on a new device and choose Restore from a backup file.</p>';
+    h += '<p class="mc-link" style="margin-top:20px"><a href="#" onclick="App.faqOpen(\'backup\');return false">Why keep a backup off this device?</a></p>';
+    h += '<p class="mc-link"><a href="#" onclick="App.faqOpen(\'pwa\');return false">Why HEP is a web app</a></p>';
+    document.getElementById('recbk-body').innerHTML = h;
+    mcOpen('recbk');
+    bkButton();
+  }
+  // Short explainers, one place for the words. Any surface (Backup, Learn, Settings) opens them with faqOpen.
+  var FAQ = {
+    backup: { title: 'Why keep a backup off this device?', paras: [
+      'Your record is yours and no one else\u2019s. There is no company holding a copy of it for you.',
+      'Think of it the way you think of cash. It exists as long as you hold it. If you lose it, it is gone.',
+      'So keep a copy somewhere outside your devices. The simplest place is your own email: send it to yourself, and you can search for it whenever you need it. Search for HEP and your name and every backup you have sent shows up, newest last.',
+      'If you lose every device, open HEP on a new one, choose Restore from a backup file, and enter your PIN. Your record comes back exactly as it was.'
+    ] },
+    pwa: { title: 'Why HEP is a web app', paras: [
+      'HEP is built so that anyone with a smartphone can use it, with or without an internet connection.',
+      'It is a web app, not something you get from an app store. No company has to approve it, list it, or keep it available. It can be shared from one phone to another, kept on a thumb drive, and passed along without anyone\u2019s permission.',
+      'For you, this means your record lives on your own device, not on someone else\u2019s server. That is what keeps it yours. It is also why backing it up is up to you.'
+    ] }
+  };
+  function faqOpen(k) {
+    var f = FAQ[k]; if (!f) return;
+    document.getElementById('faq-title').textContent = f.title;
+    document.getElementById('faq-body').innerHTML = f.paras.map(function(p) { return '<p class="exs-body" style="margin-top:12px">' + esc(p) + '</p>'; }).join('') + (f.link ? '<p class="mc-link" style="margin-top:20px"><a href="#" onclick="App.faqOpen(\'' + f.link.faq + '\');return false">' + esc(f.link.text) + '</a></p>' : '');
+    mcOpen('faq');
+  }
+  async function recBackup(mode) { var ok = await exportBackupAction(mode); if (!ok) return; mcClose(); if (_recFromHome) recClose(); else recRender(); renderBrowserStorageBanner(); } // v2.113.0: opened from Home or Settings, return there
 
   function makeCard(r) {
     const card = document.createElement('div'); card.className = 'record-card ' + (r.energyState === 'provided' ? 'provided-card' : 'received-card');
@@ -1759,11 +3085,13 @@ const PAIR_CODE_LENGTH = 4;
     if (r.category) detailHtml += '<div class="rd-row"><span class="rd-label">Category</span><span class="rd-val">' + esc(r.category) + '</span></div>';
     if (r.duration) detailHtml += '<div class="rd-row"><span class="rd-label">Duration</span><span class="rd-val">' + formatDuration(r.duration) + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Counterparty</span><span class="rd-val">' + esc(name) + '</span></div>';
-    detailHtml += '<div class="rd-row"><span class="rd-label">Fingerprint</span><span class="rd-val" style="font-family:var(--font-mono);font-size: 13px;">' + esc(r.counterparty) + '</span></div>';
+    detailHtml += '<div class="rd-row"><span class="rd-label">Fingerprint</span><span class="rd-val" style="font-family:var(--font-mono);font-size: var(--fs-label);">' + esc(r.counterparty) + '</span></div>';
     if (r.city || r.state) detailHtml += '<div class="rd-row"><span class="rd-label">Location</span><span class="rd-val">' + esc([r.city, r.state].filter(Boolean).join(', ')) + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Timestamp</span><span class="rd-val">' + new Date(r.timestamp).toLocaleString() + '</span></div>';
     detailHtml += '<div class="rd-row"><span class="rd-label">Sequence</span><span class="rd-val">#' + r.seq + '</span></div>';
     if (r.witnessAttestation) detailHtml += '<div class="rd-row"><span class="rd-label">Witnessed</span><span class="rd-val" style="color:var(--green);">\u2713 Server attested</span></div>';
+    if (r.counterpartySig) detailHtml += '<div class="rd-row"><span class="rd-label">Countersigned</span><span class="rd-val" style="color:var(--green);">\u2713 Signed by both</span></div>';
+    if (r.type === HCP.RECORD_TYPE_REPAIR) detailHtml += '<div class="rd-row"><span class="rd-label">Copied</span><span class="rd-val">From your other device</span></div>';
     detailHtml += '</div>';
 
     card.innerHTML = `<div class="dir ${r.energyState}">${icon}</div><div class="info"><div class="desc">${esc(desc)}</div>${cpDescHtml}<div class="meta">${esc(name)} \u00b7 ${ds}${r.duration ? ' \u00b7 ' + formatDuration(r.duration) : ''}</div>${detailHtml}</div><div class="val ${r.energyState}">${r.energyState === 'received' ? '\u2212' : '+'}${r.value}</div>`;
@@ -1867,10 +3195,10 @@ const PAIR_CODE_LENGTH = 4;
         // Strong pre-exchange prompt for undone scale exercise
         html += '<div style="padding:16px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:16px; line-height:1.6;">';
         html += '<div style="font-size:16px; font-weight:500; color:var(--text); margin-bottom:10px;">Before your first exchange</div>';
-        html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:10px;">It is really worth taking the time to think about how you value things. It may take you one minute, it might take five, but it matters. It helps you understand your own effort and helps the other person understand you.</div>';
-        html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:14px;">If you want to cooperate well, this is how you start.</div>';
+        html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:10px;">It is really worth taking the time to think about how you value things. It may take you one minute, it might take five, but it matters. It helps you understand your own effort and helps the other person understand you.</div>';
+        html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:14px;">If you want to cooperate well, this is how you start.</div>';
         html += '<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Take a few minutes to do the scale exercise</button>';
-        html += '<button class="btn btn-secondary" style="width:100%; font-size:14px;" onclick="App.dismissRangePrompt()">Continue without it</button>';
+        html += '<button class="btn btn-secondary" style="width:100%; font-size: var(--fs-label);" onclick="App.dismissRangePrompt()">Continue without it</button>';
         html += '</div>';
       }
       html += '<div class="coop-empty">';
@@ -1887,9 +3215,9 @@ const PAIR_CODE_LENGTH = 4;
     // Subtle nudge for experienced users who still haven't declared
     let rangeNudge = '';
     if (!hasRange) {
-      rangeNudge = '<div style="padding:12px 14px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:14px; font-size:14px; color:var(--text-dim); line-height:1.5;">' +
+      rangeNudge = '<div style="padding:12px 14px; background:rgba(42,90,143,0.08); border:1px solid var(--accent-dim); border-radius:var(--radius); margin-bottom:14px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.5;">' +
       'You have not done the scale exercise yet. It helps you think about how you value your effort before exchanging. ' +
-      '<button style="background:none; border:none; color:var(--accent); font-size:14px; font-weight:500; text-decoration:underline; cursor:pointer; padding:0; margin-top:4px; display:block;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Do the scale exercise</button>' +
+      '<button style="background:none; border:none; color:var(--accent); font-size: var(--fs-label); font-weight:500; text-decoration:underline; cursor:pointer; padding:0; margin-top:4px; display:block;" onclick="App.closeModal(\'cooperate\'); App.openDeclareRange();">Do the scale exercise</button>' +
       '</div>';
     }
 
@@ -2162,6 +3490,8 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function generateProposal() {
+    // Shared by the offline code and the live session; refuse only the offline path on an attached device.
+    if (state.devicePublicKeyJwk && !(exFlowActive && sessionPartner && sessionCode)) { toast('Offline codes work from your first phone for now. Use Start or Join here.'); console.log('[bind] offline code refused on an attached device (no paperwork in that path yet)'); return; }
     const val = parseFloat(document.getElementById('ex-value').value);
     if (isNaN(val) || val < 0) { toast('Enter a valid value'); return; }
     const desc = document.getElementById('ex-desc').value.trim();
@@ -2183,6 +3513,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Store proposal context (NOT writing to chain yet)
     state.pendingProposal = {
+      breakdown: (exFlowActive && typeof _exBeat !== 'undefined' && _exBeat && _exBeat.breakdown) ? _exBeat.breakdown : undefined, // v2.120.0: off chain, travels only encrypted
       details: details,
       city: document.getElementById('ex-city').value.trim() || undefined,
       state_field: document.getElementById('ex-state').value.trim() || undefined,
@@ -2267,8 +3598,7 @@ const PAIR_CODE_LENGTH = 4;
       if (witnessUrl) {
         startSessionAsProposer();
       } else {
-        generatePairCode();
-        showExStep('pair');
+        toast('Pairing with codes needs a secure connection. Use scan or message instead.');
       }
       return;
     }
@@ -2332,7 +3662,7 @@ const PAIR_CODE_LENGTH = 4;
       description: pp.details.description,
       category: pp.details.category || '',
       duration: pp.details.duration || 0,
-      public_key: state.publicKeyJwk,
+      public_key: mySigningKeyJwk(),
       fingerprint: state.fingerprint,
       timestamp: new Date().toISOString(),
       city: pp.city || '',
@@ -2375,6 +3705,10 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function uploadPairHalf(half) {
+    // v2.134.0 (security tenet gate): a pair half carries the terms in clear, so it is never
+    // sent to a witness. Pair-with-codes is withdrawn until it has a sealed design.
+    console.log('[pair] Upload refused: pair halves are not sealed');
+    return false;
     const url = getWitnessUrl();
     if (!url) return false;
     try {
@@ -2587,7 +3921,75 @@ const PAIR_CODE_LENGTH = 4;
   let sessionCode = null;
   let sessionTheirCode = null;
   let sessionPartner = null;
+  // v2.107.0 (Step 3b): the key this device signs with. An attached device holds
+  // its own device key; the chain's root key (state.publicKeyJwk) stays its identity.
+  function mySigningKeyJwk() { return state.devicePublicKeyJwk || state.publicKeyJwk; }
+  // The paperwork an attached device carries so the other phone can see that its
+  // device key speaks for the chain: root key, parent record, the certificate for
+  // this key (the latest one, if repeated attach attempts left several). Synchronous,
+  // read from the chain, never awaited on the propose/confirm path.
+  function buildDeviceProof() {
+    try {
+      var dk = state.devicePublicKeyJwk;
+      if (!dk || !state.publicKeyJwk) return null;
+      var parent = null, device = null;
+      for (var i = 0; i < state.chain.length; i++) {
+        var r = state.chain[i];
+        if (r.type === HCP.RECORD_TYPE_PARENT && !parent) parent = r;
+        if (r.type === HCP.RECORD_TYPE_DEVICE && r.deviceKey && r.deviceKey.x === dk.x && r.deviceKey.y === dk.y) device = r;
+      }
+      if (!parent || !device) { console.log('[bind] no paperwork on this device (parent ' + !!parent + ', certificate ' + !!device + ')'); return null; }
+      var rk = state.publicKeyJwk;
+      return { root: { crv: rk.crv, kty: rk.kty, x: rk.x, y: rk.y }, parent: parent, device: device };
+    } catch (e) { console.log('[bind] proof build failed:', e.message); return null; }
+  }
+  // Step 3b (v2.103.0): does the partner's key speak for the fingerprint they
+  // claim? Fire and forget, log only, once per partner key. Never awaited.
+  // v2.107.0: the paperwork (device_proof) travels in the encrypted snapshot, which
+  // arrives after the partner first appears. A key that is not the fingerprint is
+  // therefore checked again when the snapshot lands, not marked done on first sight.
+  var bindLogged = {};
+  // Same-owner rule (v2.108.0, protocol): the other side is this same chain
+  // (same root fingerprint) or shows the same parent key. Checked on first sight
+  // of the partner and again when their snapshot lands with its _parentFp.
+  function exSelfGuard(p) {
+    try {
+      if (!p || !p.fingerprint || p._self) return !!(p && p._self);
+      var ts = p.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch (_) { ts = null; } }
+      var theirs = { fp: p.fingerprint, parentFp: (ts && typeof ts._parentFp === 'string') ? ts._parentFp : null };
+      var mine = { fp: state.fingerprint, parentFp: state.myParentFp || null };
+      if (!HCP.sameOwner(mine, theirs)) return false;
+      p._self = true;
+      console.log('[self] partner is this same chain (' + (theirs.fp === mine.fp ? 'same root' : 'same parent') + '); ending the exchange');
+      try { exStopConnectPoll(); } catch (_) {}
+      exShowEnded('self');
+      return true;
+    } catch (e) { console.log('[self] check failed:', e.message); return false; }
+  }
+  function logPartnerBinding(p) {
+    try {
+      if (exSelfGuard(p)) return;
+      if (!p || !p.public_key || !p.fingerprint) return;
+      var k = p.fingerprint + ':' + (p.public_key.x || '');
+      if (bindLogged[k]) return;
+      var ts = p.thread_snapshot;
+      if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch (_) { ts = null; } }
+      var proof = (ts && ts.device_proof) || null;
+      var snapIn = !!(ts && typeof ts === 'object');
+      HCP.verifyKeyBinding(p.fingerprint, p.public_key, proof).then(function(r) {
+        if (!r.ok && r.mode === 'unbound' && !snapIn) { console.log('[bind] key is not the fingerprint; waiting for the snapshot, ' + p.fingerprint.substring(0, 12)); return; }
+        if (bindLogged[k]) return; bindLogged[k] = true;
+        if (sessionPartner && sessionPartner.fingerprint === p.fingerprint) sessionPartner._bind = r;
+        console.log('[bind] ' + (r.ok ? (r.mode === 'device' ? 'device proof ok' : 'key matches fingerprint') : 'UNBOUND (observe only): ' + r.mode + (r.error ? ', ' + r.error : '')) + ', ' + p.fingerprint.substring(0, 12));
+      }).catch(function(e) { console.log('[bind] check failed:', e.message); });
+    } catch (e) { console.log('[bind] check failed:', e.message); }
+  }
   let sessionProposal = null;
+  // Step 0 countersignature (v2.100.0): the act hash both phones compute for
+  // this session and the other person's signature over it. Cleared with the session.
+  let sessionActHash = null;
+  let sessionCpActSig = null;
   let sessionActiveTab = 'texture';
   let sessionSharedKey = null; // ECDH-derived AES key for encrypted relay
   let sessionSASHash = null; // 16-byte SAS hash for automatic collision detection
@@ -2716,10 +4118,19 @@ const PAIR_CODE_LENGTH = 4;
       };
       threadSnap._name = state.declarations.name || '';
       var genesisRec = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; });
-      if (genesisRec) threadSnap._genesisPhoto = genesisRec.photoData;
+      if (genesisRec) { threadSnap._genesisPhoto = genesisRec.photoData; threadSnap._genesisPhotoTs = genesisRec.timestamp || null; }
+      // v2.133.0 (Michael, Oct 13): the photo check. The current photo travels in the
+      // snapshot beside the first one, so the other person can compare both to the face in
+      // front of them from the chain read on. Inside the encrypted snapshot only.
+      if (state.declarations.photo) { threadSnap._photo = state.declarations.photo; threadSnap._photoTs = state.declarations.photoDate || null; }
     }
     if (extras && threadSnap) {
       Object.keys(extras).forEach(function(k) { threadSnap[k] = extras[k]; });
+    }
+    if (threadSnap && state.myParentFp) threadSnap._parentFp = state.myParentFp;
+    if (threadSnap && state.devicePublicKeyJwk) {
+      var dp = buildDeviceProof();
+      if (dp) threadSnap.device_proof = dp;
     }
     // Attach counterparty-visible POH verdict. Computed on this device using
     // this device's capabilities and this chain's records — the same POH.rollup
@@ -2781,6 +4192,7 @@ const PAIR_CODE_LENGTH = 4;
             sessionPartner.thread_snapshot = decrypted;
             sessionPartner._snapshotDecrypted = true;
             console.log('[session] Partner snapshot decrypted');
+            logPartnerBinding(sessionPartner);
             if (onReceived) onReceived(decrypted);
           }).catch(function(de) {
             console.error('[session] Decrypt partner snapshot failed:', de);
@@ -2791,6 +4203,7 @@ const PAIR_CODE_LENGTH = 4;
           sessionPartner.thread_snapshot = data.partner.thread_snapshot;
           sessionPartner._snapshotDecrypted = true;
           console.log('[session] Partner snapshot received (plaintext fallback)');
+          logPartnerBinding(sessionPartner);
           if (onReceived) onReceived(data.partner.thread_snapshot);
         }
       }).catch(function(e) {});
@@ -2909,7 +4322,7 @@ const PAIR_CODE_LENGTH = 4;
           my_code: sessionCode,
           their_code: sessionTheirCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
+          public_key: mySigningKeyJwk(),
         }),
       });
 
@@ -2926,7 +4339,7 @@ const PAIR_CODE_LENGTH = 4;
       const data = await resp.json();
 
       if (data.connected) {
-        sessionPartner = data.partner;
+        sessionPartner = data.partner; logPartnerBinding(data.partner);
         await onSessionConnected();
       } else {
         document.getElementById('session-status-line').textContent = 'Waiting for them to connect...';
@@ -3009,7 +4422,7 @@ const PAIR_CODE_LENGTH = 4;
       // Integrity signals
       var ig = ts.integrity;
       if (ig) {
-        h += '<h3 style="margin:14px 0 8px;font-size:13px;color:var(--text-dim);">Reality signals</h3>';
+        h += '<h3 style="margin:14px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Reality signals</h3>';
         h += '<div class="review-panel">';
         h += '<div class="review-row"><span class="rlbl">Genesis photo anchored</span><span class="rval">' + (ig.genesisPhoto ? '\u2713 Yes' + (ig.genesisPhotoSource ? ' (' + ig.genesisPhotoSource + ')' : '') : '\u2014 No') + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Sensor coverage</span><span class="rval">' + ig.sensorCoverage + '%</span></div>';
@@ -3033,15 +4446,15 @@ const PAIR_CODE_LENGTH = 4;
       }
       const cats = ts.cats || {};
       if (Object.keys(cats).length) {
-        h += '<h3 style="margin:14px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
+        h += '<h3 style="margin:14px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Categories</h3>';
         h += '<div class="review-panel">';
         Object.entries(cats).sort(function(a,b){return b[1].n - a[1].n;}).forEach(function(e) {
           var k = e[0], v = e[1];
           var pct = Math.round(v.n / ts.n * 100);
           h += '<div style="margin-bottom:12px;">';
-          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:14px;font-weight:500;">' + esc(k) + '</span><span style="font-size:13px;color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
+          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size: var(--fs-label);font-weight:500;">' + esc(k) + '</span><span style="font-size: var(--fs-label);color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
           h += '<div style="height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:3px;"></div></div>';
-          h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
+          h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
           h += '</div>';
         });
         h += '</div>';
@@ -3059,10 +4472,10 @@ const PAIR_CODE_LENGTH = 4;
         var word = e[0], count = e[1];
         var size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
         var opacity = 0.5 + (count / maxCount) * 0.5;
-        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: var(--fs-label);color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
       });
       h += '</div>';
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Words from their exchange descriptions. Larger words appear more often.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Words from their exchange descriptions. Larger words appear more often.</p>';
       return h;
     }
 
@@ -3082,9 +4495,9 @@ const PAIR_CODE_LENGTH = 4;
         var parts = m.split('-');
         var label = parts.length === 1 ? m : new Date(parseInt(parts[0]), parseInt(parts[1]) - 1).toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
         h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-        h += '<span style="font-size: 13px;color:var(--text-dim);min-width:70px;">' + label + '</span>';
+        h += '<span style="font-size: var(--fs-label);color:var(--text-dim);min-width:70px;">' + label + '</span>';
         h += '<div style="flex:1;height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-        h += '<span style="font-size: 13px;font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
+        h += '<span style="font-size: var(--fs-label);font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
         h += '</div>';
       });
       h += '</div>';
@@ -3098,10 +4511,10 @@ const PAIR_CODE_LENGTH = 4;
           if (diff > 1) gaps.push(diff + ' month gap before ' + months[i]);
         }
         if (gaps.length) {
-          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: 13px;color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
+          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: var(--fs-label);color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
         }
       }
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
       return h;
     }
 
@@ -3114,7 +4527,7 @@ const PAIR_CODE_LENGTH = 4;
         var d = stab[cat];
         var cv = d[2] > 0 ? (d[3] / d[2] * 100).toFixed(0) : 0;
         h += '<div class="review-panel" style="margin-bottom:10px;">';
-        h += '<div style="font-size:14px;font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
+        h += '<div style="font-size: var(--fs-label);font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
         h += '<div class="review-row"><span class="rlbl">Average</span><span class="rval">' + d[2] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Range</span><span class="rval">' + d[0] + ' \u2014 ' + d[1] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Std Dev</span><span class="rval">' + d[3] + '</span></div>';
@@ -3128,7 +4541,7 @@ const PAIR_CODE_LENGTH = 4;
         h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
         h += '</div></div>';
       });
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
       return h;
     }
 
@@ -3143,7 +4556,7 @@ const PAIR_CODE_LENGTH = 4;
 
     if (!mySnap || myDensity === 0) {
       return '<div class="empty-state">You need at least one act in your chain to calculate exchange rates.</div>' +
-        '<p style="font-size: 13px;color:var(--text-faint);margin-top:8px;line-height:1.5;">Their density: ' + theirDensity + ' u/act. Once you have exchange history, you\'ll see how your valuations compare.</p>';
+        '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:8px;line-height:1.5;">Their density: ' + theirDensity + ' u/act. Once you have exchange history, you\'ll see how your valuations compare.</p>';
     }
 
     var overallRatio = myDensity / theirDensity;
@@ -3154,7 +4567,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Overall exchange rate hero
     h += '<div class="sess-rate-hero ' + (isParity ? 'parity' : 'cross') + '">';
-    h += '<div style="font-size: 13px;color:var(--text-dim);margin-bottom:4px;">Overall Exchange Rate</div>';
+    h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:4px;">Overall Exchange Rate</div>';
     h += '<div class="sess-rate-val" style="color:' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">' + ratioStr + '</div>';
     h += '<div class="sess-rate-sub">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
     h += '</div>';
@@ -3175,25 +4588,25 @@ const PAIR_CODE_LENGTH = 4;
     });
 
     if (matchingCats.length > 0) {
-      h += '<h3 style="font-size:13px;color:var(--text-dim);margin-bottom:8px;">Category-Specific Rates</h3>';
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-bottom:10px;line-height:1.5;">When you both have history in the same category, the rate for that specific work is more precise than the overall.</p>';
+      h += '<h3 style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:8px;">Category-Specific Rates</h3>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-bottom:10px;line-height:1.5;">When you both have history in the same category, the rate for that specific work is more precise than the overall.</p>';
 
       matchingCats.sort(function(a,b) { return a.isProposal ? -1 : (b.isProposal ? 1 : 0); }).forEach(function(mc) {
         var catParity = Math.abs(mc.ratio - 1) < 0.15;
         var catRatioStr = catParity ? '1 : 1' : (mc.ratio >= 1 ? '1 : ' + mc.ratio.toFixed(2) : (1/mc.ratio).toFixed(2) + ' : 1');
         h += '<div class="sess-cat-rate"' + (mc.isProposal ? ' style="border-color:var(--accent);"' : '') + '>';
         if (mc.isProposal) {
-          h += '<div style="font-size: 13px;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">This exchange\'s category</div>';
+          h += '<div style="font-size: var(--fs-label);color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">This exchange\'s category</div>';
         }
         h += '<div class="sess-cat-rate-row"><span class="cl">' + esc(mc.name) + '</span><span class="cv" style="color:' + (catParity ? 'var(--green)' : 'var(--blue)') + ';">' + catRatioStr + '</span></div>';
-        h += '<div class="sess-cat-rate-row"><span class="cl" style="font-size: 13px;">You avg ' + mc.myAvg + ' \u00b7 They avg ' + mc.theirAvg + '</span></div>';
+        h += '<div class="sess-cat-rate-row"><span class="cl" style="font-size: var(--fs-label);">You avg ' + mc.myAvg + ' \u00b7 They avg ' + mc.theirAvg + '</span></div>';
         h += '</div>';
       });
     }
 
     // What their prices mean in your units
     h += '<div class="review-panel" style="margin-top:14px;">';
-    h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
+    h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
     [50, 100, 200, 500].forEach(function(val) {
       var inYours = Math.round(val * overallRatio);
       var actsEquiv = myDensity > 0 ? (inYours / myDensity).toFixed(1) : '\u2014';
@@ -3209,17 +4622,18 @@ const PAIR_CODE_LENGTH = 4;
       var converted = Math.round(propVal * conversionRatio);
       var rateLabel = catMatch ? 'category-specific' : 'overall';
       h += '<div style="margin-top:14px;padding:12px;background:rgba(42,90,143,0.08);border:1px solid var(--accent-dim);border-radius:var(--radius-sm);text-align:center;">';
-      h += '<div style="font-size: 13px;color:var(--text-dim);margin-bottom:4px;">Your proposal: ' + propVal + ' units (' + esc(proposalCat) + ')</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:4px;">Your proposal: ' + propVal + ' units (' + esc(proposalCat) + ')</div>';
       h += '<div style="font-size:20px;font-weight:500;color:var(--accent);">\u2248 ' + converted + ' in their units</div>';
-      h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:4px;">Using ' + rateLabel + ' rate</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:4px;">Using ' + rateLabel + ' rate</div>';
       h += '</div>';
     }
 
-    h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:14px;line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts so both sides are honestly represented. Neither unit is worth more \u2014 they measure at different scales.') + '</p>';
+    h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:14px;line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts so both sides are honestly represented. Neither unit is worth more \u2014 they measure at different scales.') + '</p>';
     return h;
   }
 
   async function onSessionConnected() {
+    if (sessionPartner && sessionPartner._self) return;
     document.getElementById('session-status-line').textContent = 'Connected';
     const content = document.getElementById('session-content');
     content.style.display = 'block';
@@ -3274,9 +4688,9 @@ const PAIR_CODE_LENGTH = 4;
       const pp = state.pendingProposal;
       if (pp) {
         html += '<div style="padding:14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius);">' +
-          '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Your proposal</div>' +
-          '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(pp.details.description) + '</div>' +
-          '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">' +
+          '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:8px;">Your proposal</div>' +
+          '<div style="font-size: var(--fs-body); font-weight:500; color:var(--text);">' + esc(pp.details.description) + '</div>' +
+          '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:4px;">' +
           (pp.details.energyState === 'provided' ? 'Providing' : 'Receiving') + ' \u00b7 ' + pp.details.value + ' units' +
           (pp.details.category ? ' \u00b7 ' + esc(pp.details.category) : '') +
           '</div></div>';
@@ -3284,7 +4698,7 @@ const PAIR_CODE_LENGTH = 4;
       if (ts && ts.n) {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       } else if (!sessionPartner._snapshotDecrypted) {
-        html += '<div style="margin-top:16px;color:var(--text-dim);font-size:13px;">Waiting for their chain data before you can send...</div>';
+        html += '<div style="margin-top:16px;color:var(--text-dim);font-size: var(--fs-label);">Waiting for their chain data before you can send...</div>';
       } else {
         html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="App.sendSessionProposal()">Send proposal</button>';
       }
@@ -3323,8 +4737,6 @@ const PAIR_CODE_LENGTH = 4;
 
     const pp = state.pendingProposal;
     try {
-      var proposePhotoHash = '';
-      try { if (state.declarations.photo) proposePhotoHash = await sensorSha256(state.declarations.photo); } catch(ph) {}
 
       // Exchange content to encrypt
       const exchangeContent = {
@@ -3336,6 +4748,9 @@ const PAIR_CODE_LENGTH = 4;
         photo: state.declarations.photo || ''
       };
 
+      // v2.120.0 (Michael, Oct 6): a package's lines travel inside the encrypted content only, never
+      // in plaintext and never in the record (the record writer copies named fields).
+      if (sessionSharedKey && pp.breakdown) exchangeContent.breakdown = pp.breakdown;
       // Layer 3: Bind random nonce to payload for integrity verification
       var nonceBytes = crypto.getRandomValues(new Uint8Array(16));
       var nonceHex = Array.from(nonceBytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
@@ -3347,35 +4762,48 @@ const PAIR_CODE_LENGTH = 4;
       sessionProposalIntegrityHash = Array.from(new Uint8Array(integrityBuf)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
       console.log('[nonce] Bound nonce to proposal, hash:', sessionProposalIntegrityHash.substring(0, 16) + '...');
 
-      // Build request body: attestation metadata always plaintext, exchange content encrypted if possible
+      // v2.134.0 (security tenet gate, Oct 13): nothing about this phone travels readable.
+      // Location, platform and the device hash ride inside the encrypted content; the
+      // witness sees only codes, timestamps, the act hash and signatures, and the blob.
+      exchangeContent.xd = {
+        sensorHash: _cachedDeviceHash || '',
+        platform: navigator.platform || '',
+        geo: _cachedGeo || null,
+        deviceHash: _cachedDeviceHash || '',
+      };
       const body = {
         device_ts: Date.now(),
-        sensor_hash: _cachedDeviceHash,
-        platform: navigator.platform,
-        geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '',
-        device_hash: _cachedDeviceHash,
-        photo_hash: proposePhotoHash,
       };
 
-      if (sessionSharedKey) {
-        // Encrypted path: server carries opaque blob
-        body.encrypted_exchange = await HCP.encryptRelayPayload(exchangeContent, sessionSharedKey);
-        // Placeholder values so server schema doesn't break
-        body.value = 0;
-        body.direction = '';
-        body.description = '';
-        body.category = '';
-        body.duration = 0;
-        body.photo = '';
-      } else {
-        // Fallback: plaintext (pre-encryption clients or key derivation failure)
-        body.value = exchangeContent.value;
-        body.direction = exchangeContent.direction;
-        body.description = exchangeContent.description;
-        body.category = exchangeContent.category;
-        body.duration = exchangeContent.duration;
-        body.photo = exchangeContent.photo;
+      // v2.121.0 (Michael, Oct 6): the receipt. The proposer signs the lines together with the act
+      // hash, so the kept copy cannot be edited undetected or moved to another exchange. The signature
+      // travels inside the encrypted content only; nothing about the lines reaches the record.
+      if (sessionSharedKey && exchangeContent.breakdown) {
+        try {
+          var rcAh = await HCP.computeActHash({ proposerFp: state.fingerprint, confirmerFp: sessionPartner ? sessionPartner.fingerprint : '', value: exchangeContent.value, direction: exchangeContent.direction, description: exchangeContent.description, category: exchangeContent.category, duration: exchangeContent.duration, proposalTs: body.device_ts });
+          exchangeContent.breakdownSig = await HCP.signActHash(receiptMessage(rcAh, exchangeContent.breakdown), state.privateKey);
+          pp.breakdownSig = exchangeContent.breakdownSig;
+        } catch (rsErr) { console.log('[receipt] sign failed:', rsErr.message); }
       }
+      if (!sessionSharedKey) {
+        // No plaintext fallback (security tenet gate): no secure connection, no exchange.
+        console.log('[session] Propose refused: no secure connection');
+        toast('Could not set up a secure connection. Nothing was sent. Try again.');
+        return;
+      }
+      {
+        // Sealed path, the only path: the witness carries an opaque blob. No placeholder
+        // fields (v2.135.0); witness v2.10.0 requires only encrypted_exchange.
+        body.encrypted_exchange = await HCP.encryptRelayPayload(exchangeContent, sessionSharedKey);
+      }
+
+      // Countersignature, proposer side: hash the act as stated, sign it, and
+      // send both so the confirmer can check and countersign the same hash.
+      try {
+        sessionActHash = await HCP.computeActHash({ proposerFp: state.fingerprint, confirmerFp: sessionPartner ? sessionPartner.fingerprint : '', value: exchangeContent.value, direction: exchangeContent.direction, description: exchangeContent.description, category: exchangeContent.category, duration: exchangeContent.duration, proposalTs: body.device_ts });
+        body.act_hash = sessionActHash;
+        body.act_sig = await HCP.signActHash(sessionActHash, state.privateKey);
+      } catch(ahErr) { console.log('[countersig] proposer act hash failed:', ahErr.message); sessionActHash = null; }
 
       const resp = await serverFetch(url + '/session/' + sessionCode + '/propose', {
         method: 'POST',
@@ -3459,7 +4887,7 @@ const PAIR_CODE_LENGTH = 4;
 
       // First: check for connection if not yet connected
       if (!sessionPartner && data.connected) {
-        sessionPartner = data.partner;
+        sessionPartner = data.partner; logPartnerBinding(data.partner);
         stopSessionPoll();
         await onSessionConnected();
         return;
@@ -3480,8 +4908,23 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.category = dec.category;
             sessionProposal.duration = dec.duration;
             sessionProposal.proposer_photo = dec.photo;
+            sessionProposal.breakdown = dec.breakdown || null;
+            sessionProposal.breakdownSig = dec.breakdownSig || null;
+            // v2.134.0: the proposer's device fields arrive inside the envelope only.
+            sessionProposal.sensor_hash = (dec.xd && dec.xd.sensorHash) || '';
+            sessionProposal.platform = (dec.xd && dec.xd.platform) || '';
+            sessionProposal.geo = (dec.xd && dec.xd.geo) || '';
+            sessionProposal.device_hash = (dec.xd && dec.xd.deviceHash) || '';
+            sessionProposal._sealed = true;
             console.log('[diag-confirmer-decrypt-ok] desc=' + JSON.stringify(dec.description) + ' value=' + dec.value);
           } catch(de) { console.log('[session] Decrypt failed:', de.message); }
+        }
+        if (!sessionProposal._sealed) {
+          // Security tenet gate: a proposal that did not arrive sealed is not shown or recorded.
+          console.log('[session] Proposal refused: not sealed (encrypted=' + !!sessionProposal.encrypted_exchange + ', key=' + !!sessionSharedKey + ')');
+          sessionProposal = null;
+          toast('Their proposal did not arrive over a secure connection, so it was not opened. Ask them to try again.');
+          return;
         }
         console.log('[diag-confirmer-post] desc=' + JSON.stringify(sessionProposal.description) + ' value=' + sessionProposal.value);
         if (exFlowActive) {
@@ -3593,7 +5036,7 @@ const PAIR_CODE_LENGTH = 4;
       html += '<div class="spr-row" style="border-top:1px solid var(--bg-input); padding-top:8px; margin-top:4px;">' +
         '<span class="spr-label">In your units</span>' +
         '<span class="spr-val" style="color:var(--accent); font-size:16px;">\u2248 ' + converted + '</span></div>';
-      html += '<div style="font-size: 13px; color:var(--text-faint); text-align:right; margin-top:2px;">Using ' + rateLabel + ' (' + convRatio.toFixed(2) + ':1)</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-align:right; margin-top:2px;">Using ' + rateLabel + ' (' + convRatio.toFixed(2) + ':1)</div>';
     }
     html += '</div>';
 
@@ -3633,7 +5076,7 @@ const PAIR_CODE_LENGTH = 4;
     // Full interactive thread viewer below for exploration
     if (sessionPartner && sessionPartner.thread_snapshot && sessionPartner.thread_snapshot.n) {
       html += '<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">';
-      html += '<div style="font-size:13px; color:var(--text-dim); margin-bottom:8px;">Explore their chain</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:8px;">Explore their chain</div>';
       html += buildSessionTabBar();
       html += '<div class="sess-tab-content" id="sess-tab-body">' + renderSessionTabContent(sessionActiveTab) + '</div>';
       html += '</div>';
@@ -3654,12 +5097,29 @@ const PAIR_CODE_LENGTH = 4;
     _sessionWritten = true; // set immediately before any async work
 
     try {
-        var confirmPhotoHash = '';
-        try { if (state.declarations.photo) confirmPhotoHash = await sensorSha256(state.declarations.photo); } catch(ph) {}
+        // v2.134.0 (security tenet gate): this phone's device fields reach the proposer inside
+        // the sealed snapshot, refreshed here before confirming; nothing readable goes to the witness.
+        if (!sessionSharedKey) { toast('Could not set up a secure connection. Nothing was recorded.'); _sessionWritten = false; if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; } return; }
+        await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' } });
+        // Countersignature, confirmer side. Passthrough (observe before enforce):
+        // a mismatch or a bad proposer signature is logged, never blocks.
+        var confirmActSig = '';
+        try {
+          if (sessionProposal) {
+            sessionActHash = await HCP.computeActHash({ proposerFp: sessionPartner ? sessionPartner.fingerprint : '', confirmerFp: state.fingerprint, value: sessionProposal.value, direction: sessionProposal.direction, description: sessionProposal.description, category: sessionProposal.category || '', duration: sessionProposal.duration || 0, proposalTs: sessionProposal.device_ts });
+            if (sessionProposal.act_hash && sessionProposal.act_hash !== sessionActHash) console.warn('[countersig] act hash mismatch: theirs ' + sessionProposal.act_hash.slice(0, 12) + ' mine ' + sessionActHash.slice(0, 12));
+            if (sessionProposal.proposer_act_sig && sessionPartner && sessionPartner.public_key) {
+              var okSig = await HCP.verifyActSig(sessionActHash, sessionProposal.proposer_act_sig, sessionPartner.public_key);
+              console.log('[countersig] proposer signature ' + (okSig ? 'verified' : 'FAILED (passthrough)'));
+              sessionCpActSig = sessionProposal.proposer_act_sig;
+            }
+            confirmActSig = await HCP.signActHash(sessionActHash, state.privateKey);
+          }
+        } catch(csErr) { console.log('[countersig] confirmer failed:', csErr.message); }
         const resp = await serverFetch(url + '/session/' + sessionCode + '/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmed: true, device_ts: Date.now(), sensor_hash: _cachedDeviceHash, platform: navigator.platform, geo: _cachedGeo ? JSON.stringify(_cachedGeo) : '', device_hash: _cachedDeviceHash, photo: state.declarations.photo || '', photo_hash: confirmPhotoHash }),
+        body: JSON.stringify({ confirmed: true, act_sig: confirmActSig, device_ts: Date.now() }),
       });
 
       if (!resp.ok) {
@@ -3755,6 +5215,15 @@ const PAIR_CODE_LENGTH = 4;
       }
     }
     console.log('[diag-proposer-post] desc=' + JSON.stringify(data.proposal.description) + ' value=' + data.proposal.value);
+    // v2.134.0: the confirmer's device fields come from its sealed snapshot, refreshed just
+    // before it confirmed. Never from readable witness columns.
+    data._cpXd = null;
+    try {
+      if (data.partner && data.partner.encrypted_snapshot && sessionSharedKey) {
+        var cpSnap = await HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey);
+        if (cpSnap && cpSnap._xd) data._cpXd = cpSnap._xd;
+      }
+    } catch(xdErr) { console.log('[session] confirmer device fields unavailable:', xdErr.message); }
     sessionSetState('done');
     await writeSessionRecord('proposer', data, '');
   }
@@ -3790,9 +5259,9 @@ const PAIR_CODE_LENGTH = 4;
     // Extract counterparty device hash based on role
     var cpDeviceHash;
     if (role === 'confirmer') {
-      cpDeviceHash = (data.proposer && data.proposer.device_hash) || undefined;
+      cpDeviceHash = p.device_hash || undefined;
     } else {
-      cpDeviceHash = (data.proposal && data.proposal.confirmer_device_hash) || undefined;
+      cpDeviceHash = (data._cpXd && data._cpXd.deviceHash) || undefined;
     }
 
     // Counterparty's declared name from their thread snapshot. Both sides have
@@ -3813,6 +5282,22 @@ const PAIR_CODE_LENGTH = 4;
 
     console.log('[diag-write] role=' + role + ' desc=' + JSON.stringify(p.description) + ' value=' + p.value + ' direction=' + myDirection + ' cpName=' + JSON.stringify(cpName) + ' myDeclName=' + JSON.stringify(state.declarations && state.declarations.name));
 
+    // Countersignature: the other person's signature over the shared act hash.
+    // Proposer reads the confirmer's signature from the session; the confirmer
+    // kept the proposer's at confirm time. Verified in passthrough, logged only.
+    var cpActSig;
+    try {
+      if (role === 'proposer') {
+        cpActSig = (data.proposal && data.proposal.confirmer_act_sig) || (data.confirmer && data.confirmer.act_sig) || undefined;
+        if (cpActSig && sessionActHash && counterpartyKey) {
+          var okCp = await HCP.verifyActSig(sessionActHash, cpActSig, counterpartyKey);
+          console.log('[countersig] confirmer signature ' + (okCp ? 'verified' : 'FAILED (passthrough)'));
+        }
+      } else {
+        cpActSig = sessionCpActSig || undefined;
+      }
+    } catch(cpErr) { console.log('[countersig] read failed:', cpErr.message); }
+
     const record = HCP.createRecord({
       type: 'exchange',
       value: p.value,
@@ -3823,6 +5308,8 @@ const PAIR_CODE_LENGTH = 4;
       category: p.category || undefined,
       duration: p.duration || undefined,
       counterpartyDeviceHash: cpDeviceHash,
+      actHash: sessionActHash || undefined,
+      counterpartySig: cpActSig,
     });
 
     // Capture sensor data and attach to record
@@ -3895,24 +5382,32 @@ const PAIR_CODE_LENGTH = 4;
 
     // 5. Cross-device sensor hash, platform, and geo (non-serialized metadata)
     try {
-      if (role === 'confirmer') {
-        var cpSensor = p.sensor_hash || (data.proposal && data.proposal.sensor_hash);
-        var cpPlatform = p.platform || (data.proposal && data.proposal.platform);
-        var cpGeoRaw = p.geo || (data.proposal && data.proposal.geo);
-        if (cpSensor) record.counterpartySensorHash = cpSensor;
-        if (cpPlatform) record.counterpartyPlatform = cpPlatform;
-        if (cpGeoRaw) { try { record.counterpartyGeo = typeof cpGeoRaw === 'string' ? JSON.parse(cpGeoRaw) : cpGeoRaw; } catch(e) {} }
-      } else {
-        var cpSensor2 = (data.proposal && data.proposal.confirmer_sensor_hash) || p.confirmer_sensor_hash;
-        var cpPlatform2 = (data.proposal && data.proposal.confirmer_platform) || p.confirmer_platform;
-        var cpGeoRaw2 = (data.proposal && data.proposal.confirmer_geo) || p.confirmer_geo;
-        if (cpSensor2) record.counterpartySensorHash = cpSensor2;
-        if (cpPlatform2) record.counterpartyPlatform = cpPlatform2;
-        if (cpGeoRaw2) { try { record.counterpartyGeo = typeof cpGeoRaw2 === 'string' ? JSON.parse(cpGeoRaw2) : cpGeoRaw2; } catch(e) {} }
-      }
+      // v2.134.0: read only from sealed content (the decrypted proposal, or the confirmer's snapshot).
+      var cx = role === 'confirmer'
+        ? { sensorHash: p.sensor_hash, platform: p.platform, geo: p.geo }
+        : (data._cpXd || {});
+      if (cx.sensorHash) record.counterpartySensorHash = cx.sensorHash;
+      if (cx.platform) record.counterpartyPlatform = cx.platform;
+      if (cx.geo) { try { record.counterpartyGeo = typeof cx.geo === 'string' ? JSON.parse(cx.geo) : cx.geo; } catch(e) {} }
     } catch(xdErr) {}
 
     await appendRecord(record);
+    // v2.120.0 (Michael, Oct 6): the package's lines stay in the app beside the record, keyed by the
+    // shared act hash, never in the chain. Rides in backups with declarations.
+    try {
+      var bdKeep = role === 'confirmer' ? (sessionProposal && sessionProposal.breakdown) : (state.pendingProposal && state.pendingProposal.breakdown);
+      if (bdKeep && sessionActHash) {
+        if (!state.declarations.receipts) state.declarations.receipts = {};
+        // v2.121.0: the receipt is signed by whoever wrote the lines (the proposer).
+        var rcSig = role === 'confirmer' ? (sessionProposal && sessionProposal.breakdownSig) : (state.pendingProposal && state.pendingProposal.breakdownSig);
+        var rcKey = role === 'confirmer' ? (sessionPartner && sessionPartner.public_key) : mySigningKeyJwk(); // the key this phone signs with (device key on a second device)
+        var rcBy = role === 'confirmer' ? (sessionPartner && sessionPartner.fingerprint) : state.fingerprint;
+        var rc = { breakdown: bdKeep, at: Date.now() };
+        if (rcSig && rcKey) { rc.sig = rcSig; rc.signerKey = rcKey; rc.signedBy = rcBy || ''; }
+        state.declarations.receipts[sessionActHash] = rc;
+        if (rc.sig) { var rcAh2 = sessionActHash; receiptCheck(rcAh2, rc).then(function(ok) { rc.checked = ok ? 'ok' : 'changed'; save(); }); }
+      }
+    } catch (rcErr) { console.log('[receipt] keep failed:', rcErr.message); }
     save();
 
     // Witness attestation
@@ -3924,6 +5419,8 @@ const PAIR_CODE_LENGTH = 4;
     stopSessionPoll();
     sessionPartner = null;
     sessionProposal = null;
+    sessionActHash = null;
+    sessionCpActSig = null;
 
     // Remove from pending — save code before clearing
     const codeForCleanup = sessionCode;
@@ -4061,13 +5558,15 @@ const PAIR_CODE_LENGTH = 4;
   function exEndedHTML() {
     var n = esc(_exRV.endedName || 'The other person');
     var line;
-    if (_exEndedByMe) line = 'You cancelled the exchange';
+    var sub = 'Nothing was recorded.';
+    if (_exEndedBy === 'self') { line = 'This is your own chain'; sub = 'A chain cannot exchange with itself, even from another device. Nothing was recorded.'; }
+    else if (_exEndedByMe) line = 'You cancelled the exchange';
     else line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
     var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
     h += '<div class="exs-grow"></div>';
     h += '<div class="exs-settle-check exs-ended-x"><svg viewBox="0 0 24 24" width="48" height="48"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>';
     h += '<div class="exs-t" style="margin-top:22px">' + line + '</div>';
-    h += '<div class="exs-body" style="margin-top:8px; color:var(--text-faint)">Nothing was recorded.</div>';
+    h += '<div class="exs-body" style="margin-top:8px; color:var(--text-faint)">' + sub + '</div>';
     h += '<div class="exs-grow" style="flex:1.2"></div>';
     h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button></div>';
     h += '</div>';
@@ -4094,7 +5593,7 @@ const PAIR_CODE_LENGTH = 4;
     _exEndedBy = null;
     _exEndedByMe = false;
     sessionWitnessUrl = null;
-    try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false }; } catch(_) {}
+    try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false, photoOpen: false }; } catch(_) {}
     stopSnapshotPoll();
     sessionCode = null;
     sessionTheirCode = null;
@@ -4374,13 +5873,13 @@ const PAIR_CODE_LENGTH = 4;
 
     if (tab === 'texture') {
       let h = '<div class="review-panel">';
-      h += '<div class="review-row"><span class="rlbl">From</span><span class="rval" style="font-family:var(--font-mono);font-size: 13px;">' + esc(s._fp) + '</span></div>';
+      h += '<div class="review-row"><span class="rlbl">From</span><span class="rval" style="font-family:var(--font-mono);font-size: var(--fs-label);">' + esc(s._fp) + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Total Acts</span><span class="rval">' + s.n + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Density</span><span class="rval">' + s.d + ' u/act</span></div>';
       h += '<div class="review-row"><span class="rlbl">Give / Receive</span><span class="rval">' + s.g + ' / ' + s.r + '</span></div>';
       h += '<div class="review-row"><span class="rlbl">Chain Age</span><span class="rval">' + (s.t0 ? new Date(s.t0).toLocaleDateString() + ' \u2014 ' + new Date(s.t1).toLocaleDateString() : '\u2014') + '</span></div>';
       h += '</div>';
-      h += '<h3 style="margin:16px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
+      h += '<h3 style="margin:16px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Categories</h3>';
       const cats = s.cats || {};
       if (Object.keys(cats).length) {
         h += '<div class="review-panel">';
@@ -4388,9 +5887,9 @@ const PAIR_CODE_LENGTH = 4;
           const k = e[0], v = e[1];
           const pct = Math.round(v.n / s.n * 100);
           h += '<div style="margin-bottom:12px;">';
-          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:14px;font-weight:500;">' + esc(k) + '</span><span style="font-size:13px;color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
+          h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size: var(--fs-label);font-weight:500;">' + esc(k) + '</span><span style="font-size: var(--fs-label);color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
           h += '<div style="height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:3px;"></div></div>';
-          h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
+          h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
           h += '</div>';
         });
         h += '</div>';
@@ -4407,10 +5906,10 @@ const PAIR_CODE_LENGTH = 4;
         const word = e[0], count = e[1];
         const size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
         const opacity = 0.5 + (count / maxCount) * 0.5;
-        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;cursor:pointer;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;" onclick="App.wordCloudDetail(\'' + esc(word) + '\')">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+        h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;cursor:pointer;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;" onclick="App.wordCloudDetail(\'' + esc(word) + '\')">' + esc(word) + '<sub style="font-size: var(--fs-label);color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
       });
       h += '</div>';
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Tap a word to see details. Larger words appear more often in their exchange descriptions.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Tap a word to see details. Larger words appear more often in their exchange descriptions.</p>';
       body.innerHTML = h;
     }
     else if (tab === 'ratio') {
@@ -4421,15 +5920,15 @@ const PAIR_CODE_LENGTH = 4;
       const ratioStr = isParity ? '1 : 1' : (ratio >= 1 ? '1 : ' + ratio.toFixed(2) : (1/ratio).toFixed(2) + ' : 1');
 
       let h = '<div style="text-align:center;padding:20px;border-radius:var(--radius);margin-bottom:16px;background:' + (isParity ? 'rgba(43,140,62,0.1)' : 'rgba(42,90,143,0.1)') + ';border:1px solid ' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">';
-      h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:4px;">Exchange Ratio</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:4px;">Exchange Ratio</div>';
       h += '<div style="font-size:36px;font-weight:300;color:' + (isParity ? 'var(--green)' : 'var(--blue)') + ';">' + ratioStr + '</div>';
-      h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:6px;">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:6px;">You: ' + myDensity.toFixed(1) + ' u/act \u00b7 Them: ' + theirDensity + ' u/act</div>';
       h += '</div>';
 
       // What prices mean in your units
       const theirAvg = theirDensity;
       h += '<div class="review-panel" style="margin-bottom:12px;">';
-      h += '<div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-dim);margin-bottom:10px;">What their prices mean in your units</div>';
       [50, 100, 200, 500].forEach(function(val) {
         const inYours = Math.round(val * ratio);
         const hrs = myDensity > 0 ? (inYours / myDensity).toFixed(1) : '\u2014';
@@ -4437,7 +5936,7 @@ const PAIR_CODE_LENGTH = 4;
       });
       h += '</div>';
 
-      h += '<p style="font-size: 13px;color:var(--text-faint);line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts prices so both sides are honestly represented. Neither unit is worth more — they measure at different scales.') + '</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);line-height:1.5;">' + (isParity ? 'Near parity. Your unit scales are roughly equivalent.' : 'Different densities. The ratio adjusts prices so both sides are honestly represented. Neither unit is worth more — they measure at different scales.') + '</p>';
       body.innerHTML = h;
     }
     else if (tab === 'time') {
@@ -4452,9 +5951,9 @@ const PAIR_CODE_LENGTH = 4;
         const parts = m.split('-');
         const label = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1).toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
         h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-        h += '<span style="font-size: 13px;color:var(--text-dim);min-width:70px;">' + label + '</span>';
+        h += '<span style="font-size: var(--fs-label);color:var(--text-dim);min-width:70px;">' + label + '</span>';
         h += '<div style="flex:1;height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-        h += '<span style="font-size: 13px;font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
+        h += '<span style="font-size: var(--fs-label);font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
         h += '</div>';
       });
       h += '</div>';
@@ -4468,10 +5967,10 @@ const PAIR_CODE_LENGTH = 4;
           if (diff > 1) gaps.push(diff + ' month gap before ' + months[i]);
         }
         if (gaps.length) {
-          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: 13px;color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
+          h += '<div style="margin-top:12px;padding:10px;background:var(--bg-input);border-radius:var(--radius-sm);font-size: var(--fs-label);color:var(--text-dim);line-height:1.5;">Gaps: ' + gaps.join(', ') + '</div>';
         }
       }
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Activity pattern over time. Consistent activity suggests a stable, active participant.</p>';
       body.innerHTML = h;
     }
     else if (tab === 'stability') {
@@ -4484,7 +5983,7 @@ const PAIR_CODE_LENGTH = 4;
         const range = d[1] - d[0];
         const cv = d[2] > 0 ? (d[3] / d[2] * 100).toFixed(0) : 0;
         h += '<div class="review-panel" style="margin-bottom:10px;">';
-        h += '<div style="font-size:14px;font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
+        h += '<div style="font-size: var(--fs-label);font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
         h += '<div class="review-row"><span class="rlbl">Average</span><span class="rval">' + d[2] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Range</span><span class="rval">' + d[0] + ' \u2014 ' + d[1] + '</span></div>';
         h += '<div class="review-row"><span class="rlbl">Std Dev</span><span class="rval">' + d[3] + '</span></div>';
@@ -4500,7 +5999,7 @@ const PAIR_CODE_LENGTH = 4;
         h += '</div>';
         h += '</div>';
       });
-      h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category. The data is raw — you decide what it means.</p>';
+      h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category. The data is raw — you decide what it means.</p>';
       body.innerHTML = h;
     }
   }
@@ -4715,7 +6214,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function renderCfRate(d) {
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What\u2019s the exchange rate for <strong>' + esc(d.cat || 'this work') + '</strong>?</div>';
+    let h = '<div style="font-size: var(--fs-label);color:var(--text);margin-bottom:14px;">What\u2019s the exchange rate for <strong>' + esc(d.cat || 'this work') + '</strong>?</div>';
 
     // Two rate cards
     h += '<div class="cf-rate-pair">';
@@ -4785,7 +6284,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function renderCfPrice(d) {
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What is this act of <strong>' + esc(d.cat || 'work') + '</strong> worth?</div>';
+    let h = '<div style="font-size: var(--fs-label);color:var(--text);margin-bottom:14px;">What is this act of <strong>' + esc(d.cat || 'work') + '</strong> worth?</div>';
 
     // Slider — range 0 to 3x current value, editable number
     const def = cfAdjVal || cfOrigVal;
@@ -4817,7 +6316,7 @@ const PAIR_CODE_LENGTH = 4;
       h += '<div class="cf-comp-item"><span class="cd">Lowest</span><span class="cv lo">' + d.theirStab[0] + '</span></div>';
       h += '<div class="cf-comp-item"><span class="cd">Variation</span><span class="cv">' + (d.theirStab[2] > 0 ? Math.round(d.theirStab[3]/d.theirStab[2]*100) : 0) + '%</span></div>';
     } else {
-      h += '<div style="font-size: 13px;color:var(--text-faint);padding:4px 0;">No history</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);padding:4px 0;">No history</div>';
     }
     h += '</div>';
     // Right — my comparison category
@@ -4829,7 +6328,7 @@ const PAIR_CODE_LENGTH = 4;
       h += '<div class="cf-comp-item"><span class="cd">Lowest</span><span class="cv lo">' + ms[0] + '</span></div>';
       h += '<div class="cf-comp-item"><span class="cd">Variation</span><span class="cv">' + (ms[2] > 0 ? Math.round(ms[3]/ms[2]*100) : 0) + '%</span></div>';
     } else {
-      h += '<div style="font-size: 13px;color:var(--text-faint);padding:4px 0;">No data</div>';
+      h += '<div style="font-size: var(--fs-label);color:var(--text-faint);padding:4px 0;">No data</div>';
     }
     h += '</div></div>';
 
@@ -4843,7 +6342,7 @@ const PAIR_CODE_LENGTH = 4;
     const mySurplus = HCP.walletBalance(state.chain) || 0;
     const afterBal = mySurplus - fieldAdj;
 
-    let h = '<div style="font-size:14px;color:var(--text);margin-bottom:14px;">What does each chain record?</div>';
+    let h = '<div style="font-size: var(--fs-label);color:var(--text);margin-bottom:14px;">What does each chain record?</div>';
 
     if (cfAdjVal && cfAdjVal !== cfOrigVal) {
       h += '<div class="cf-revised">Revised from ' + cfOrigVal + ' to ' + cfAdjVal + ' \u2014 they\u2019ll confirm the new value.</div>';
@@ -4891,7 +6390,7 @@ const PAIR_CODE_LENGTH = 4;
     h += '<div class="field"><label>Their name (for your records)</label><input type="text" id="cf-name" placeholder="Optional display name"></div>';
 
     // View chain link
-    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size:13px;color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full chain \u203a</button></div>';
+    h += '<div style="text-align:center;margin-bottom:12px;"><button style="font-size: var(--fs-label);color:var(--accent);background:none;border:none;text-decoration:underline;cursor:pointer;" onclick="App.viewProposalChain()">View their full chain \u203a</button></div>';
 
     h += '<button class="btn btn-primary" onclick="App.confirmAndSign()">Confirm & Sign</button>';
     h += '<button class="btn btn-secondary" onclick="App.cancelConfirm()">Decline</button>';
@@ -4913,6 +6412,7 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   async function confirmAndSign() {
+    if (state.devicePublicKeyJwk) { toast('Offline codes work from your first phone for now. Use Start or Join here.'); console.log('[bind] offline code refused on an attached device (no paperwork in that path yet)'); return; }
     if (!state.pendingProposal) return;
     const parsed = state.pendingProposal;
 
@@ -5128,7 +6628,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!card) return;
     var d = state.doneDetails;
     if (!d) {
-      card.innerHTML = '<div style="font-size:14px; color:var(--text-dim);">' + esc(state.doneSummary || 'Exchange recorded.') + '</div>';
+      card.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim);">' + esc(state.doneSummary || 'Exchange recorded.') + '</div>';
       return;
     }
     var rows = [];
@@ -5196,7 +6696,7 @@ const PAIR_CODE_LENGTH = 4;
     var body = document.getElementById('chain-body');
 
     if (!state.chain.length) {
-      body.innerHTML = '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, this view will show you how your chain looks to others \u2014 the same assessment they see when deciding whether to exchange with you.</div>';
+      body.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, this view will show you how your chain looks to others \u2014 the same assessment they see when deciding whether to exchange with you.</div>';
       return;
     }
 
@@ -5234,7 +6734,7 @@ const PAIR_CODE_LENGTH = 4;
 
     // Classify and render — but override name for self-view context
     var cl = exClassifyChain(ts);
-    var html = '<div style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">This is how your chain looks to someone considering an exchange with you.</div>';
+    var html = '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:12px;">This is how your chain looks to someone considering an exchange with you.</div>';
 
     // Override the name to frame as self-view
     var selfName = 'Your chain';
@@ -5262,14 +6762,14 @@ const PAIR_CODE_LENGTH = 4;
     var html = '<div style="padding:16px; background:rgba(43,140,62,0.04); border:1px solid rgba(43,140,62,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--green);">Healthy chain</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--green);">Healthy chain</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has ' + ts.n + ' exchanges' + months + ' across ' + catCount + ' categor' + (catCount === 1 ? 'y' : 'ies') + '. Consistent cooperation with diverse counterparties.';
     html += '</div>';
     html += exCoopBar(ts.g, ts.r);
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
-      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
+      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size: var(--fs-caption); color:var(--text-faint);">';
       html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
@@ -5293,7 +6793,7 @@ const PAIR_CODE_LENGTH = 4;
     var body = document.getElementById('chain-body');
 
     if (!state.chain.length) {
-      body.innerHTML = '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, your services and pricing history will appear here.</div>';
+      body.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6; padding:16px 0;">You have no exchanges yet. Once you start cooperating, your services and pricing history will appear here.</div>';
       return;
     }
 
@@ -5328,7 +6828,7 @@ const PAIR_CODE_LENGTH = 4;
 
     var svcKeys = Object.keys(services);
     if (!svcKeys.length) {
-      body.innerHTML = '<div style="font-size:13px; color:var(--text-dim); line-height:1.6; padding:16px 0;">You have not provided any services yet. Once you provide something in an exchange, your pricing history will appear here.</div>';
+      body.innerHTML = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6; padding:16px 0;">You have not provided any services yet. Once you provide something in an exchange, your pricing history will appear here.</div>';
       return;
     }
 
@@ -5345,8 +6845,8 @@ const PAIR_CODE_LENGTH = 4;
       }
     });
 
-    var html = '<div style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">Your services and pricing as others see them during an exchange.</div>';
-    html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:12px;">' + svcKeys.length + ' service' + (svcKeys.length > 1 ? 's' : '') + ' you provide</div>';
+    var html = '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:8px;">Your services and pricing as others see them during an exchange.</div>';
+    html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin-bottom:12px;">' + svcKeys.length + ' service' + (svcKeys.length > 1 ? 's' : '') + ' you provide</div>';
 
     Object.keys(byCat).sort().forEach(function(cat) {
       var items = byCat[cat];
@@ -5359,12 +6859,12 @@ const PAIR_CODE_LENGTH = 4;
     }
 
     // Contextual tip
-    html += '<div style="margin-top:20px; padding:14px; background:var(--bg-raised); border-radius:var(--radius); border:1px solid var(--border); font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="margin-top:20px; padding:14px; background:var(--bg-raised); border-radius:var(--radius); border:1px solid var(--border); font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     if (uncategorized.length) {
       html += 'Some of your services have no category. Adding categories to your exchanges helps the person you are cooperating with understand what you offer at a glance. ';
     }
     html += 'You can update your skills and what you offer in your declarations. The clearer your profile, the easier it is for others to see what you do and decide to cooperate with you.';
-    html += '<div style="margin-top:10px;"><button style="background:none; border:none; color:var(--accent); font-size:13px; font-weight:500; text-decoration:underline; cursor:pointer; padding:0;" onclick="App.closeModal(\'chain\'); App.openDeclarationsEdit();">Update your declarations</button></div>';
+    html += '<div style="margin-top:10px;"><button style="background:none; border:none; color:var(--accent); font-size: var(--fs-label); font-weight:500; text-decoration:underline; cursor:pointer; padding:0;" onclick="App.closeModal(\'chain\'); App.openDeclarationsEdit();">Update your declarations</button></div>';
     html += '</div>';
 
     body.innerHTML = html;
@@ -5383,14 +6883,14 @@ const PAIR_CODE_LENGTH = 4;
       if (state.declarations.rangeSimpleVal && state.declarations.rangeComplexVal) {
         const ratio = Math.round(state.declarations.rangeComplexVal / state.declarations.rangeSimpleVal);
         emptyHtml += '<div style="padding:14px 16px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px;">';
-        emptyHtml += '<div style="font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Your Scale Exercise</div>';
+        emptyHtml += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Your Scale Exercise</div>';
         emptyHtml += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">';
-        emptyHtml += '<div><div style="font-size:14px; color:var(--text-dim);">A small favor</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeSimpleVal + '</div></div>';
-        emptyHtml += '<div style="font-size:14px; color:var(--text-faint);">1 : ' + ratio + '</div>';
-        emptyHtml += '<div style="text-align:right;"><div style="font-size:14px; color:var(--text-dim);">Your best work</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeComplexVal + '</div></div>';
+        emptyHtml += '<div><div style="font-size: var(--fs-label); color:var(--text-dim);">A small favor</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeSimpleVal + '</div></div>';
+        emptyHtml += '<div style="font-size: var(--fs-label); color:var(--text-faint);">1 : ' + ratio + '</div>';
+        emptyHtml += '<div style="text-align:right;"><div style="font-size: var(--fs-label); color:var(--text-dim);">Your best work</div><div style="font-size:20px; font-weight:500; color:var(--accent);">' + state.declarations.rangeComplexVal + '</div></div>';
         emptyHtml += '</div>';
         if (state.declarations.rangeDailyVal) {
-          emptyHtml += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size:14px; color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
+          emptyHtml += '<div style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px; font-size: var(--fs-label); color:var(--text-dim);">A full day of work: <span style="color:var(--accent); font-weight:500;">' + state.declarations.rangeDailyVal + '</span></div>';
         }
         emptyHtml += '</div>';
         emptyHtml += '<div class="empty-state">Your scale is set. Your chain will grow from your first exchange.</div>';
@@ -5429,13 +6929,13 @@ const PAIR_CODE_LENGTH = 4;
       var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
       state.chain.filter(HCP.isAct).forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
       var summaryHtml = '<div style="padding:12px 14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px;">';
-      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><span style="color:var(--text-dim);">Provided</span><span style="color:var(--green); font-weight:500;">' + actsP + ' acts · +' + totalP + '</span></div>';
-      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size:14px;"><span style="color:var(--text-dim);">Received</span><span style="color:var(--blue); font-weight:500;">' + actsR + ' acts · \u2212' + totalR + '</span></div>';
+      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label); margin-bottom:4px;"><span style="color:var(--text-dim);">Provided</span><span style="color:var(--green); font-weight:500;">' + actsP + ' acts · +' + totalP + '</span></div>';
+      summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label);"><span style="color:var(--text-dim);">Received</span><span style="color:var(--blue); font-weight:500;">' + actsR + ' acts · \u2212' + totalR + '</span></div>';
       summaryHtml += '</div>';
 
       body.innerHTML = summaryHtml;
       if (!filtered.length) {
-        body.innerHTML += '<div style="font-size:13px; color:var(--text-faint); text-align:center; padding:20px 0;">No records match this filter.</div>';
+        body.innerHTML += '<div style="font-size: var(--fs-label); color:var(--text-faint); text-align:center; padding:20px 0;">No records match this filter.</div>';
       } else {
         filtered.slice().reverse().forEach(r => body.appendChild(makeCard(r)));
       }
@@ -5454,7 +6954,7 @@ const PAIR_CODE_LENGTH = 4;
           h += '<div class="review-row"><span class="rlbl">Heartbeats</span><span class="rval">' + s.pings + '</span></div>';
         }
         h += '</div>';
-        h += '<h3 style="margin:16px 0 8px;font-size:13px;color:var(--text-dim);">Categories</h3>';
+        h += '<h3 style="margin:16px 0 8px;font-size: var(--fs-label);color:var(--text-dim);">Categories</h3>';
         const cats = s.cats || {};
         if (Object.keys(cats).length) {
           h += '<div class="review-panel">';
@@ -5462,9 +6962,9 @@ const PAIR_CODE_LENGTH = 4;
             const k = e[0], v = e[1];
             const pct = Math.round(v.n / s.n * 100);
             h += '<div style="margin-bottom:12px;">';
-            h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:14px;font-weight:500;">' + esc(k) + '</span><span style="font-size:13px;color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
+            h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size: var(--fs-label);font-weight:500;">' + esc(k) + '</span><span style="font-size: var(--fs-label);color:var(--text-dim);">' + v.n + ' acts \u00b7 ' + pct + '%</span></div>';
             h += '<div style="height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:3px;"></div></div>';
-            h += '<div style="font-size: 13px;color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
+            h += '<div style="font-size: var(--fs-label);color:var(--text-faint);margin-top:3px;">avg ' + v.avg + ' units \u00b7 provided ' + v.g + ' \u00b7 received ' + v.r + '</div>';
             h += '</div>';
           });
           h += '</div>';
@@ -5481,10 +6981,10 @@ const PAIR_CODE_LENGTH = 4;
           const word = e[0], count = e[1];
           const size = Math.max(13, Math.min(28, 13 + (count / maxCount) * 15));
           const opacity = 0.5 + (count / maxCount) * 0.5;
-          h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: 13px;color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
+          h += '<span style="font-size:' + size + 'px;opacity:' + opacity + ';color:var(--accent);font-weight:500;padding:4px 8px;background:rgba(42,90,143,0.08);border-radius:6px;">' + esc(word) + '<sub style="font-size: var(--fs-label);color:var(--text-faint);margin-left:2px;">' + count + '</sub></span>';
         });
         h += '</div>';
-        h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Words from your exchange descriptions. Larger words appear more often.</p>';
+        h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Words from your exchange descriptions. Larger words appear more often.</p>';
         body.innerHTML = h;
       }
       else if (tab === 'time') {
@@ -5499,13 +6999,13 @@ const PAIR_CODE_LENGTH = 4;
           const isYear = m.length === 4;
           const label = isYear ? m : new Date(parseInt(m.split('-')[0]), parseInt(m.split('-')[1]) - 1).toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
           h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-          h += '<span style="font-size: 13px;color:var(--text-dim);min-width:70px;">' + label + '</span>';
+          h += '<span style="font-size: var(--fs-label);color:var(--text-dim);min-width:70px;">' + label + '</span>';
           h += '<div style="flex:1;height:14px;background:var(--bg-input);border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-          h += '<span style="font-size: 13px;font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
+          h += '<span style="font-size: var(--fs-label);font-weight:500;min-width:28px;text-align:right;">' + count + '</span>';
           h += '</div>';
         });
         h += '</div>';
-        h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;">Your activity pattern over time.</p>';
+        h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;">Your activity pattern over time.</p>';
         body.innerHTML = h;
       }
       else if (tab === 'stability') {
@@ -5517,7 +7017,7 @@ const PAIR_CODE_LENGTH = 4;
           const d = stab[cat];
           const cv = d[2] > 0 ? (d[3] / d[2] * 100).toFixed(0) : 0;
           h += '<div class="review-panel" style="margin-bottom:10px;">';
-          h += '<div style="font-size:14px;font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
+          h += '<div style="font-size: var(--fs-label);font-weight:500;margin-bottom:8px;">' + esc(cat) + '</div>';
           h += '<div class="review-row"><span class="rlbl">Average</span><span class="rval">' + d[2] + '</span></div>';
           h += '<div class="review-row"><span class="rlbl">Range</span><span class="rval">' + d[0] + ' \u2014 ' + d[1] + '</span></div>';
           h += '<div class="review-row"><span class="rlbl">Std Dev</span><span class="rval">' + d[3] + '</span></div>';
@@ -5531,7 +7031,7 @@ const PAIR_CODE_LENGTH = 4;
           h += '<div style="position:absolute;left:' + avgPct + '%;top:2px;width:2px;height:20px;background:var(--accent);border-radius:1px;"></div>';
           h += '</div></div>';
         });
-        h += '<p style="font-size: 13px;color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
+        h += '<p style="font-size: var(--fs-label);color:var(--text-faint);margin-top:12px;line-height:1.5;">Low variation indicates consistent pricing. High variation may reflect different scopes of work within a category.</p>';
         body.innerHTML = h;
       }
     }
@@ -6094,14 +7594,16 @@ const PAIR_CODE_LENGTH = 4;
     }
   }
 
-  async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride) {
+  async function witnessPost(mintHash, pubkeyA, pubkeyB, deviceTs, chainSig, urlOverride, actHash) {
     const url = urlOverride || getWitnessUrl();
     if (!url) return null;
     try {
       const resp = await serverFetch(url + '/witness', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mint_hash: mintHash, pubkey_a: pubkeyA, pubkey_b: pubkeyB, device_timestamp: deviceTs, chain_sig: chainSig }),
+        // v2.135.0: only the hash, the time and the act hash; the keys and chain signature
+        // were never needed to attest a hash, and witness v2.10.0 drops them.
+        body: JSON.stringify({ mint_hash: mintHash, device_timestamp: deviceTs, act_hash: actHash || undefined }),
       });
       if (!resp.ok) return null;
       return await resp.json();
@@ -6154,11 +7656,14 @@ const PAIR_CODE_LENGTH = 4;
     try {
       const witnessUrl = witnessUrlOverride || getWitnessUrl();
       if (!witnessUrl) return false;
-      const mintHash = await HCP.computeMintHash(state.publicKeyJwk, counterpartyPub, record.timestamp);
-      const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(state.publicKeyJwk)))));
+      // v2.107.0: the key this device signed with (the device key on an attached device),
+      // matching what the other phone received as this side's public_key.
+      const myKey = mySigningKeyJwk();
+      const mintHash = await HCP.computeMintHash(myKey, counterpartyPub, record.timestamp, record.actHash || undefined);
+      const pubA = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(myKey)))));
       const pubB = HCP.bufToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(counterpartyPub)))));
       const rttStart = Date.now();
-      const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none', witnessUrl);
+      const attestation = await witnessPost(mintHash, pubA, pubB, Math.floor(Date.now() / 1000), record.signature || 'none', witnessUrl, record.actHash || undefined);
       const rttMs = Date.now() - rttStart;
       if (attestation && attestation.witnessed) {
         // === PHASE C.1: VERIFY THE WITNESS SIGNATURE ===
@@ -6443,7 +7948,7 @@ const PAIR_CODE_LENGTH = 4;
     var bar = document.createElement('div');
     bar.id = 'photo-nudge-bar';
     bar.style.cssText = 'position:fixed; bottom:0; left:0; right:0; background:var(--bg-raised); border-top:1px solid var(--border); padding:14px 20px; padding-bottom:calc(14px + var(--safe-bottom)); z-index:900; display:flex; align-items:center; gap:12px;';
-    bar.innerHTML = '<div style="flex:1; font-size:13px; color:var(--text-dim); line-height:1.4;">'
+    bar.innerHTML = '<div style="flex:1; font-size: var(--fs-label); color:var(--text-dim); line-height:1.4;">'
       + 'Your photo is ' + months + ' months old. Updating it strengthens your chain\'s integrity.'
       + '</div>'
       + '<button onclick="sessionStorage.setItem(\'hep_photo_nudge_dismissed\',\'1\'); document.getElementById(\'photo-nudge-bar\').remove();" style="background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></button>';
@@ -6635,16 +8140,21 @@ const PAIR_CODE_LENGTH = 4;
         console.log('[ping] Challenge request failed, submitting without:', ce.message);
       }
 
+      // v2.135.0 (registry Component 1, "PING ANCHORS THE CHAIN'S HISTORY"): the ping carries
+      // the hash of the ping record itself, which is linked to everything before it, and the
+      // witness signs it in. Rewriting any earlier record then breaks this signature. The
+      // signature stays on the phone; the witness keeps nothing. No sensor hash or sequence is
+      // sent (security tenet gate: not on the witness allowlist).
+      var headHash = await HCP.hashRecord(record);
       var rttStart = Date.now();
       var resp = await serverFetch(url + '/ping', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chain_fingerprint: chainFp,
-          sensor_hash: record.sensorHash || '',
           device_ts: Math.floor(Date.now() / 1000),
-          seq: record.seq,
           challenge_nonce: challengeNonce,
+          head_hash: headHash,
         }),
       });
       var rttMs = Date.now() - rttStart;
@@ -6658,6 +8168,13 @@ const PAIR_CODE_LENGTH = 4;
             rtt_ms: rttMs,
             challenged: data.challenged || false,
           };
+          // Witness v2.10.0 and later echo the head and sign it in; older witnesses do not.
+          if (data.head_hash) record.witnessAttestation.head_hash = data.head_hash;
+          // Observe before enforce: check the anchor now and log; nothing is refused yet.
+          try {
+            var anc = await HCP.verifyPingAnchor(record, state.fingerprint);
+            console.log('[ping-anchor] ' + anc.status + (anc.detail ? ' (' + anc.detail + ')' : ''));
+          } catch (ae) { console.log('[ping-anchor] check failed:', ae.message); }
           save();
           console.log('[ping] Server attestation received, RTT ' + rttMs + 'ms, challenged=' + (data.challenged || false));
         }
@@ -6915,41 +8432,116 @@ const PAIR_CODE_LENGTH = 4;
   // becomes the central place for backups, no server), and a copy is saved
   // to this phone. Share first, because it needs the tap; the local copy
   // follows when the panel closes, whether they shared or cancelled.
-  async function exportBackupAction() {
-    var bk, text, name;
-    try {
-      bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin);
-      bk.declarations = state.declarations;
-      bk.settings = state.settings;
-      text = JSON.stringify(bk, null, 2);
-      var exportName = (state.declarations.name || '').trim().replace(/[^a-zA-Z0-9]/g, '-') || state.fingerprint.slice(0, 8);
-      name = 'HEP-Backup_' + exportName + '_' + new Date().toISOString().slice(0, 10) + '.json';
-    } catch(e) { toast('Backup failed'); return; }
-    function saveLocal() {
-      try {
-        var blob = new Blob([text], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
-        return true;
-      } catch(e) { return false; }
-    }
-    // Some browsers (Chrome on Android) refuse to share .json files, so fall back to a .txt copy of the same file.
-    var shareFile = null;
+  // v2.111.2: the backup is locked under the PIN (PBKDF2, slow on purpose). Browsers open
+  // the share panel only right after a tap, and the locking could outlast that window on a
+  // phone, so the share silently failed into a download. The Backup sheet now builds the
+  // file as it opens; the tap shares at once. Rebuilt if the chain changed meanwhile.
+  var _bkPrep = null;
+  // v2.112.0 (Michael, Oct 5): one backup action, the device's share panel (email, Drive,
+  // messages, files: whatever the device offers). Browsers open the share panel only right
+  // after a tap, so the locked file is built as the Backup sheet opens and the button stays
+  // disabled until it is ready; the tap then calls navigator.share with nothing awaited first.
+  // Where a browser cannot share a file, the button saves it instead and the sheet says so.
+  async function bkBuild() {
+    var bk = await HCP.exportBackup(state.chain, state.publicKeyJwk, state.privateKeyJwk, state.pin, state.devicePublicKeyJwk || null);
+    bk.declarations = state.declarations;
+    bk.settings = state.settings;
+    // v2.113.0 (Michael, Oct 6): HEP-<name>-<device name>-<YYYYMMDD>-<HHMM>, local time, 24-hour,
+    // so a search for the name lists every backup and the newest sorts last.
+    var slug = function(t) { return String(t || '').trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, ''); };
+    var d = new Date(), p2 = function(n) { return (n < 10 ? '0' : '') + n; };
+    var stamp = d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes());
+    var name = ['HEP', slug(state.declarations.name) || state.fingerprint.slice(0, 8), slug(syMyName()), stamp].filter(Boolean).join('-') + '.json';
+    var text = JSON.stringify(bk, null, 2);
+    // v2.113.1 (Michael, Oct 6): the share title becomes the email subject in Gmail on Android:
+    // 'HEP backup, <name>, <device>, Oct 6 2026, 14:32'. Same moment as the file name.
+    var subject = 'HEP backup, ' + ((state.declarations.name || '').trim() || state.fingerprint.slice(0, 8)) + ', ' + syMyName() + ', '
+      + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '') + ', ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+    // Chrome on Android shares only some file types and .json is not one; .txt is. Import accepts both.
+    var file = null;
     try {
       if (navigator.share && navigator.canShare) {
-        var f1 = new File([text], name, { type: 'application/json' });
-        if (navigator.canShare({ files: [f1] })) shareFile = f1;
-        else { var f2 = new File([text], name + '.txt', { type: 'text/plain' }); if (navigator.canShare({ files: [f2] })) shareFile = f2; }
+        // v2.112.3: always share as .txt. Michael's Pixel (Chrome 154, installed): canShare said yes
+        // to .json, then share() refused it with NotAllowedError 'Permission denied' (Chrome's
+        // shareable-type list has no .json). text/plain is on that list everywhere; restore reads it.
+        var f2 = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' });
+        if (navigator.canShare({ files: [f2] })) file = f2;
       }
-    } catch(e) { shareFile = null; }
-    var shared = false;
-    if (shareFile) {
-      try { await navigator.share({ files: [shareFile], title: 'HEP backup' }); shared = true; } catch(e) { shared = false; }
+    } catch (e) { file = null; }
+    return { text: text, name: name, file: file, subject: subject, len: state.chain.length };
+  }
+  function bkButton() {
+    var ib = document.getElementById('rec-bk-go'); if (ib) { ib.disabled = !_bkPrep; var ir = document.getElementById('rec-bk-sendrow'); if (ir) ir.style.display = (_bkPrep && !_bkPrep.file) ? 'none' : ''; } // no share panel in this browser: Save only
+    var b = document.getElementById('bk-go'), sv = document.getElementById('bk-save'), note = document.getElementById('bk-how');
+    if (!b) return;
+    if (!_bkPrep) { b.disabled = true; b.textContent = 'Preparing your backup\u2026'; return; }
+    b.disabled = false;
+    if (_bkPrep.file) {
+      b.textContent = 'Share a backup';
+      if (sv) sv.style.display = '';
+      if (note) note.textContent = 'Share a backup opens this device\u2019s share panel. Choose email and send it to yourself, or Google Drive, or anywhere else you keep files outside this device.';
+    } else {
+      b.textContent = 'Save a backup';
+      if (sv) sv.style.display = 'none';
+      if (note) note.textContent = 'This browser cannot open a share panel, so the backup saves as a file, usually to Downloads. Then move it somewhere outside this device, like your email or Google Drive.';
     }
-    var saved = saveLocal();
-    if (shared || saved) { markBackedUp(); renderBrowserStorageBanner(); }
-    toast(shared && saved ? 'Backup sent and saved to this phone' : (saved ? 'Backup saved to this phone' : (shared ? 'Backup sent' : 'Backup failed')));
+  }
+  function bkPrepare() {
+    _bkPrep = null; bkButton();
+    var len = state.chain.length;
+    bkBuild().then(function(b) { if (state.chain.length === len) { _bkPrep = b; bkButton(); console.log('[backup] ready, ' + (b.file ? 'share ' + b.file.name : 'no share panel, save only')); } })
+      .catch(function(e) { console.log('[backup] prepare failed', e.message); toast('Backup failed: ' + e.message); });
+  }
+  function bkSaveLocal(text, name) {
+    try {
+      var blob = new Blob([text], { type: 'application/json' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
+      return true;
+    } catch (e) { return false; }
+  }
+  // mode 'share' (the Backup sheet's button): share panel if this browser has one, else save.
+  // mode 'save': save the file. No mode (delete-chain's safety copy): save.
+  // Where a downloaded file usually lands, by device. Defaults only: a person may have changed them.
+  function bkWhere() {
+    var ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return 'Usually in the Files app, in Downloads.';
+    if (/Android/.test(ua)) return 'Usually in your Downloads folder. Open the Files app and look under Downloads.';
+    if (/Windows|Macintosh|Linux/.test(ua)) return 'Usually in your Downloads folder, unless your browser asked where to save it.';
+    return 'On this device.';
+  }
+  function bkSavedSheet(name) {
+    var h = '<div class="exs-sheet-head"><div class="exs-h">Backup saved</div><button class="exs-x" aria-label="Close" onclick="App.rsClose()">&#215;</button></div>';
+    h += '<div style="display:flex;gap:10px;align-items:center;margin-top:4px"><svg width="22" height="22" style="color:var(--green);flex:none"><use href="#icon-check"/></svg><div class="exs-t" style="margin:0">Saved to this device</div></div>';
+    h += '<div class="exs-cap mc-group">Where it is</div><p class="exs-body">' + esc(bkWhere()) + '</p>';
+    h += '<div class="exs-cap mc-group">The file</div><p class="exs-body" style="word-break:break-all">' + esc(name) + '</p>';
+    h += '<div class="exs-cap mc-group">Finding it later</div><p class="exs-body">Open your files and search for HEP. Every backup starts with that name.</p>';
+    h += '<p class="exs-body" style="margin-top:18px">This copy is still on this device. If you lose the device, you lose the copy, so send one to yourself as well.</p>';
+    h += '<p class="mc-link" style="margin-top:16px"><a href="#" onclick="App.faqOpen(\'backup\');return false">Why keep a backup off this device?</a></p>';
+    rsShow(h, 'bksaved');
+  }
+  async function exportBackupAction(mode) {
+    var b = _bkPrep && _bkPrep.len === state.chain.length ? _bkPrep : null;
+    if (mode === 'share' && b && b.file) {
+      try {
+        await navigator.share({ files: [b.file], title: b.subject });
+        markBackedUp(b.file.name); renderBrowserStorageBanner(); toast('Backup shared');
+        console.log('[backup] shared ' + b.file.name);
+        return true;
+      } catch (e) {
+        console.log('[backup] share failed: ' + (e && e.name) + ' ' + (e && e.message));
+        if (e && e.name === 'AbortError') return false; // the panel was closed: nothing sent, nothing marked
+        toast('The share panel did not open (' + (e && e.name) + ').');
+        return false; // v2.112.2: stay on the sheet so the test info shows; Save to this device is right below
+      }
+    }
+    try { if (!b) b = await bkBuild(); } catch (e) { toast('Backup failed'); return false; }
+    if (!bkSaveLocal(b.text, b.name)) { toast('Backup failed'); return false; }
+    markBackedUp(b.name); renderBrowserStorageBanner();
+    bkSavedSheet(b.name); // v2.127.0 (Michael, Oct 6 walk): say where it went, its name, and how to find it later
+    console.log('[backup] saved ' + b.name);
+    return true;
   }
 
   // v2.95.0 (Michael, Oct 3): import replaces this phone's chain (there is no
@@ -6963,7 +8555,7 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeImportSheet() { var el = document.getElementById('import-sheet'); if (el) el.hidden = true; }
   function importChooseFile() { closeImportSheet(); document.getElementById('import-file').click(); }
-  function importBackUpFirst() { closeImportSheet(); exportBackupAction(); }
+  function importBackUpFirst() { closeImportSheet(); bkOpenHome(); } // v2.111.4: the one Backup sheet, with the email choice
 
   async function handleImportFile(event) {
     const file = event.target.files[0]; if (!file) return;
@@ -6974,6 +8566,8 @@ const PAIR_CODE_LENGTH = 4;
       const r = await HCP.importBackup(bk, pin);
       state.chain = r.chain; state.publicKey = r.publicKey; state.privateKey = r.privateKey;
       state.publicKeyJwk = r.publicKeyJwk; state.privateKeyJwk = r.privateKeyJwk;
+      // v2.107.0: a backup made on an attached device restores as that device.
+      state.devicePublicKeyJwk = r.devicePublicKeyJwk || null;
       state.fingerprint = await HCP.keyFingerprint(r.publicKeyJwk);
       if (bk.declarations) state.declarations = Object.assign(state.declarations, bk.declarations);
       if (bk.settings) state.settings = Object.assign(state.settings, bk.settings);
@@ -7084,6 +8678,7 @@ const PAIR_CODE_LENGTH = 4;
     // Scorched earth
     localStorage.removeItem(SK);
     localStorage.removeItem(SK + '_keys');
+    localStorage.removeItem(SK + '_parent');
     localStorage.removeItem('hcp_dev_install_dismissed');
 
     // Unregister service worker
@@ -7204,8 +8799,7 @@ const PAIR_CODE_LENGTH = 4;
         body: JSON.stringify({
           pipe_code: pipeCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
-          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+          public_key: mySigningKeyJwk(),
           max_redemptions: (cap === undefined ? 1 : cap), // 1 = single invite, 0 = uncapped room
         }),
         signal: AbortSignal.timeout(8000),
@@ -7284,7 +8878,7 @@ const PAIR_CODE_LENGTH = 4;
       // a fresh chooser or their active room; either way they deserve
       // to know which pipe they are looking at.
       var openedAgo = inviteTimeAgo(open.openedAt);
-      var resumeBanner = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px; font-size:13px; color:var(--text-dim); line-height:1.5;">You have an invite open from earlier (' + esc(openedAgo) + '). <span style="color:var(--accent); cursor:pointer;" onclick="App.inviteStartFresh()">Start a new invite instead</span></div>';
+      var resumeBanner = '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.5;">You have an invite open from earlier (' + esc(openedAgo) + '). <span style="color:var(--accent); cursor:pointer;" onclick="App.inviteStartFresh()">Start a new invite instead</span></div>';
       var statusEl = document.getElementById('invite-status');
       statusEl.innerHTML = resumeBanner + statusEl.innerHTML;
       return;
@@ -7292,7 +8886,7 @@ const PAIR_CODE_LENGTH = 4;
 
     if (intro) intro.style.display = '';
     status.innerHTML =
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">How many people are you inviting?</div>' +
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px;">How many people are you inviting?</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<button class="btn btn-primary" onclick="App.createInvitePipe(\'single\')">One person</button>' +
       '<button class="btn btn-secondary" onclick="App.createInvitePipe(\'room\')">Several people, same code</button>' +
@@ -7355,7 +8949,7 @@ const PAIR_CODE_LENGTH = 4;
       ? 'Anyone can scan it. People appear below as they come in.'
       : "When they scan, they'll appear here";
     status.innerHTML = '<div style="font-size:16px; font-weight:600; color:var(--text);">Have them scan this code</div>' +
-      '<div style="font-size:13px; color:var(--text-dim); margin-top:4px;">' + hint + '</div>';
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-top:4px;">' + hint + '</div>';
     document.getElementById('invite-qr-wrap').style.display = '';
     var urlEl = document.getElementById('invite-url');
     urlEl.style.display = '';
@@ -7409,7 +9003,8 @@ const PAIR_CODE_LENGTH = 4;
       attempts++;
       if (attempts > 2400) { stopInvitePoll(); return; } // ~2h; server TTL is the real lifetime
       try {
-        var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner?fingerprint=' + encodeURIComponent(state.fingerprint), { signal: AbortSignal.timeout(8000) });
+        // v2.135.0: fingerprint in the body, never the URL (needs witness v2.10.0).
+        var resp = await serverFetch(open.witness + '/pipe/' + open.code + '/owner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fingerprint: state.fingerprint }), signal: AbortSignal.timeout(8000) });
         if (!resp.ok) return;
         var data = await resp.json();
         if (!data || !data.found || !Array.isArray(data.redemptions)) return;
@@ -7437,12 +9032,12 @@ const PAIR_CODE_LENGTH = 4;
       var who = r.name ? esc(String(r.name).slice(0, 40)) : 'Someone';
       var ago = inviteTimeAgo(r.created_at);
       html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0;">';
-      html += '<div style="min-width:0; flex:1;"><div style="font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint);">' + esc(ago) + '</div></div>';
+      html += '<div style="min-width:0; flex:1;"><div style="font-size: var(--fs-body); color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + who + '</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint);">' + esc(ago) + '</div></div>';
       if (done[r.redeemer_code]) {
-        html += '<div style="font-size:13px; color:var(--text-dim); flex-shrink:0;">Recorded</div>';
+        html += '<div style="font-size: var(--fs-label); color:var(--text-dim); flex-shrink:0;">Recorded</div>';
       } else {
-        html += '<button class="btn btn-primary" style="flex-shrink:0; padding:8px 14px; font-size:14px;" onclick="App.roomStartExchange(\'' + esc(r.redeemer_code) + '\')">Start exchange</button>';
+        html += '<button class="btn btn-primary" style="flex-shrink:0; padding:8px 14px; font-size: var(--fs-label);" onclick="App.roomStartExchange(\'' + esc(r.redeemer_code) + '\')">Start exchange</button>';
       }
       html += '</div>';
     }
@@ -7468,12 +9063,12 @@ const PAIR_CODE_LENGTH = 4;
     var status = document.getElementById('invite-status');
     status.innerHTML =
       '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + '</div>' +
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this exchange:</div>' +
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px;">Your side of this exchange:</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
       '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
       '</div>' +
-      '<div style="text-align:center; margin-top:14px;"><span style="font-size:14px; color:var(--accent); cursor:pointer;" onclick="App.roomBackToQueue()">Back to the list</span></div>';
+      '<div style="text-align:center; margin-top:14px;"><span style="font-size: var(--fs-label); color:var(--accent); cursor:pointer;" onclick="App.roomBackToQueue()">Back to the list</span></div>';
   }
 
   function roomBackToQueue() {
@@ -7498,7 +9093,7 @@ const PAIR_CODE_LENGTH = 4;
     var status = document.getElementById('invite-status');
     status.innerHTML =
       '<div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:14px;">' + who + ' is in</div>' +
-      '<div style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
+      '<div style="font-size: var(--fs-label); color:var(--text-dim); margin-bottom:12px;">Your side of this first exchange:</div>' +
       '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<button class="btn btn-primary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'provider\')">I provided something to ' + who + '</button>' +
       '<button class="btn btn-secondary" style="white-space:normal; line-height:1.4;" onclick="App.invitePipeConnect(\'receiver\')">I received something from ' + who + '</button>' +
@@ -7529,7 +9124,7 @@ const PAIR_CODE_LENGTH = 4;
       '<div style="text-align:center; padding:24px 0;">' +
       '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
       '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
-      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '<span style="font-size: var(--fs-label); color:var(--accent);">Connecting with ' + who + '...</span>' +
       '</div></div>';
     exPostJoin(sessionCode, sessionTheirCode);
   }
@@ -7610,8 +9205,7 @@ const PAIR_CODE_LENGTH = 4;
         body: JSON.stringify({
           redeemer_code: redeemerCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
-          name: (state.declarations.name || '').trim().slice(0, 80) || undefined,
+          public_key: mySigningKeyJwk(),
         }),
         signal: AbortSignal.timeout(8000),
       });
@@ -7675,7 +9269,7 @@ const PAIR_CODE_LENGTH = 4;
       '<div style="text-align:center; padding:24px 0;">' +
       '<div style="display:flex; align-items:center; gap:8px; justify-content:center;">' +
       '<div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite;"></div>' +
-      '<span style="font-size:14px; color:var(--accent);">Connecting with ' + who + '...</span>' +
+      '<span style="font-size: var(--fs-label); color:var(--accent);">Connecting with ' + who + '...</span>' +
       '</div></div>';
     exPostJoin(sessionCode, sessionTheirCode);
   }
@@ -8388,7 +9982,7 @@ function init() {
       showScreen('setup');
       // Desktop: make import prominent
       if (isDesktopBrowser()) {
-        var importBtns = document.querySelectorAll('#setup .step button[onclick*="importBackup"]');
+        var importBtns = document.querySelectorAll('#setup .step button[onclick*="importBackup"]:not(.exs-quiet)');
         importBtns.forEach(function(btn) {
           btn.style.background = 'var(--accent)';
           btn.style.color = '#fff';
@@ -8485,6 +10079,20 @@ function init() {
     else if (navigator.clipboard) { navigator.clipboard.writeText(open.inviteUrl).then(function() { toast('Invite link copied'); }).catch(function() {}); }
   }
 
+  // v2.124.0 (Michael, Oct 6, twenty-fifth session): one Exchange tab in the bar. Tapping it asks the one
+  // question Start and Join used to answer with two buttons: are you starting, or joining with a code?
+  // A moment screen (rule 7): centred, two primary-sized choices with a one-line caption each, X back.
+  function exDoorsOpen() {
+    var h = atHead('Exchange', true, 'rsClose');
+    h += '<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px;padding-bottom:40px;">';
+    h += '<button class="btn btn-primary" style="width:100%;margin:0" onclick="App.rsClose();App.exStartProviding()">Start</button>';
+    h += '<p class="exs-cap" style="text-align:center;margin:0 0 14px">You will get a code to share with the other person.</p>';
+    h += '<button class="btn btn-primary" style="width:100%;margin:0" onclick="App.rsClose();App.exJoinExchange()">Join</button>';
+    h += '<p class="exs-cap" style="text-align:center;margin:0">You have a code from the other person.</p>';
+    if (state.initialized && !state.devicePublicKeyJwk && !state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_DEVICE; })) h += '<button class="exs-quiet" style="margin-top:24px;font-size:var(--fs-caption)" onclick="App.rsClose();App.attachOldStart()">Use HEP on another device too</button>';
+    h += '</div>';
+    rsShow(h, 'exdoors');
+  }
   function exStartProviding() {
     exInitiatorRole = 'provider';
     exBeginStart();
@@ -8634,14 +10242,14 @@ function init() {
           my_code: myCode,
           their_code: theirCode,
           fingerprint: state.fingerprint,
-          public_key: state.publicKeyJwk,
-          role: exInitiatorRole || null,
+          public_key: mySigningKeyJwk(),
       };
+      // v2.134.0 (security tenet gate): the role (who is giving) never goes to the witness.
+      // It travels sealed in the snapshot as _role; the joiner reads it there.
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
         my_code: myCode, their_code: theirCode,
         fingerprint: (state.fingerprint || '').substring(0, 16) + '...',
-        has_pubkey: !!state.publicKeyJwk,
-        role: exInitiatorRole || null,
+        has_pubkey: !!mySigningKeyJwk(), device_key: !!state.devicePublicKeyJwk,
       }));
 
       var resp = await serverFetch(url + '/session/join', {
@@ -8665,7 +10273,7 @@ function init() {
       var data = await resp.json();
 
       if (data.connected) {
-        sessionPartner = data.partner;
+        sessionPartner = data.partner; logPartnerBinding(data.partner);
         exOnConnected();
       } else {
         // Show waiting and poll
@@ -8719,7 +10327,7 @@ function init() {
         if (!validation.valid) { sessionViolation(validation.reason); return; }
         if (data.connected && data.partner) {
           exStopConnectPoll();
-          sessionPartner = data.partner;
+          sessionPartner = data.partner; logPartnerBinding(data.partner);
           exOnConnected();
         }
       } catch(e) {}
@@ -8737,7 +10345,7 @@ function init() {
         if (!validation.valid) { sessionViolation(validation.reason); return; }
         if (data.connected && data.partner) {
           exStopConnectPoll();
-          sessionPartner = data.partner;
+          sessionPartner = data.partner; logPartnerBinding(data.partner);
           exOnConnected();
         }
       } catch(e) {}
@@ -8748,10 +10356,36 @@ function init() {
     if (exConnectPollTimer) { clearInterval(exConnectPollTimer); exConnectPollTimer = null; }
   }
 
+  // v2.126.0 (Michael, Oct 6 walk; registry C2 connecting state): between the code and the mark,
+  // the lock and "Setting up a secure connection"; "Secure connection open" only once the key
+  // agreement has finished on this phone, then the mark. Display only, nothing awaited here.
+  var _exConnT0 = 0;
+  function exShowConnecting(open) {
+    var el = document.getElementById('ex-connect-content'); if (!el) return;
+    var h = '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;">';
+    h += '<div style="width:72px;height:72px;border-radius:50%;background:' + (open ? 'var(--green)' : 'var(--surface-2, var(--border))') + ';display:flex;align-items:center;justify-content:center;transition:background .3s;' + (open ? '' : 'animation:pulse 1.5s infinite;') + '"><svg class="icon" width="30" height="30" style="color:' + (open ? '#fff' : 'var(--text-dim)') + '"><use href="#icon-lock"/></svg></div>';
+    h += '<div class="exs-h">' + (open ? 'Secure connection open' : 'Setting up a secure connection') + '</div>';
+    h += '<div class="exs-m">' + (open ? 'Next, check you both see the same mark.' : 'Between the two of you, for this exchange.') + '</div>';
+    h += '</div><div class="exs-grow"></div>';
+    el.innerHTML = h;
+    showExStep('connect');
+  }
+  function exShowVerifyAfterConnect() {
+    // Honest: only say open if the key agreement actually produced a key.
+    if (!sessionSharedKey) { showExStep('verify'); return; }
+    var wait = Math.max(0, 900 - (Date.now() - _exConnT0));
+    setTimeout(function() {
+      if (!sessionPartner) return;
+      exShowConnecting(true);
+      setTimeout(function() { if (sessionPartner) showExStep('verify'); }, 900);
+    }, wait);
+  }
+
   async function exOnConnected() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
-    if (!sessionPartner) return;
+    if (!sessionPartner || sessionPartner._self) return;
     sessionSetState('connected');
+    _exConnT0 = Date.now(); try { exShowConnecting(false); } catch(_) {}
     // The pipe exists from here, so listen for the other side ending it
     // from here too, not only once Verify is confirmed (ruled Oct 2).
     try { exPresenceStart(); } catch(_) {}
@@ -8886,11 +10520,16 @@ function init() {
     document.getElementById('ex-verify-name').textContent = partnerName;
     exVerifyWords(partnerName === 'Connected' ? '' : partnerName);
     document.getElementById('ex-sas-code').textContent = sasResult.code;
-    showExStep('verify');
+    exShowVerifyAfterConnect();
 
     // Poll for partner's encrypted snapshot if not yet received
     if (!sessionPartner._snapshotDecrypted && sessionSharedKey) {
       startSnapshotPoll(function(decrypted) {
+        // v2.134.0: the joiner learns the starter's role from the sealed snapshot.
+        if (!exInitiatorRole && decrypted && decrypted._role) {
+          sessionRole = decrypted._role === 'provider' ? 'confirmer' : (decrypted._role === 'receiver' ? 'proposer' : sessionRole);
+          console.log('[ex-flow] Role from sealed snapshot: ' + sessionRole);
+        }
         // Update verify screen with partner name if still showing
         if (decrypted && decrypted._name) {
           var nameEl = document.getElementById('ex-verify-name');
@@ -8994,7 +10633,7 @@ function init() {
 
     // Confirm button
     html += '<button class="btn btn-primary" style="width:100%; margin-bottom:4px;" onclick="App.exReviewConfirm()">Confirm</button>';
-    html += '<div style="text-align:center; margin-bottom:14px;"><span style="font-size:13px; color:var(--text-faint); cursor:pointer;" onclick="App.exRejectSAS()">Not the right person?</span></div>';
+    html += '<div style="text-align:center; margin-bottom:14px;"><span style="font-size: var(--fs-label); color:var(--text-faint); cursor:pointer;" onclick="App.exRejectSAS()">Not the right person?</span></div>';
 
     // Render into the verify step container (replacing the SAS-only view)
     var verifyStep = document.getElementById('ex-step-verify');
@@ -9173,8 +10812,8 @@ function init() {
     var iconColor = highlight ? 'var(--accent)' : 'var(--text-faint)';
     return '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.showTextureDetail(\'' + detailKey + '\')">' +
       '<span style="font-size:10px; flex-shrink:0; width:20px; text-align:center; color:' + iconColor + ';">' + icon + '</span>' +
-      '<span style="flex:1; font-size:13px; color:' + labelColor + '; line-height:1.4;' + labelWeight + '">' + label + '</span>' +
-      '<span style="font-size:14px; color:var(--text-faint); flex-shrink:0;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>' +
+      '<span style="flex:1; font-size: var(--fs-label); color:' + labelColor + '; line-height:1.4;' + labelWeight + '">' + label + '</span>' +
+      '<span style="font-size: var(--fs-label); color:var(--text-faint); flex-shrink:0;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>' +
       '</div>';
   }
 
@@ -9196,13 +10835,13 @@ function init() {
       body = '<div style="text-align:center; margin-bottom:16px;">' +
         '<div style="font-size:36px; font-weight:600; color:' + balClass + ';">' + balStr + '</div>' +
         '</div>' +
-        '<div style="font-size:14px; color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
         'This number represents your cooperative position right now. It does not mean you have received less or more than others. It may simply mean that what you received was deeply valuable to the person who provided it, and you agreed.' +
         '</div>' +
-        '<div style="font-size:14px; color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:14px;">' +
         'This is not debt. No one will ever come for this balance. Human beings receive far more than they give for most of their early life, and when we get old, we will again. There are seasons of providing and seasons of receiving.' +
         '</div>' +
-        '<div style="font-size:14px; color:var(--text-dim); line-height:1.7;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'This number does not stop you from cooperating with anyone. You can provide, you can receive. Your chain continues to grow regardless of where this number sits.' +
         '</div>';
       document.getElementById('texture-detail-title').textContent = title;
@@ -9226,18 +10865,18 @@ function init() {
       body = exDetailCategories(ts);
     } else if (key === 'young-thin') {
       title = 'What makes a chain young';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'A young chain simply means this person has not been using the protocol for long. There are few exchanges on record, which means less history to read.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'This is not a concern on its own. Everyone starts with an empty chain. What matters is whether what is here looks genuine and whether the context makes sense for your exchange.' +
         '</div>';
     } else if (key === 'young-depth') {
       title = 'Why network depth matters';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'A chain builds credibility through diversity \u2014 different people, different services, different times. A person who has exchanged with many different people across months is harder to fabricate than one with a few exchanges in a single week.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'Depth comes with time. A young chain will grow if the person continues to cooperate genuinely.' +
         '</div>';
     } else if (key === 'young-questions') {
@@ -9252,10 +10891,10 @@ function init() {
       body = exDetailObservations(ts);
     } else if (key === 'unusual-means') {
       title = 'What this means for you';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'Unusual patterns do not mean this person is dishonest. There are many legitimate reasons a chain might look one-sided or concentrated \u2014 someone new to their area, someone who primarily offers one skill, or simply someone early in their journey.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'What it does mean is that you have less history to rely on. The chain is giving you less information than a more established one would. Factor that into your decision.' +
         '</div>';
     } else if (key === 'unusual-questions') {
@@ -9267,16 +10906,16 @@ function init() {
       ]);
     } else if (key === 'unusual-gaming') {
       title = 'How gaming works \u2014 and what it costs';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'To inflate a chain, a person needs accomplices. Say three people agree to fake exchanges to build each other\u2019s records.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'Each fake exchange creates a real record \u2014 with a real deficit for the person issuing the value. That deficit is permanent and visible. They have sacrificed their own record to build someone else\u2019s.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'The beneficiary now has a chain where all exchanges are with the same two people. Anyone reviewing it will see this immediately \u2014 deep relationship, tiny network.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'The effort required to game the system costs more than genuine cooperation would. And the result tells a story any community member can read.' +
         '</div>';
     } else if (key === 'nonhuman-what') {
@@ -9284,13 +10923,13 @@ function init() {
       body = exDetailNonhumanSignals(dev);
     } else if (key === 'nonhuman-means') {
       title = 'What this means for you';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'The device on the other end of this exchange is not behaving like a real phone carried by a person. This does not necessarily mean the person is fake \u2014 but the tool they are using is not a normal phone.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'Emulators and virtual machines can generate exchanges without a human being present. They can run around the clock, from anywhere, and simulate interactions that never happened in the physical world.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'You decide whether to proceed. The chain is showing you what it sees.' +
         '</div>';
     } else if (key === 'nonhuman-questions') {
@@ -9302,13 +10941,13 @@ function init() {
       ]);
     } else if (key === 'nonhuman-extract') {
       title = 'How fabricated chains extract from communities';
-      body = '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">' +
+      body = '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">' +
         'A fabricated chain is a script \u2014 an automated system producing exchanges that never involved real cooperation. The chain looks populated but the work never happened.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px;">' +
         'When someone with a fabricated chain enters a genuine community, they receive real cooperation in exchange for a record that was manufactured. Your real effort gets recorded against their artificial history.' +
         '</div>' +
-        '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-top:12px; color:var(--accent); font-weight:500;">' +
+        '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-top:12px; color:var(--accent); font-weight:500;">' +
         'The deeper your own network grows \u2014 more people, more diversity, more genuine exchanges \u2014 the more your chain speaks for itself, and the harder it becomes for anyone to extract value from your community.' +
         '</div>';
     } else if (key === 'device-signals') {
@@ -9338,18 +10977,18 @@ function init() {
     var isPhone = dev.touchPoints > 0;
     if (isPhone) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">';
-      html += '<span style="color:var(--green); font-size:14px;"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
-      html += '<span style="font-size:13px; color:var(--text-dim);">Real phone confirmed</span>';
+      html += '<span style="color:var(--green); font-size: var(--fs-label);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span>';
+      html += '<span style="font-size: var(--fs-label); color:var(--text-dim);">Real phone confirmed</span>';
       html += '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:16px; line-height:1.5;">This device has a touch screen, a hardware graphics chip, and physical sensors. It behaves like a real phone carried by a person.</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:16px; line-height:1.5;">This device has a touch screen, a hardware graphics chip, and physical sensors. It behaves like a real phone carried by a person.</div>';
     }
     // Sensor coverage
     if (dev.totalRecords > 0) {
       var sensorPct = Math.round(dev.recordsWithSensor / dev.totalRecords * 100);
       var geoPct = Math.round(dev.recordsWithGeo / dev.totalRecords * 100);
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:8px;">Physical reality signals</div>';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin-bottom:8px;">Physical reality signals</div>';
       var hasSensorCap = (dev.capabilityMask || 0) & 6;
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
       html += '<strong style="color:var(--accent);">' + sensorPct + '%</strong> of exchanges carry sensor data \u2014 ';
       if (!hasSensorCap && sensorPct < 30) {
         html += 'this device\u2019s operating system does not allow apps to read physical sensors like accelerometers and gyroscopes. This is a platform limitation (common on iPhones), not a concern about the person.';
@@ -9363,7 +11002,7 @@ function init() {
         html += 'no exchanges carry physical sensor data. The phone has not recorded any motion, gravity, or air pressure during exchanges.';
       }
       html += '</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:10px;">';
       html += '<strong style="color:var(--accent);">' + geoPct + '%</strong> carry location data \u2014 ';
       if (geoPct >= 80) {
         html += 'exchanges are happening in real, locatable places. The phone knows where it is.';
@@ -9376,7 +11015,7 @@ function init() {
       }
       html += '</div>';
       if (dev.pohSnapshots > 0) {
-        html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">';
+        html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">';
         html += '<strong style="color:var(--accent);">' + dev.pohSnapshots + '</strong> proof-of-human snapshot' + (dev.pohSnapshots > 1 ? 's' : '') + ' \u2014 ';
         if (dev.pingRecords > 0) {
           html += '<strong style="color:var(--accent);">' + dev.pingRecords + '</strong> standalone heartbeat' + (dev.pingRecords > 1 ? 's' : '') + ' between exchanges. ';
@@ -9390,8 +11029,8 @@ function init() {
     // --- Heartbeat drift analysis ---
     var deltas = ts._deltas;
     if (deltas && deltas.length > 0) {
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin:16px 0 8px;">Heartbeat drift</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin:16px 0 8px;">Heartbeat drift</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">';
       var identicalCount = 0;
       deltas.forEach(function(d) {
         if (d.gpsIdentical) identicalCount++;
@@ -9410,8 +11049,8 @@ function init() {
     // --- Counterparty platform distribution ---
     var plat = ts._platforms;
     if (plat && plat.total > 0) {
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin:16px 0 8px;">Counterparty devices</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7;">';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin:16px 0 8px;">Counterparty devices</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7;">';
       var platEntries = Object.entries(plat.platforms).sort(function(a,b) { return b[1] - a[1]; });
       platEntries.forEach(function(e) {
         var pct = Math.round(e[1] / plat.total * 100);
@@ -9491,20 +11130,20 @@ function init() {
   function exDetailCategories(ts) {
     var cats = ts.cats || {};
     var keys = Object.keys(cats);
-    if (!keys.length) return '<div style="font-size:13px; color:var(--text-faint);">No category data available.</div>';
+    if (!keys.length) return '<div style="font-size: var(--fs-label); color:var(--text-faint);">No category data available.</div>';
     var html = '';
     Object.entries(cats).sort(function(a,b) { return b[1].n - a[1].n; }).forEach(function(e) {
       var k = e[0], v = e[1];
       var pct = Math.round(v.n / ts.n * 100);
       html += '<div style="margin-bottom:14px;">';
       html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;">';
-      html += '<span style="font-size:14px; font-weight:500; color:var(--text);">' + esc(k) + '</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">' + v.n + ' acts \u00b7 ' + pct + '%</span>';
+      html += '<span style="font-size: var(--fs-label); font-weight:500; color:var(--text);">' + esc(k) + '</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">' + v.n + ' acts \u00b7 ' + pct + '%</span>';
       html += '</div>';
       html += '<div style="height:5px; background:var(--bg-input); border-radius:3px; overflow:hidden;">';
       html += '<div style="height:100%; width:' + pct + '%; background:var(--accent); border-radius:3px;"></div>';
       html += '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); margin-top:3px;">provided ' + v.g + ' \u00b7 received ' + v.r + ' \u00b7 avg ' + (v.avg || 0) + ' units</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-top:3px;">provided ' + v.g + ' \u00b7 received ' + v.r + ' \u00b7 avg ' + (v.avg || 0) + ' units</div>';
       html += '</div>';
     });
     return html;
@@ -9512,12 +11151,12 @@ function init() {
 
   function exDetailObservations(ts) {
     var cl = exClassifyChain(ts);
-    if (!cl.observations.length) return '<div style="font-size:13px; color:var(--text-faint);">No specific observations.</div>';
+    if (!cl.observations.length) return '<div style="font-size: var(--fs-label); color:var(--text-faint);">No specific observations.</div>';
     var html = '';
     cl.observations.forEach(function(obs) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">';
-      html += '<span style="color:var(--accent); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">' + obs.text + '</div>';
+      html += '<span style="color:var(--accent); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">' + obs.text + '</div>';
       html += '</div>';
     });
     return html;
@@ -9527,8 +11166,8 @@ function init() {
     var html = '';
     items.forEach(function(item) {
       html += '<div style="margin-bottom:16px;">';
-      html += '<div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:6px;">' + item.q + '</div>';
-      html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">' + item.a + '</div>';
+      html += '<div style="font-size: var(--fs-label); font-weight:500; color:var(--text); margin-bottom:6px;">' + item.q + '</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">' + item.a + '</div>';
       html += '</div>';
     });
     return html;
@@ -9539,58 +11178,58 @@ function init() {
     var webgl = dev.webgl || '';
     if (exIsEmulator(dev)) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">';
-      html += '<span style="color:var(--red); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div><div style="font-size:13px; color:var(--text); font-weight:500; margin-bottom:4px;">This is not a real phone</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The graphics chip in this device is software pretending to be hardware. Real phones have physical chips made by companies like Qualcomm, ARM, or Apple. This device reports: ' + esc(webgl) + '. This is the signature of an emulator or virtual machine \u2014 a program that imitates a phone without being one.</div></div>';
+      html += '<span style="color:var(--red); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div><div style="font-size: var(--fs-label); color:var(--text); font-weight:500; margin-bottom:4px;">This is not a real phone</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The graphics chip in this device is software pretending to be hardware. Real phones have physical chips made by companies like Qualcomm, ARM, or Apple. This device reports: ' + esc(webgl) + '. This is the signature of an emulator or virtual machine \u2014 a program that imitates a phone without being one.</div></div>';
       html += '</div>';
     }
     if (dev.touchPoints === 0) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">';
-      html += '<span style="color:var(--red); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div><div style="font-size:13px; color:var(--text); font-weight:500; margin-bottom:4px;">No touch screen</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">Every smartphone has a touch screen. This device reports zero touch capability. That means it is either a desktop computer, a server, or a virtual machine. None of those are phones that a person carries and uses in daily life.</div></div>';
+      html += '<span style="color:var(--red); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div><div style="font-size: var(--fs-label); color:var(--text); font-weight:500; margin-bottom:4px;">No touch screen</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">Every smartphone has a touch screen. This device reports zero touch capability. That means it is either a desktop computer, a server, or a virtual machine. None of those are phones that a person carries and uses in daily life.</div></div>';
       html += '</div>';
     }
     if (dev.totalRecords >= 5 && dev.recordsWithSensor === 0) {
       html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">';
-      html += '<span style="color:var(--red); font-size:14px; flex-shrink:0; margin-top:2px;">&#9679;</span>';
-      html += '<div><div style="font-size:13px; color:var(--text); font-weight:500; margin-bottom:4px;">No physical reality in any exchange</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">Across ' + dev.totalRecords + ' exchanges, this device has never recorded any motion, gravity, air pressure, or orientation. A real phone constantly feels the world around it \u2014 every tilt, every step, every change in altitude or weather. This phone appears to exist in a place where none of that happens.</div></div>';
+      html += '<span style="color:var(--red); font-size: var(--fs-label); flex-shrink:0; margin-top:2px;">&#9679;</span>';
+      html += '<div><div style="font-size: var(--fs-label); color:var(--text); font-weight:500; margin-bottom:4px;">No physical reality in any exchange</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">Across ' + dev.totalRecords + ' exchanges, this device has never recorded any motion, gravity, air pressure, or orientation. A real phone constantly feels the world around it \u2014 every tilt, every step, every change in altitude or weather. This phone appears to exist in a place where none of that happens.</div></div>';
       html += '</div>';
     }
     if (!html) {
-      html = '<div style="font-size:13px; color:var(--text-faint);">Device signals flagged during classification.</div>';
+      html = '<div style="font-size: var(--fs-label); color:var(--text-faint);">Device signals flagged during classification.</div>';
     }
     return html;
   }
 
   function exDetailDeviceSignals(dev) {
     var html = '';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:12px;">These are the physical characteristics of the device on the other end of this exchange. Each one tells you something about whether this is a real phone in a real person\u2019s hand.</div>';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.7; margin-bottom:12px;">These are the physical characteristics of the device on the other end of this exchange. Each one tells you something about whether this is a real phone in a real person\u2019s hand.</div>';
     // Platform
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Platform</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono);">' + esc(dev.platform || '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The operating system. Android and iOS are phones. Linux or Win32 is a computer.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Platform</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono);">' + esc(dev.platform || '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The operating system. Android and iOS are phones. Linux or Win32 is a computer.</div>';
     html += '</div>';
     // Screen
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Screen</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono);">' + esc(dev.screen || '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The screen resolution. Phone screens are typically narrow and tall. Very large or square resolutions suggest a desktop monitor.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Screen</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono);">' + esc(dev.screen || '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The screen resolution. Phone screens are typically narrow and tall. Very large or square resolutions suggest a desktop monitor.</div>';
     html += '</div>';
     // Touch points
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Touch points</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono);">' + (dev.touchPoints != null ? '' + dev.touchPoints : '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">How many fingers the screen can detect at once. Phones report 5 or more. Zero means no touch screen at all.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Touch points</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono);">' + (dev.touchPoints != null ? '' + dev.touchPoints : '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">How many fingers the screen can detect at once. Phones report 5 or more. Zero means no touch screen at all.</div>';
     html += '</div>';
     // GPU
     html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:13px; color:var(--text-faint);">Graphics chip</span><span style="font-size:13px; color:var(--text); font-family:var(--font-mono); max-width:60%; text-align:right; word-break:break-word;">' + esc(dev.webgl || '\u2014') + '</span></div>';
-    html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">The hardware that draws the screen. Real phones have chips from Qualcomm (Adreno), ARM (Mali), or Apple. Software renderers like SwiftShader or llvmpipe mean the device is simulated.</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size: var(--fs-label); color:var(--text-faint);">Graphics chip</span><span style="font-size: var(--fs-label); color:var(--text); font-family:var(--font-mono); max-width:60%; text-align:right; word-break:break-word;">' + esc(dev.webgl || '\u2014') + '</span></div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">The hardware that draws the screen. Real phones have chips from Qualcomm (Adreno), ARM (Mali), or Apple. Software renderers like SwiftShader or llvmpipe mean the device is simulated.</div>';
     html += '</div>';
     if (dev.totalRecords > 0) {
       var sensorPct = Math.round(dev.recordsWithSensor / dev.totalRecords * 100);
       var geoPct = Math.round(dev.recordsWithGeo / dev.totalRecords * 100);
-      html += '<div style="margin-top:12px; font-size:13px; color:var(--text-dim); line-height:1.6;">';
+      html += '<div style="margin-top:12px; font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
       html += 'Sensor coverage: <strong style="color:var(--accent);">' + sensorPct + '%</strong> \u00b7 Location: <strong style="color:var(--accent);">' + geoPct + '%</strong>';
       if (dev.pohSnapshots > 0) html += ' \u00b7 Proof-of-human: <strong style="color:var(--accent);">' + dev.pohSnapshots + '</strong>';
       if (dev.pingRecords > 0) html += ' (' + dev.pingRecords + ' heartbeat' + (dev.pingRecords > 1 ? 's' : '') + ')';
@@ -9697,7 +11336,7 @@ function init() {
     var months = Math.floor(days / 30); if (months < 12) return months + (months === 1 ? ' month ago' : ' months ago');
     var years = Math.floor(days / 365); return years + (years === 1 ? ' year ago' : ' years ago');
   }
-  var _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false };
+  var _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false, photoOpen: false };
   function exRenderChainRead() {
     var container = document.getElementById('ex-texture-content');
     if (!container) return;
@@ -9726,9 +11365,13 @@ function init() {
     }
 
     var sh = exShieldRead(ts);
-    var html = '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
+    // v2.133.0 (Michael, Oct 13): the photo check. Their current photo above the name,
+    // the first photo peeking out behind it; tap opens both (exPhotoSheetHTML). No words
+    // (DESIGN.md rule 15 exception, ruled Oct 13). One photo: no fringe. None: the initial.
+    var html = exPhotoStackHTML(ts, name);
+    html += '<div class="exs-h" style="text-align:center;">' + esc(name) + '</div>';
     html += '<div style="height:8px"></div>';
-    if (sessionRole !== 'proposer') html += exOverlapSVG(mine, st.theirs, shared, 11);
+    html += exOverlapSVG(mine, st.theirs, shared, 11); // v2.126.0 (Michael, Oct 6 walk): both phones see the rings; the starter had only the line.
     html += '<div style="height:10px"></div><div class="exs-m" style="text-align:center;">' + esc(line) + '</div>';
     html += '<div style="height:16px"></div>';
     html += '<div class="exs-icons">';
@@ -9740,6 +11383,7 @@ function init() {
     html += '<div class="exs-cancelrow"><button class="exs-cancel" onclick="App.exCancelExchange()">Cancel exchange</button></div>';
     if (st.shieldOpen) html += exShieldSheetHTML(ts, 'App.exToggleShieldPop()');
     if (st.threadOpen) html += exThreadPanelHTML(ts, name, shared);
+    if (st.photoOpen) html += exPhotoSheetHTML(ts);
     container.innerHTML = html;
 
     exChainReadXRefresh();
@@ -9787,8 +11431,41 @@ function init() {
     var h = '<div class="exs-lines">' + lines.map(function(l) { return '<div>' + l + '</div>'; }).join('') + '</div>' + (extra || '');
     return exSheetHTML('Chain', h, closeFn || 'App.exToggleThreadPanel()');
   }
-  function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; exRenderChainRead(); }
-  function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; exRenderChainRead(); }
+  // The photo check (v2.133.0). Two photos travel in the snapshot: the first, fixed in
+  // genesis and unchangeable, and the current one the person chose to show. Someone who
+  // copied a chain can swap the second but not the first. The app shows both; the person
+  // decides. It never says this is or is not them.
+  function exPhotosOf(ts) {
+    var first = (ts && ts._genesisPhoto) || '';
+    var now = (ts && ts._photo) || '';
+    if (now && first && now === first) now = '';
+    return { first: first, now: now, firstTs: ts && ts._genesisPhotoTs, nowTs: ts && ts._photoTs };
+  }
+  function exPhotoStackHTML(ts, name) {
+    var p = exPhotosOf(ts);
+    var h = '<div class="exs-person">';
+    if (!p.first && !p.now) {
+      h += '<div class="exs-stack single"><div class="exs-av">' + esc(exInitial(name)) + '</div></div>';
+    } else if (p.first && p.now) {
+      h += '<button class="exs-stack" aria-label="Photo check" onclick="App.exTogglePhotoSheet()"><div class="exs-av behind"><img src="' + p.first + '" alt=""></div><div class="exs-av"><img src="' + p.now + '" alt=""></div></button>';
+    } else {
+      h += '<button class="exs-stack single" aria-label="Photo check" onclick="App.exTogglePhotoSheet()"><div class="exs-av"><img src="' + (p.first || p.now) + '" alt=""></div></button>';
+    }
+    h += '</div><div style="height:8px"></div>';
+    return h;
+  }
+  function exPhotoSheetHTML(ts) {
+    var p = exPhotosOf(ts);
+    var one = function(src, lab, when) { return '<div class="exs-cmp-one"><div class="exs-cmp-pic"><img src="' + src + '" alt=""></div><div class="exs-cmp-lab">' + lab + '</div><div class="exs-f">' + esc(when ? exMonthYear(when) : '') + '</div></div>'; };
+    var body = '<div class="exs-cmp">';
+    if (p.first) body += one(p.first, 'First photo', p.firstTs);
+    if (p.now) body += one(p.now, 'Now', p.nowTs);
+    body += '</div>';
+    return exSheetHTML('Photo check', body, 'App.exTogglePhotoSheet()');
+  }
+  function exTogglePhotoSheet() { _exChainReadState.photoOpen = !_exChainReadState.photoOpen; _exChainReadState.shieldOpen = false; _exChainReadState.threadOpen = false; exRenderChainRead(); }
+  function exToggleShieldPop() { _exChainReadState.shieldOpen = !_exChainReadState.shieldOpen; _exChainReadState.threadOpen = false; _exChainReadState.photoOpen = false; exRenderChainRead(); }
+  function exToggleThreadPanel() { _exChainReadState.threadOpen = !_exChainReadState.threadOpen; _exChainReadState.shieldOpen = false; _exChainReadState.photoOpen = false; exRenderChainRead(); }
 
   function exRenderTexture() {
     var container = document.getElementById('ex-texture-content');
@@ -9838,14 +11515,14 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--blue);">&#9679;</span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--blue);">New participant</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--blue);">New participant</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has no exchange history yet. Everyone starts somewhere.';
     html += '</div>';
     // Device check even on new
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
-      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
+      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size: var(--fs-caption); color:var(--text-faint);">';
       html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
@@ -9867,9 +11544,9 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--blue);">&#9679;</span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--blue);">This chain is young.</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--blue);">This chain is young.</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has ' + ts.n + ' exchange' + (ts.n > 1 ? 's' : '') + ' on record. What is here looks genuine \u2014 the chain just has not had time to build depth yet.';
     html += '</div>';
 
@@ -9877,7 +11554,7 @@ function init() {
     if (cl.observations.length > 0) {
       html += '<div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(42,90,143,0.12);">';
       cl.observations.forEach(function(obs) {
-        html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5; margin-bottom:4px;">\u2022 ' + obs.text + '</div>';
+        html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5; margin-bottom:4px;">\u2022 ' + obs.text + '</div>';
       });
       html += '</div>';
     }
@@ -9887,7 +11564,7 @@ function init() {
 
     // Device confirmation
     if (dev.touchPoints > 0 && !exIsEmulator(dev)) {
-      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--text-faint);">';
+      html += '<div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size: var(--fs-caption); color:var(--text-faint);">';
       html += '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg></span> Real phone';
       html += '</div>';
     }
@@ -9916,9 +11593,9 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(42,90,143,0.04); border:1px solid rgba(42,90,143,0.12); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--accent);"><svg class="icon icon-md"><use href="#icon-warning"/></svg></span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--accent);">Some things here are unusual.</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += esc(name) + ' has ' + ts.n + ' exchanges' + months + '. ';
     html += 'This person may be perfectly honest, but some patterns do not match what you would typically see. It is worth understanding what you are looking at before you proceed.';
     html += '</div>';
@@ -9946,9 +11623,9 @@ function init() {
     var html = '<div style="padding:16px; background:rgba(204,68,68,0.04); border:1px solid rgba(204,68,68,0.15); border-radius:var(--radius); overflow:hidden;">';
     html += '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:8px;">';
     html += '<span style="font-size:18px; color:var(--red); flex-shrink:0; margin-top:2px;"><svg class="icon icon-md"><use href="#icon-x"/></svg></span>';
-    html += '<div style="font-size:15px; font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:600; color:var(--red); line-height:1.4;">This person is using a device that does not behave like a normal phone.</div>';
     html += '</div>';
-    html += '<div style="font-size:13px; color:var(--text-dim); line-height:1.6;">';
+    html += '<div style="font-size: var(--fs-label); color:var(--text-dim); line-height:1.6;">';
     html += 'The person you are dealing with may be real, but the device they are holding is not behaving the way any normal person\u2019s phone would. Multiple signals point to a simulated or automated device.';
     html += '</div>';
     html += '</div>';
@@ -10021,7 +11698,7 @@ function init() {
     var line = d === 'provided' ? 'You are providing to ' + esc(other) : esc(other) + ' is providing to you';
     h += '<div class="exs-caprow" style="justify-content:space-between; text-align:left;"><span class="exs-body">' + line + '</span><button class="exs-switch" onclick="App.exCRSwitch()">Switch</button></div>';
     h += '<div style="height:10px"></div>';
-    var svcN = d === 'provided' ? exServices().length : 0;
+    var svcN = d === 'provided' ? exServices().length + pkList().length : 0;
     var pastN = exOwnActs(d).length;
     var door = function(t, sub, fn) {
       var live = !!fn;
@@ -10066,10 +11743,10 @@ function init() {
   // What is being proposed, from whichever side holds it.
   function exRVProposalLive() {
     if (sessionRole === 'confirmer' && sessionProposal) {
-      return { value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
+      return { breakdown: sessionProposal.breakdown || null, value: Number(sessionProposal.value) || 0, task: sessionProposal.description || '', category: sessionProposal.category || '', duration: sessionProposal.duration || 0, myDirection: sessionProposal.direction === 'provided' ? 'received' : 'provided' };
     }
     var pp = state.pendingProposal && state.pendingProposal.details;
-    if (pp) return { value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
+    if (pp) return { breakdown: state.pendingProposal.breakdown || null, value: Number(pp.value) || 0, task: pp.description || '', category: pp.category || '', duration: pp.duration || 0, myDirection: pp.energyState };
     return null;
   }
   function exRVProposal() { return _exRV.p || exRVProposalLive(); }
@@ -10116,6 +11793,7 @@ function init() {
       var h = '<div class="exs-cap">' + cap + '</div>';
       h += '<div class="exs-t" style="margin-top:2px">' + esc(p.task) + '</div>';
       if (kd) h += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+      if (p.breakdown) h += exBreakdownHTML(p.breakdown, p.value);
       h += '<div style="height:24px"></div>';
       h += '<div class="exs-lab">' + giver + '</div>';
       h += '<div class="exs-disp">' + (Number(p.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
@@ -10180,7 +11858,7 @@ function init() {
       html += '<div class="exs-check" style="visibility:hidden"></div><div class="exs-m" style="margin-top:12px">&nbsp;</div><div style="height:18px"></div><div class="btn btn-primary" style="width:100%; visibility:hidden">Done</div>';
     } else if (st === 'done') {
       html += '<div class="exs-check exs-in"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
-      html += '<div class="exs-m exs-in" style="text-align:center; margin-top:12px; font-size:14px">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
+      html += '<div class="exs-m exs-in" style="text-align:center; margin-top:12px; font-size: var(--fs-label)">' + esc(opts.sentence || _exRV.sentence || '') + '</div>';
       html += '<div style="height:18px"></div>';
       html += '<button class="btn btn-primary exs-in" style="width:100%;" onclick="App.exRVDone()">Done</button>';
     } else if (st === 'declined') {
@@ -10318,7 +11996,7 @@ function init() {
     h += '</svg>';
     var l1 = iProvide ? esc(other) + ' confirmed ' + p.value.toLocaleString() + ' for your work' : 'You confirmed ' + p.value.toLocaleString() + ' for ' + esc(other) + '\'s work';
     h += '<div class="exs-grow"></div>';
-    h += '<div id="exs-l1" class="exs-fade" style="text-align:center; font-size:15px">' + l1 + '</div>';
+    h += '<div id="exs-l1" class="exs-fade" style="text-align:center; font-size: var(--fs-body)">' + l1 + '</div>';
     h += '<div id="exs-l2" class="exs-fade exs-f" style="text-align:center; margin-top:4px">Recorded on both chains</div>';
     h += '<div style="height:24px"></div>';
     h += '</div>';
@@ -10531,8 +12209,10 @@ function init() {
   }
   // A service entry or a past act, read the same way.
   function exItemParts(kind, it) {
+    if (kind === 'services' && it._pkg) return { task: it.description || '', kind: 'Package, ' + it._pkg.lines.length + (it._pkg.lines.length === 1 ? ' part' : ' parts'), dur: '', value: it.value, ts: null };
     if (kind === 'services') {
       var sm = (it.category !== undefined || it.dur !== undefined) ? { category: it.category || '', duration: it.dur || '' } : exSplitMeta(it.meta || '');
+      if (it.price === 'time' || it.price === 'unit') sm.category = sm.category || ('per ' + (it.unit || 'unit')); // v2.117.0: piece 2 asks the quantity
       return { task: it.description || '', kind: sm.category, dur: sm.duration, value: it.value, ts: null };
     }
     return { task: it.description || '', kind: it.category || '', dur: it.duration ? formatDuration(it.duration) : '', value: it.value, ts: it.timestamp || null };
@@ -10540,6 +12220,22 @@ function init() {
   function exKindDur(kind, dur) { var a = []; if (kind) a.push(kind); if (dur) a.push(dur); return a.join(', '); }
   function exFmtDate(ts) {
     try { var d = new Date(ts); if (isNaN(d)) return ''; return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch(e) { return ''; }
+  }
+  // v2.121.0: what a receipt signature covers: a fixed label, the exchange's act hash, and the lines
+  // in canonical form. Same string on both phones, so either can check it.
+  function receiptMessage(actHash, bd) { return 'hep-receipt-v1|' + actHash + '|' + HCP.canonicalizeJSON(JSON.parse(JSON.stringify(bd || null))); } // round-trip drops undefined keys, as the relay does
+  function receiptCheck(actHash, rc) {
+    if (!rc || !rc.sig || !rc.signerKey) return Promise.resolve(false);
+    try { return HCP.verifyActSig(receiptMessage(actHash, rc.breakdown), rc.sig, rc.signerKey).catch(function() { return false; }); }
+    catch (e) { return Promise.resolve(false); }
+  }
+  function exBreakdownHTML(bd, value) {
+    if (!bd || !Array.isArray(bd.lines) || !bd.lines.length) return '';
+    var h = '<div style="margin-top:12px">', sum = 0;
+    bd.lines.forEach(function(l) { var t = pkLineTotal(l); sum += t; var cap = pkLineCap(l); h += '<div class="exs-row mc-vrow st-row" style="padding:8px 2px"><div class="exs-rowmain"><div class="exs-body" style="font-size: var(--fs-label)">' + esc(l.desc || '') + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><div class="exs-rowval" style="font-weight:400;font-size: var(--fs-label)">' + mcFmt(t) + exMarkSVG(12) + '</div></div>'; });
+    h += '</div>';
+    if (Math.round(sum) !== Math.round(Number(value) || 0)) h += '<p class="exs-cap" style="margin:6px 0 0">The parts add up to ' + mcFmt(sum) + '. The total proposed is ' + mcFmt(Number(value) || 0) + '.</p>';
+    return h;
   }
   function exRenderBeat(n, listKind) {
     var host = document.getElementById('ex-beats');
@@ -10562,7 +12258,7 @@ function init() {
       html += exCancelHTML();
     } else if (n === 2 && !listKind) {
       _exBeat.view = 'doors';
-      var svcN = _exBeat.dir === 'provided' ? exServices().length : 0;
+      var svcN = _exBeat.dir === 'provided' ? exServices().length + pkList().length : 0;
       var pastN = exOwnActs(_exBeat.dir).length;
       var door = function(t, sub, fn) {
         var live = !!fn;
@@ -10576,12 +12272,25 @@ function init() {
       html += exCancelHTML();
     } else if (n === 2 && listKind) {
       _exBeat.view = 'list'; _exBeat.listKind = listKind;
-      var items = listKind === 'services' ? exServices() : exOwnActs(_exBeat.dir);
+      var items = listKind === 'services' ? pkList().map(function(pk) { return { _pkg: pk, description: pk.name, value: pkTotal(pk) }; }).concat(exServices()) : exOwnActs(_exBeat.dir); // v2.120.0: packages first
       _exBeat.list = items;
       html += '<div class="exs-cap">' + exDirCaption(other) + '</div><div class="exs-t">' + (listKind === 'services' ? 'Services you offer' : 'Past exchanges') + '</div>';
       html += '<div style="height:12px"></div>';
       if (items.length >= 8) html += '<div class="exs-fl" style="margin-bottom:10px"><input class="exs-box-in" id="ex-list-q" placeholder="Search" value="' + esc(_exBeat.q || '') + '" oninput="App.exListFilter(this.value)"></div>';
       html += '<div id="ex-list-rows">' + exListRowsHTML(listKind, items, _exBeat.q || '') + '</div>';
+      html += exCancelHTML();
+    } else if (n === 'qty') {
+      _exBeat.view = 'qty';
+      var qi = _exBeat.qtyItem, qw = exQtyWords(qi);
+      html += '<div class="exs-cap">' + exDirCaption(other) + '</div>';
+      html += '<div class="exs-t" style="margin-top:2px">' + esc(qi.description || '') + '</div>';
+      html += '<div class="exs-lab" style="margin-top:4px">' + mcFmt(Number(qi.value) || 0) + ' per ' + esc(qi.price === 'time' ? (qi.unit || 'hour') : (qi.unit || 'unit')) + '</div>';
+      html += '<div style="height:20px"></div>';
+      html += '<div class="exs-fl"><label for="ex-qty">How many ' + esc(qw) + '</label><input class="exs-box-in" type="number" inputmode="decimal" step="any" min="0" id="ex-qty" value="' + esc(String(_exBeat.qty || '')) + '" oninput="App.exQtyInput(this.value)"></div>';
+      html += '<div class="exs-lab">' + exGiverLabel(other) + '</div>';
+      html += '<div class="exs-disp" id="ex-qty-tot">0' + exMarkSVG(16) + '</div>';
+      html += '<div style="height:24px"></div>';
+      html += '<button class="btn btn-primary" style="width:100%;" onclick="App.exQtyDone()">Continue</button>';
       html += exCancelHTML();
     } else if (n === 'item') {
       _exBeat.view = 'item';
@@ -10591,6 +12300,7 @@ function init() {
       var kd = exKindDur(_exBeat.kind, _exBeat.dur);
       if (kd) html += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
       if (dateLine) html += '<div class="exs-cap" style="margin-top:2px">Last done ' + esc(dateLine) + '</div>';
+      if (_exBeat.breakdown) html += exBreakdownHTML(_exBeat.breakdown, _exBeat.value);
       html += '<div style="height:24px"></div>';
       html += '<div class="exs-lab">' + exGiverLabel(other) + '</div>';
       html += '<div class="exs-disp">' + (Number(_exBeat.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
@@ -10645,6 +12355,7 @@ function init() {
   // X: back one step, everything entered kept (DESIGN 2a).
   function exBeatBack() {
     var v = _exBeat.view;
+    if (v === 'qty') { exRenderBeat(2, 'services'); return; }
     if (v === 'form') { if (_exBeat.from === 'item' && _exBeat.picked) exRenderBeat('item'); else exBackToTexture(); }
     else if (v === 'item') exRenderBeat(2, _exBeat.listKind || (_exBeat.picked && _exBeat.picked.kindOf === 'past' ? 'past' : 'services'));
     else if (v === 'list') { _exBeat.q = ''; exBackToTexture(); }
@@ -10678,15 +12389,40 @@ function init() {
     exRenderBeat(1);
   }
   function exBeatDoor(kind) { _exBeat.q = ''; exRenderBeat(2, kind); }
-  function exBeatNew() { _exBeat.task = ''; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = ''; _exBeat.picked = null; _exBeat.from = 'doors'; exRenderBeat(3); }
+  function exBeatNew() { _exBeat.breakdown = null; _exBeat.qtyItem = null; _exBeat.task = ''; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = ''; _exBeat.picked = null; _exBeat.from = 'doors'; exRenderBeat(3); }
   function exBeatPickItem(kind, i) {
     var it = _exBeat.list && _exBeat.list[i]; if (!it) return;
     var p = exItemParts(kind, it);
+    _exBeat.breakdown = null; _exBeat.qtyItem = null;
+    // v2.120.0 (Michael, Oct 6): a package carries its lines; a by-time or by-unit item asks how many first.
+    if (kind === 'services' && it._pkg) {
+      _exBeat.breakdown = { name: it._pkg.name, lines: JSON.parse(JSON.stringify(it._pkg.lines || [])), total: pkTotal(it._pkg) };
+      _exBeat.task = it._pkg.name; _exBeat.kind = ''; _exBeat.dur = ''; _exBeat.value = _exBeat.breakdown.total;
+      _exBeat.picked = { kind: kind, kindOf: 'package', ts: null, description: _exBeat.task, category: '', dur: '', value: _exBeat.value };
+      exRenderBeat('item'); return;
+    }
+    if (kind === 'services' && (it.price === 'time' || it.price === 'unit')) { _exBeat.qtyItem = it; _exBeat.qty = ''; exRenderBeat('qty'); return; }
     _exBeat.task = p.task; _exBeat.kind = p.kind; _exBeat.dur = p.dur; _exBeat.value = p.value || '';
     _exBeat.picked = { kind: kind, kindOf: kind === 'past' ? 'past' : 'services', ts: p.ts, description: p.task, category: p.kind, dur: p.dur, value: _exBeat.value };
     exRenderBeat('item');
   }
   function exBeatEdit() { _exBeat.from = 'item'; exRenderBeat(3); }
+  function exQtyWords(it) { return it.price === 'time' ? (it.unit === 'day' ? 'days' : 'hours') : (it.unit || 'units'); }
+  function exQtyInput(v) {
+    _exBeat.qty = v; var it = _exBeat.qtyItem; if (!it) return;
+    var t = document.getElementById('ex-qty-tot'); if (t) t.innerHTML = mcFmt((parseFloat(v) || 0) * (Number(it.value) || 0)) + exMarkSVG(16);
+  }
+  function exQtyDone() {
+    var it = _exBeat.qtyItem; if (!it) return;
+    var q = parseFloat(_exBeat.qty) || 0; if (q <= 0) { toast('Enter how many'); return; }
+    var w = exQtyWords(it), name = it.description || '';
+    _exBeat.task = it.price === 'time' ? name : name + ', ' + q + ' ' + w;
+    _exBeat.kind = (it.group || '').trim();
+    _exBeat.dur = it.price === 'time' ? q + ' ' + (it.unit === 'day' ? (q === 1 ? 'day' : 'days') : (q === 1 ? 'hour' : 'hours')) : '';
+    _exBeat.value = Math.round(q * (Number(it.value) || 0) * 100) / 100;
+    _exBeat.picked = { kind: 'services', kindOf: 'services', ts: null, description: _exBeat.task, category: _exBeat.kind, dur: _exBeat.dur, value: _exBeat.value };
+    exRenderBeat('item');
+  }
   function exBeatSwitch() {
     _exBeat.dir = _exBeat.dir === 'provided' ? 'received' : 'provided';
     setDirection(_exBeat.dir);
@@ -10765,7 +12501,7 @@ function init() {
     container.id = 'ex-reusable-acts';
     container.style.cssText = 'margin-bottom:16px;';
     var hdr = document.createElement('div');
-    hdr.style.cssText = 'font-size:13px; color:var(--text-dim); margin-bottom:8px;';
+    hdr.style.cssText = 'font-size: var(--fs-label); color:var(--text-dim); margin-bottom:8px;';
     hdr.textContent = 'Repeat a previous act';
     container.appendChild(hdr);
 
@@ -11002,32 +12738,32 @@ function init() {
       console.log('[ex-flow] Counterparty context render failed on proposal:', cpe.message);
     }
 
-    html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:12px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
+    html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:12px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
 
     html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:12px;">';
 
     // Direction badges
     html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
     if (p.direction === 'provided') {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You received</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You received</span>';
     } else {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You provided</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You provided</span>';
     }
     html += '</div>';
 
     // Description
     html += '<div style="margin-bottom:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">What was done</div>';
-    html += '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">What was done</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
     html += '</div>';
 
     // Category + Duration
     html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
     if (serviceCat) {
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Category</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(serviceCat) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Category</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(serviceCat) + '</div></div>';
     }
     if (p.duration) {
       var dH = Math.floor(p.duration / 60);
@@ -11035,14 +12771,14 @@ function init() {
       var dStr = '';
       if (dH) dStr += dH + ' hour' + (dH > 1 ? 's' : '');
       if (dM) dStr += (dStr ? ' ' : '') + dM + ' min';
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Duration</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(dStr) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Duration</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(dStr) + '</div></div>';
     }
     html += '</div>';
 
     // Value
     html += '<div style="border-top:1px solid var(--border); padding-top:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
     html += '<div style="font-size:28px; font-weight:700; color:var(--accent); font-family:var(--font-mono,monospace);">' + Number(proposedValue).toLocaleString() + '</div>';
     html += '</div>';
 
@@ -11115,17 +12851,17 @@ function init() {
     var catId = 'svc-cat-' + catName.replace(/[^a-zA-Z0-9]/g, '_');
     var html = '<div style="margin-bottom:2px;">';
     html += '<div style="display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;" onclick="App.toggleServiceCat(\'' + catId + '\')">';
-    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size:12px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
-    html += '<span style="flex:1; font-size:14px; font-weight:500; color:var(--text);">' + esc(catName) + '</span>';
-    html += '<span style="font-size:12px; color:var(--text-faint);">' + items.length + ' service' + (items.length > 1 ? 's' : '') + ' \u00b7 ' + totalCount + 'x</span>';
+    html += '<span class="coop-chevron" id="' + catId + '-chev" style="font-size: var(--fs-caption); color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
+    html += '<span style="flex:1; font-size: var(--fs-label); font-weight:500; color:var(--text);">' + esc(catName) + '</span>';
+    html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">' + items.length + ' service' + (items.length > 1 ? 's' : '') + ' \u00b7 ' + totalCount + 'x</span>';
     html += '</div>';
 
     // Collapsible service list
     html += '<div id="' + catId + '" style="display:none; padding-left:22px;">';
     items.sort(function(a, b) { return b.n - a.n; }).forEach(function(s) {
       html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
-      html += '<div style="font-size:13px; color:var(--text); margin-bottom:4px;">' + esc(s.desc) + '</div>';
-      html += '<div style="font-size:12px; color:var(--text-faint); line-height:1.5;">';
+      html += '<div style="font-size: var(--fs-label); color:var(--text); margin-bottom:4px;">' + esc(s.desc) + '</div>';
+      html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); line-height:1.5;">';
       if (s.n === 1) {
         html += 'Offered once \u00b7 ' + s.avg + ' units';
       } else {
@@ -11192,7 +12928,7 @@ function init() {
     }
 
     var html = '';
-    html += '<div style="font-size:15px; color:var(--text-dim); margin-bottom:16px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
+    html += '<div style="font-size: var(--fs-body); color:var(--text-dim); margin-bottom:16px;"><strong style="color:var(--text);">' + esc(providerName) + '</strong> is proposing this exchange</div>';
 
     // Proposal card
     html += '<div style="background:var(--bg-raised,#fff); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:16px; margin-bottom:16px;">';
@@ -11200,25 +12936,25 @@ function init() {
     // Direction badges
     html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
     if (p.direction === 'provided') {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You received</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(43,140,62,0.08); color:var(--green);">They provided</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You received</span>';
     } else {
-      html += '<span style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
-      html += '<span style="font-size:12px; color:var(--text-faint);">You provided</span>';
+      html += '<span style="font-size: var(--fs-caption); font-weight:600; padding:4px 10px; border-radius:12px; background:rgba(42,90,143,0.08); color:var(--accent);">They received</span>';
+      html += '<span style="font-size: var(--fs-caption); color:var(--text-faint);">You provided</span>';
     }
     html += '</div>';
 
     // Description
     html += '<div style="margin-bottom:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">What was done</div>';
-    html += '<div style="font-size:15px; font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">What was done</div>';
+    html += '<div style="font-size: var(--fs-body); font-weight:500; color:var(--text);">' + esc(serviceDesc) + '</div>';
     html += '</div>';
 
     // Category + Duration row
     html += '<div style="display:flex; gap:16px; margin-bottom:12px;">';
     if (serviceCat) {
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Category</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(serviceCat) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Category</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(serviceCat) + '</div></div>';
     }
     if (p.duration) {
       var dHrs = Math.floor(p.duration / 60);
@@ -11226,14 +12962,14 @@ function init() {
       var durStr = '';
       if (dHrs) durStr += dHrs + ' hour' + (dHrs > 1 ? 's' : '');
       if (dMin) durStr += (durStr ? ' ' : '') + dMin + ' min';
-      html += '<div><div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Duration</div>';
-      html += '<div style="font-size:14px; color:var(--text);">' + esc(durStr) + '</div></div>';
+      html += '<div><div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:2px;">Duration</div>';
+      html += '<div style="font-size: var(--fs-label); color:var(--text);">' + esc(durStr) + '</div></div>';
     }
     html += '</div>';
 
     // Proposed value
     html += '<div style="border-top:1px solid var(--border); padding-top:12px;">';
-    html += '<div style="font-size:12px; color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
+    html += '<div style="font-size: var(--fs-caption); color:var(--text-faint); margin-bottom:4px;">Proposed value</div>';
     html += '<div style="font-size:28px; font-weight:700; color:var(--accent); font-family:var(--font-mono,monospace);">' + Number(proposedValue).toLocaleString() + '</div>';
     html += '</div>';
 
@@ -11356,7 +13092,7 @@ function init() {
     else if (tab === 'share') renderShareTab();
     else if (tab === 'history') renderHistoryTab();
     else if (tab === 'learn') renderLearnTab();
-    else if (tab === 'settings') renderSettingsTab();
+    else if (tab === 'settings') { activeTab = 'home'; switchTab('home'); openWallet(); stOpen(); }
   }
 
   // --- Home tab (default landing surface, v2.59.0) ---
@@ -11392,7 +13128,7 @@ function init() {
     var bar = function(label, v, color) {
       var pct = Math.max(v > 0 ? 1 : 0, Math.round(v / mx * 100));
       return '<div style="margin-bottom:12px;">'
-        + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;"><span style="font-size:var(--fs-sm); color:var(--text-dim);">' + label + '</span><span style="font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--text);">' + fmt(v) + '</span></div>'
+        + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;"><span style="font-size:var(--fs-sm); color:var(--text-dim);">' + label + '</span><span style="font-family:var(--font-mono); font-size: var(--fs-body); font-weight:600; color:var(--text);">' + fmt(v) + '</span></div>'
         + '<div style="height:14px; border-radius:4px; background:var(--bg-input); overflow:hidden;"><div style="height:100%; width:' + pct + '%; background:' + color + '; border-radius:4px;"></div></div>'
         + '</div>';
     };
@@ -11501,7 +13237,7 @@ function init() {
     var seg = function(items, cur, fn) {
       return '<div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">' + items.map(function(it) {
         var on = it[0] === cur, dis = it[2];
-        return '<button ' + (dis ? 'disabled ' : '') + 'style="border:none; padding:6px 10px; font-size:12px; font-family:inherit; cursor:pointer; background:' + (on ? 'var(--accent)' : 'var(--bg-raised)') + '; color:' + (on ? '#fff' : (dis ? 'var(--text-faint)' : 'var(--text-dim)')) + ';" onclick="' + fn + '(\'' + it[0] + '\')">' + it[1] + '</button>';
+        return '<button ' + (dis ? 'disabled ' : '') + 'style="border:none; padding:6px 10px; font-size: var(--fs-caption); font-family:inherit; cursor:pointer; background:' + (on ? 'var(--accent)' : 'var(--bg-raised)') + '; color:' + (on ? '#fff' : (dis ? 'var(--text-faint)' : 'var(--text-dim)')) + ';" onclick="' + fn + '(\'' + it[0] + '\')">' + it[1] + '</button>';
       }).join('') + '</div>';
     };
     h += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-bottom:10px;">Provided above, received below</div>';
@@ -11541,7 +13277,7 @@ function init() {
     h += '<div class="mc-photo">' + (photo ? '<img src="' + photo + '" alt="">' : esc(name.charAt(0).toUpperCase())) + '</div>';
     h += '<div class="exs-cap" style="margin-top:28px">Your standing</div>';
     h += '<div class="mc-display ' + side + '">' + Math.abs(st).toLocaleString() + ' ' + exMarkSVG(20) + '</div>';
-    if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openWallet();return false">See your full standing</a></p>';
+    if (n) h += '<p class="mc-link home-hero-link"><a href="#" onclick="App.openStanding();return false">See your full standing</a></p>';
     return h + '</div>';
   }
   function openLearnFromAccount() { lrRenderHome(); mcOpen('learn'); }
@@ -11617,6 +13353,7 @@ function init() {
       return Date.now() - ts;
     }
     var pendingRecords = ex.filter(function(r) {
+      if (r.type === HCP.RECORD_TYPE_REPAIR) return false; // v2.111.2: a copy from another device is never in flight
       if (!r.witnessAttestation) return true;
       return recordAgeMs(r) < IN_FLIGHT_HOLD_MS;
     });
@@ -11626,7 +13363,10 @@ function init() {
     });
     var hasInFlight = hasPP || pendingRecords.length > 0;
 
-    if (hasInFlight) {
+    // v2.131.0 (Michael, Oct 6: "a vestige of an older system"): In flight leaves Home. A sent proposal is
+    // covered by the Wait screen (rule 2c); the witness is optional (offline-first), so an unwitnessed record
+    // is not pending, and its witness status reads on the record's detail. Code kept, never drawn.
+    if (false && hasInFlight) {
       html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">In flight</div>';
       html += '<div class="in-flight-card" style="background:var(--bg-raised); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:0 14px; box-shadow:var(--shadow); margin-bottom:16px;">';
 
@@ -11715,7 +13455,13 @@ function init() {
       html += '</div>';
     }
 
+    // v2.111.5 (Michael, Oct 5): the version, tucked at the bottom of Home, caption size, faintest grey.
+    // v2.123.4 added a dev-only type-size note here; removed in v2.124.1 once the phone showed the new scale (Michael).
+    var isDev = /\/dev\//.test(location.pathname);
+    html += '<div class="exs-cap" style="text-align:center; color:var(--text-faint); padding:28px 0 8px;">v' + APP_VERSION + (isDev ? ' dev' : '') + '</div>';
     el.innerHTML = html;
+    // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
+    try { renderBrowserStorageBanner(); } catch (e) {}
   }
 
   // Home-tab filter — matches the History-tab pattern but scoped to
@@ -11742,22 +13488,18 @@ function init() {
     var baseUrl = appendWitnessSuggestionsToShareUrl(getAppBase());
     var refUrl = appendWitnessSuggestionsToShareUrl(getAppBase() + '?ref=' + state.fingerprint);
 
-    var html = '';
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Share the protocol</div>';
-    html += '<p style="font-size:var(--fs-md); color:var(--text-dim); margin:0 0 18px; line-height:1.5;">Share the Human Exchange Protocol with someone. They\'ll be able to install it on their phone and get started.</p>';
-    html += '<div class="share-url" id="share-tab-url" style="margin-bottom:14px;">' + esc(baseUrl) + '</div>';
-    html += '<div class="qr-container" style="display:flex; justify-content:center; margin-bottom:16px;"><canvas id="share-tab-qr"></canvas></div>';
-    html += '<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" onclick="App.copyShareLink()">Copy link</button>';
-    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.shareViaSystem()">Share via system</button>';
-    html += '</div>';
-
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Introduce with a first exchange</div>';
-    html += '<p style="font-size:var(--fs-md); color:var(--text-dim); margin:0 0 16px; line-height:1.5;">Want to introduce someone with a guided first exchange? Send the link below instead — it includes your identity so they can practice with you.</p>';
-    html += '<div class="share-url" style="margin-bottom:14px;">' + esc(refUrl) + '</div>';
-    html += '<button class="btn btn-secondary" style="width:100%;" onclick="App.copyShareLinkRef()">Copy introduction link</button>';
-    html += '</div>';
+    // v2.130.0 (Michael, Oct 6 walk: Share was not on the design standard). A reading screen: title, plain
+    // rows of text left-aligned, the code drawn in the middle, one primary action; no cards, no capitals.
+    var html = '<div class="exs-sheet-head" style="position:static;margin:0;padding:6px 0 10px;background:none"><div class="exs-h">Share HEP</div></div>';
+    html += '<p class="exs-body" style="margin:0 0 18px">Let someone scan this code, or send them the link. They open it and HEP is on their phone.</p>';
+    html += '<div class="qr-container" style="display:flex; justify-content:center; margin:0 0 18px;"><canvas id="share-tab-qr"></canvas></div>';
+    html += '<div class="exs-cap" style="margin-bottom:6px">The link</div>';
+    html += '<div class="share-url" id="share-tab-url" style="margin-bottom:16px;word-break:break-all;">' + esc(baseUrl) + '</div>';
+    html += '<button class="btn btn-primary" style="width:100%; margin-bottom:6px;" onclick="App.shareViaSystem()">Share the link</button>';
+    html += '<button class="exs-quiet" style="width:100%;" onclick="App.copyShareLink()">Copy link</button>';
+    html += '<div class="exs-cap mc-group">Introduce them with a first exchange</div>';
+    html += '<p class="exs-body" style="margin:0 0 12px">This link carries who you are, so their first exchange can be with you while they learn how it works.</p>';
+    html += '<button class="exs-quiet" style="width:100%;" onclick="App.copyShareLinkRef()">Copy introduction link</button>';
 
     el.innerHTML = html;
 
@@ -11830,7 +13572,7 @@ function init() {
     h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
     h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
-    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
+    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size: var(--fs-caption); flex-shrink:0;">' + toneIcon + '</div>';
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
 
@@ -12294,7 +14036,7 @@ function init() {
     h += '<div style="cursor:pointer;" onclick="App.togglePOHSignals(this)">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">';
     h += '<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">';
-    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">' + toneIcon + '</div>';
+    h += '<div style="width:24px; height:24px; border-radius:50%; background:' + toneColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size: var(--fs-caption); flex-shrink:0;">' + toneIcon + '</div>';
     h += '<div style="min-width:0; flex:1;">';
     h += '<div style="font-size:var(--fs-md); font-weight:600; color:var(--text); line-height:1.3;">' + esc(v.statement) + '</div>';
     // Same bonus-aware main-line logic as the owner's POH card.
@@ -13069,7 +14811,7 @@ function init() {
     html += '<div style="font-size:var(--fs-lg); font-weight:600; color:var(--text);">' + esc(name) + '</div>';
     html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); font-family:var(--font-mono);">' + esc(fp) + '</div>';
     html += '</div>';
-    html += '<span class="id-chev" style="font-size:14px; color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
+    html += '<span class="id-chev" style="font-size: var(--fs-label); color:var(--text-faint); transition:transform 0.2s;"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
     html += '</div>';
     // Expanded panel
     html += '<div style="display:none; padding:0 16px 16px; border-top:1px solid var(--border);">';
@@ -13161,73 +14903,143 @@ function init() {
     el.innerHTML = html;
   }
 
+  // v2.122.0 (Michael, Oct 6, twenty-fifth session): one exchange list, used by the History tab and by
+  // Your records > Exchange history. The old Records sheet (direction chips beside a category cloud,
+  // green/blue signed numbers, cards) is retired. Rules: plain rows (11), numbers in the colour of their
+  // side with the mark (8, 16), month captions (7b), no inline expander (10): a row opens a reading
+  // sheet with the whole record and its receipt. Filtering is one control, "Filter", opening its own
+  // sheet where each way to dial in (show, order, kind) is its own section.
+  var _exF = { dir: 'all', order: 'new', kind: '' };
+  var _rsStack = [];
+  function rsShow(html, key) {
+    var n = _rsStack.length, o = document.createElement('div');
+    o.className = 'rs-ov'; o.setAttribute('data-key', key || '');
+    o.style.cssText = 'position:fixed;inset:0;z-index:' + (2100 + n) + ';background:var(--bg);display:flex;justify-content:center;';
+    o.innerHTML = '<div class="exs-sheet" style="position:relative;max-width:480px;width:100%;"></div>';
+    o.firstChild.innerHTML = html;
+    document.body.appendChild(o); _rsStack.push(o);
+    return o.firstChild;
+  }
+  function rsClose() { var o = _rsStack.pop(); if (o && o.parentNode) o.parentNode.removeChild(o); }
+  function rsBody(key) { for (var i = _rsStack.length - 1; i >= 0; i--) if (_rsStack[i].getAttribute('data-key') === key) return _rsStack[i].firstChild; return null; }
+  function exActs() { return HCP.acts(state.chain).map(function(r, i) { return { r: withCopyInfo(r), i: i }; }); }
+  function exKindKey(k) { return String(k || '').trim().toLowerCase(); }
+  function exHasPackage(r) { var rc = r.actHash && state.declarations.receipts && state.declarations.receipts[r.actHash]; return !!(rc && rc.breakdown && rc.breakdown.name); }
+  // Kinds present on the chain, merged by spelling case ("Debugging" and "DeBugging" are one kind, shown as first seen), plus Packages when any receipt names one.
+  function exKinds() {
+    var m = {}, order = [], pk = 0;
+    exActs().forEach(function(x) { var k = exKindKey(x.r.category); if (k) { if (!m[k]) { m[k] = String(x.r.category).trim(); order.push(k); } } if (exHasPackage(x.r)) pk++; });
+    var out = order.map(function(k) { return { key: k, label: m[k] }; });
+    if (pk) out.push({ key: '__pk', label: 'Packages' });
+    return out;
+  }
+  function exFiltered() {
+    var L = exActs();
+    if (_exF.dir !== 'all') L = L.filter(function(x) { return x.r.energyState === _exF.dir; });
+    if (_exF.kind === '__pk') L = L.filter(function(x) { return exHasPackage(x.r); });
+    else if (_exF.kind) L = L.filter(function(x) { return exKindKey(x.r.category) === _exF.kind; });
+    L.sort(function(a, b) { var d = new Date(a.r.timestamp) - new Date(b.r.timestamp); return (d || a.i - b.i) * (_exF.order === 'new' ? -1 : 1); });
+    return L;
+  }
+  function exFilterWords() {
+    var w = [];
+    if (_exF.dir === 'provided') w.push('Provided'); else if (_exF.dir === 'received') w.push('Received');
+    if (_exF.kind) { var k = exKinds().filter(function(x) { return x.key === _exF.kind; })[0]; if (k) w.push(k.label); }
+    w.push(_exF.order === 'new' ? 'Newest first' : 'Oldest first');
+    return w.join(' \u00b7 ');
+  }
+  function exListHTML() {
+    var all = exActs();
+    if (!all.length) return '<p class="exs-body" style="margin-top:12px">Your first exchange will appear here.</p>';
+    var h = '<div class="exs-caprow" style="margin:2px 0 4px"><span class="exs-cap">' + esc(exFilterWords()) + '</span><button class="mc-add" style="margin:0" onclick="App.exFilterOpen()"><svg width="18" height="18"><use href="#icon-filter"/></svg>Filter</button></div>';
+    var L = exFiltered();
+    if (!L.length) return h + '<p class="exs-cap" style="margin-top:16px">Nothing matches. Change the filter to see more.</p>';
+    var lastMonth = '';
+    L.forEach(function(x) {
+      var r = x.r, d = new Date(r.timestamp);
+      var month = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      if (month !== lastMonth) { h += '<div class="exs-cap mc-group"' + (lastMonth ? '' : ' style="margin-top:10px"') + '>' + esc(month) + '</div>'; lastMonth = month; }
+      var desc = r.description || r.category || 'Exchange';
+      var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
+      var ds = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), ts = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      var cap = (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + (r.duration ? ' \u00b7 ' + formatDuration(r.duration) : '');
+      var col = r.energyState === 'provided' ? 'var(--accent)' : 'var(--amber)';
+      h += '<button class="exs-row" onclick="App.exDetailOpen(' + x.i + ')"><div class="exs-rowmain"><div class="exs-body" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(desc) + '</div><div class="exs-cap">' + cap + '</div></div>';
+      h += '<span class="exs-rowval" style="color:' + col + '">' + mcFmt(r.value) + exMarkSVG(14) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+    });
+    return h;
+  }
   function renderHistoryTab() {
     var el = document.getElementById('tab-history-content');
     if (!el) return;
-    var ex = state.chain.filter(HCP.isAct).slice().reverse();
-    var html = '';
-    if (ex.length === 0) {
-      html += '<div style="text-align:center; padding:40px 16px; color:var(--text-dim); font-size:var(--fs-md); line-height:1.6;">';
-      html += 'Your exchange history will appear here once you complete your first exchange.</div>';
-      el.innerHTML = html;
-      return;
+    el.innerHTML = '<div style="padding-top:4px">' + exListHTML() + '</div>';
+  }
+  function exListRefresh() {
+    renderHistoryTab();
+    var b = rsBody('exlist'); if (b) b.innerHTML = atHead('Exchange history', false, 'rsClose') + exListHTML();
+  }
+  function exListOpen() { rsShow(atHead('Exchange history', false, 'rsClose') + exListHTML(), 'exlist'); }
+  function exFilterHTML() {
+    var seg = function(id, opts, cur, k) { return '<div class="mc-seg of-seg" id="' + id + '">' + opts.map(function(o) { return '<button aria-pressed="' + (cur === o[0]) + '" onclick="App.exFilterSet(\'' + k + '\',\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div>'; };
+    var h = atHead('Filter', false, 'rsClose');
+    h += '<div class="exs-cap mc-group" style="margin-top:4px">Show</div>' + seg('exf-dir', [['all', 'Everything'], ['provided', 'Provided'], ['received', 'Received']], _exF.dir, 'dir');
+    h += '<div class="exs-cap mc-group">Order</div>' + seg('exf-order', [['new', 'Newest first'], ['old', 'Oldest first']], _exF.order, 'order');
+    var kinds = exKinds();
+    if (kinds.length) {
+      var row = function(label, key) { var sel = _exF.kind === key; return '<button class="exs-row' + (sel ? ' of-pickrow-on' : '') + '" onclick="App.exFilterSet(\'kind\',\'' + key + '\')"><div class="exs-rowmain"><div class="exs-body">' + esc(label) + '</div></div>' + (sel ? '<svg width="18" height="18" style="color:var(--accent)"><use href="#icon-check"/></svg>' : '') + '</button>'; };
+      h += '<div class="exs-cap mc-group">Kind</div>' + row('Everything', '');
+      kinds.forEach(function(k) { h += row(k.label, k.key); });
     }
-    html += '<div style="display:flex; gap:8px; margin-bottom:16px; padding-top:4px;">';
-    html += '<button class="hist-pill active" data-filter="all" onclick="App.histFilter(\'all\')">All</button>';
-    html += '<button class="hist-pill" data-filter="provided" onclick="App.histFilter(\'provided\')">Provided</button>';
-    html += '<button class="hist-pill" data-filter="received" onclick="App.histFilter(\'received\')">Received</button>';
-    html += '</div>';
-    html += '<div id="hist-list">';
-    ex.forEach(function(r) {
-      var desc = r.description || r.category || 'Exchange';
-      var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
-      var ds = new Date(r.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      var ts = new Date(r.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-      var isProv = r.energyState === 'provided';
-      // See Bite 2 note in renderHomeTab: green for provided, blue for received.
-      var valColor = isProv ? 'var(--green)' : 'var(--blue)';
-      var valSign = isProv ? '+' : '-';
-      var bgColor = isProv ? 'var(--green-light)' : 'var(--blue-light)';
-      // Horizontal arrow (left) + person silhouette (right). Arrow toward person = received, away = provided.
-      var arrowIcon = isProv
-        ? '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="2" y2="6"/><polyline points="6 2 2 6 6 10"/></svg>'
-        : '<svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="' + valColor + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="6" x2="12" y2="6"/><polyline points="8 2 12 6 8 10"/></svg>';
-      var personIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + valColor + '" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M12 13c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"/></svg>';
-      html += '<div class="hist-row" data-dir="' + r.energyState + '" style="border-bottom:1px solid var(--border); cursor:pointer;" onclick="var d=this.querySelector(\'.hist-detail\'); d.style.display=d.style.display===\'block\'?\'none\':\'block\';">';
-      html += '<div style="display:flex; align-items:center; gap:12px; padding:14px 0;">';
-      html += '<div style="width:42px; height:32px; border-radius:8px; background:' + bgColor + '; display:flex; align-items:center; justify-content:center; gap:2px; flex-shrink:0;">' + arrowIcon + personIcon + '</div>';
-      html += '<div style="flex:1; min-width:0;">';
-      html += '<div style="font-size:var(--fs-md); font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(desc) + '</div>';
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-faint);">' + (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + '</div>';
-      html += '</div>';
-      html += '<div style="font-size:var(--fs-md); font-weight:600; color:' + valColor + '; white-space:nowrap;">' + valSign + r.value + '</div>';
-      html += '</div>';
-      // Expandable detail
-      html += '<div class="hist-detail" style="display:none; padding:0 0 14px 56px; font-size:var(--fs-sm); color:var(--text-dim); line-height:1.8;">';
-      if (r.category) html += '<div><span style="color:var(--text-faint);">Category:</span> ' + esc(r.category) + '</div>';
-      if (r.duration) html += '<div><span style="color:var(--text-faint);">Duration:</span> ' + formatDuration(r.duration) + '</div>';
-      var fullName = r.counterpartyName || '';
-      var fpShort = (r.counterparty || '').substring(0, 16);
-      if (fullName) html += '<div><span style="color:var(--text-faint);">With:</span> ' + esc(fullName) + '</div>';
-      html += '<div><span style="color:var(--text-faint);">Fingerprint:</span> <span style="font-family:var(--font-mono);">' + esc(fpShort) + '</span></div>';
-      html += '<div><span style="color:var(--text-faint);">Sequence:</span> #' + r.seq + '</div>';
-      if (r.witnessAttestation) html += '<div style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Witness attested</div>';
-      html += '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
-    el.innerHTML = html;
+    return h;
+  }
+  function exFilterOpen() { rsShow(exFilterHTML(), 'exfilter'); }
+  function exFilterSet(k, v) {
+    _exF[k] = v;
+    var b = rsBody('exfilter'); if (b) b.innerHTML = exFilterHTML();
+    exListRefresh();
+  }
+  function exDetailOpen(i) {
+    var acts = exActs(), x = acts[i]; if (!x) return;
+    var r = x.r, d = new Date(r.timestamp), isProv = r.energyState === 'provided';
+    var col = isProv ? 'var(--accent)' : 'var(--amber)';
+    var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
+    var when = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    var field = function(label, val, mono) { return '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-cap">' + label + '</div><div class="exs-body"' + (mono ? ' style="font-family:var(--mono);font-size:var(--fs-label)"' : '') + '>' + val + '</div></div></div>'; };
+    var h = atHead(r.description || r.category || 'Exchange', false, 'rsClose');
+    h += '<div class="exs-disp" style="color:' + col + ';margin-top:4px">' + mcFmt(r.value) + exMarkSVG(22) + '</div>';
+    h += '<p class="exs-cap" style="margin:4px 0 8px">' + (isProv ? 'You provided' : 'You received') + ' \u00b7 ' + esc(when) + '</p>';
+    if (name) h += field('With', esc(name));
+    if (r.category) h += field('Kind', esc(r.category));
+    if (r.duration) h += field('Duration', formatDuration(r.duration));
+    h += '<div class="exs-cap mc-group">The record</div>';
+    var chk = '<svg class="icon icon-md" style="vertical-align:-3px"><use href="#icon-check"/></svg> ';
+    h += field('Checks', (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '<div style="color:var(--text-faint)">No witness on this one. A witness is optional.</div>') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
+    h += field('Sequence', '#' + r.seq);
+    if (r.counterparty) h += field('Their fingerprint', esc(String(r.counterparty).substring(0, 16)), true);
+    if (r.type === HCP.RECORD_TYPE_REPAIR) h += '<p class="exs-cap" style="margin:8px 0 0">Copied from your other device.</p>';
+    var rcp = r.actHash && state.declarations.receipts && state.declarations.receipts[r.actHash];
+    if (rcp && rcp.breakdown) {
+      h += '<div class="exs-cap mc-group">Receipt' + (rcp.breakdown.name ? ': ' + esc(rcp.breakdown.name) : '') + '</div>';
+      h += exBreakdownHTML(rcp.breakdown, r.value);
+      h += '<div class="exs-cap hist-rc" data-ah="' + esc(r.actHash) + '" style="margin-top:8px">' + receiptStatusHTML(rcp, r) + '</div>';
+      h += '<p class="exs-cap" style="margin:2px 0 0">Kept on this phone only. Not part of the record.</p>';
+    }
+    var sh = rsShow(h, 'exdetail');
+    if (rcp && rcp.sig) {
+      var node = sh.querySelector('.hist-rc');
+      receiptCheck(r.actHash, rcp).then(function(ok) { var st = ok ? 'ok' : 'changed'; if (rcp.checked !== st) { rcp.checked = st; save(); } if (node) node.innerHTML = receiptStatusHTML(rcp, r); });
+    }
+  }
+  function receiptStatusHTML(rc, r) {
+    if (!rc.sig) return '<span style="color:var(--text-faint);">Kept without a signature.</span>';
+    if (rc.checked === 'changed') return '<span style="color:var(--red);">This copy has been changed since it was signed.</span>';
+    if (rc.checked !== 'ok') return '<span style="color:var(--text-faint);">Checking the signature\u2026</span>';
+    var mine = rc.signedBy && rc.signedBy === state.fingerprint;
+    var who = mine ? 'you' : ((r && r.counterpartyName && !state.settings.hideNames) ? esc(r.counterpartyName) : 'the other person');
+    return '<span style="color:var(--green);"><svg class="icon icon-md"><use href="#icon-check"/></svg> Signed by ' + who + '. Unchanged since.</span>';
   }
 
-  function histFilter(dir) {
-    document.querySelectorAll('.hist-pill').forEach(function(p) {
-      p.classList.toggle('active', p.getAttribute('data-filter') === dir);
-    });
-    document.querySelectorAll('.hist-row').forEach(function(row) {
-      if (dir === 'all') row.style.display = '';
-      else row.style.display = row.getAttribute('data-dir') === dir ? '' : 'none';
-    });
-  }
+  function histFilter(dir) { exFilterSet('dir', dir); }
 
   function renderLearnTab() {
     var el = document.getElementById('tab-learn-content');
@@ -13289,7 +15101,7 @@ function init() {
         }
         html += '<div style="flex:1; min-width:0;"><div class="ltab-lesson-title" style="' + (isDone ? 'color:var(--text-dim);' : '') + '">' + esc(topic.title) + '</div>';
         html += '<div class="ltab-lesson-steps">' + stepCount + ' steps</div></div>';
-        html += '<span style="font-size:14px; color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
+        html += '<span style="font-size: var(--fs-label); color:var(--text-faint);"><svg class="icon icon-md"><use href="#icon-chevron-right"/></svg></span>';
         html += '</button>';
       });
       html += '</div>';
@@ -13345,7 +15157,7 @@ function init() {
       + '</div>'
       + '<div style="margin-bottom:14px;">'
       +   '<label style="display:block; font-size:var(--fs-sm); color:var(--text-dim); margin-bottom:6px;">Server public key</label>'
-      +   '<input type="text" id="add-witness-pubkey" placeholder="64-character hex string" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-family:var(--mono); box-sizing:border-box;">'
+      +   '<input type="text" id="add-witness-pubkey" placeholder="64-character hex string" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size: var(--fs-label); font-family:var(--mono); box-sizing:border-box;">'
       + '</div>'
       + '<div id="add-witness-status" style="min-height:20px; font-size:var(--fs-sm); margin-bottom:14px; line-height:1.5;"></div>'
       + '<button id="add-witness-submit" onclick="App.verifyAndAddWitness()" style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer;">Verify and add</button>'
@@ -13420,141 +15232,49 @@ function init() {
     renderSettingsTab();
   }
 
+  // v2.114.0 (Michael, Oct 6): Settings left the bottom bar and is a sheet inside Account,
+  // in the exs style (captioned groups, plain rows; DESIGN.md rules 7b, 11, 14, 15, 15a).
+  // Back up and Restore live in Record keeping; the version shows on Home.
+  function stSwitchRow(word, cap, on, id, onclick) {
+    return '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body">' + word + '</div><div class="exs-cap">' + cap + '</div></div>' +
+      '<div class="switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" style="cursor:pointer" onclick="' + onclick + '"></div></div>';
+  }
+  function stRow(word, cap, onclick, cls) {
+    return '<button class="exs-row' + (cls ? ' ' + cls : '') + '" onclick="' + onclick + '"><div class="exs-rowmain"><div class="exs-body">' + word + '</div>' + (cap ? '<div class="exs-cap">' + cap + '</div>' : '') + '</div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
+  }
   function renderSettingsTab() {
-    var el = document.getElementById('tab-settings-content');
+    try { var secEl = document.getElementById('mc-sheet-security'); if (secEl && !secEl.hidden) secRender(); } catch (e) {} // v2.115.0: the device switches live in Security
+    var el = document.getElementById('st-body');
     if (!el) return;
-    var html = '';
-
-    // Proof of Human (top, prominent)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; margin-top:4px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Proof of Human</div>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-bottom:14px;">Your phone captures glimpses of physical reality during each exchange. Only hashes are stored. Raw data never leaves your device.</div>';
-    // Motion toggle
-    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Motion sensors</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Proves a real hand holds a real phone</div></div>';
-    html += '<div class="switch ' + (state.settings.sensorMotion ? 'on' : '') + '" id="switch-motion-tab" onclick="App.toggleMotionTab()"></div>';
-    html += '</div>';
-    // Location toggle
-    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Location</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Proves your chain spans real places over time</div></div>';
-    html += '<div class="switch ' + (state.settings.locationAuto ? 'on' : '') + '" id="switch-location-tab" onclick="App.toggleLocationTab()"></div>';
-    html += '</div>';
-    // Passive sensor status
-    var statusParts = [];
-    if (_sensor.battery) statusParts.push('Battery');
-    if (_sensor.network) statusParts.push('Network');
-    if (_sensor.light !== null) statusParts.push('Light');
-    if (_sensor.pressure !== null) statusParts.push('Pressure');
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); padding-top:10px; line-height:1.5;">';
-    if (statusParts.length) {
-      html += 'Captured automatically: ' + statusParts.join(', ');
-    } else {
-      html += 'Passive sensors will activate when available';
-    }
-    html += '</div>';
-    html += '</div>';
-
+    var h = '';
     // Privacy
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Privacy</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Privacy mode</div><div style="font-size:var(--fs-sm); color:var(--text-faint);">Hide counterparty names in your own lists</div></div>';
-    html += '<div class="switch ' + (state.settings.hideNames ? 'on' : '') + '" id="switch-hide-names-tab" onclick="App.togglePrivacy()"></div>';
-    html += '</div>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
-    html += 'Sovereign identity: you decide who knows what about your past. Past counterparty names are never sent to others by default. The chain shares only aggregate data. This setting hides them from your own device too, for when local visibility could put someone at risk or when you simply choose not to disclose. Tradeoff: harder to remember specific past work or offer references. Your chain still demonstrates the history.';
-    html += '</div></div>';
-
-    // Network — connected / not connected, with small refresh icon
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Network</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">Witness server</div><div id="settings-witness-status" style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Checking\u2026</div></div>';
-    html += '<button aria-label="Re-check connection" style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); padding:6px 12px; font-size:16px; cursor:pointer; line-height:1;" onclick="App.checkWitnessStatus()">\u21bb</button>';
-    html += '</div></div>';
-
-    // Your witness server — operator self-registration surface.
-    // Gated by an opt-in toggle so the cryptographic-string-typing UI
-    // doesn't appear for users who aren't running a server. If the
-    // user has already added one or more servers, the section is
-    // shown unconditionally so they can still see and manage them.
-    var showOperatorSurface = getShowOperatorSurface();
-    var userWitnesses = getUserWitnesses();
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Your witness server</div>';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '<div><div style="font-size:var(--fs-md); color:var(--text);">I run a witness server</div><div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:2px;">Register a server you operate</div></div>';
-    html += '<div class="switch ' + (showOperatorSurface ? 'on' : '') + '" id="switch-operator-surface" onclick="App.toggleOperatorSurface()"></div>';
-    html += '</div>';
-
-    if (showOperatorSurface) {
-      html += '<div style="font-size:var(--fs-sm); color:var(--text-dim); line-height:1.6; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">';
-      html += 'Add the address and public key of a witness server you run. The app verifies the key against the live server before adding. Servers you add here are counted as trusted alongside the default trust set.';
-      html += '</div>';
-
-      if (userWitnesses.length === 0) {
-        html += '<button style="width:100%; padding:12px; background:var(--accent); border:none; border-radius:var(--radius-sm); color:var(--bg); font-size:var(--fs-sm); font-weight:500; margin-top:14px; cursor:pointer;" onclick="App.openAddWitnessModal()">+ Add server</button>';
-      } else {
-        // List user-added witnesses
-        html += '<div style="margin-top:14px;">';
-        for (var i = 0; i < userWitnesses.length; i++) {
-          var w = userWitnesses[i];
-          var host = '';
-          try { host = new URL(w.url).host; } catch(e) { host = w.url; }
-          var keyShort = (w.pubkey || '').substring(0, 16);
-          var added = '';
-          try {
-            var d = new Date(w.addedAt);
-            if (!isNaN(d)) added = 'Added ' + d.toLocaleDateString();
-          } catch(e) {}
-          html += '<div style="padding:12px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:10px;">';
-          html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">';
-          html += '<div style="flex:1; min-width:0;">';
-          html += '<div style="font-size:var(--fs-sm); color:var(--text); font-weight:500; word-break:break-all;">' + esc(host) + '</div>';
-          html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); font-family:var(--mono); margin-top:4px; word-break:break-all;">key ' + esc(keyShort) + '\u2026</div>';
-          if (added) html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); margin-top:4px;">' + esc(added) + '</div>';
-          html += '</div>';
-          html += '<button style="background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--red); padding:6px 10px; font-size:var(--fs-xs); cursor:pointer; flex-shrink:0;" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button>';
-          html += '</div>';
-          html += '</div>';
-        }
-        html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-top:4px; cursor:pointer;" onclick="App.openAddWitnessModal()">+ Add another</button>';
-        html += '</div>';
+    h += '<div class="exs-cap" style="margin-top:4px">Privacy</div>';
+    h += stSwitchRow('Privacy mode', 'Hide counterparty names in your own lists', state.settings.hideNames, 'switch-hide-names-tab', 'App.togglePrivacy()');
+    h += '<p class="exs-cap" style="margin:8px 0 0">You decide who knows what about your past. Past counterparty names are never sent to others. Privacy mode also hides them on this phone, for when someone could see your screen and that could put a person at risk.</p>';
+    // Network
+    h += '<div class="exs-cap mc-group">Network</div>';
+    h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body">Witness server</div><div class="exs-cap" id="settings-witness-status">Checking\u2026</div></div><button class="exs-quiet" style="width:auto;flex:none;font-size: var(--fs-label);padding:6px 0 6px 10px" onclick="App.checkWitnessStatus()">Check again</button></div>';
+    var showOp = getShowOperatorSurface(), uw = getUserWitnesses();
+    h += stSwitchRow('I run a witness server', 'Register a server you operate', showOp, 'switch-operator-surface', 'App.toggleOperatorSurface()');
+    if (showOp) {
+      h += '<p class="exs-cap" style="margin:8px 0 6px">Add the address and public key of a witness server you run. The app checks the key against the live server before adding it. Servers you add count as trusted alongside the default ones.</p>';
+      for (var i = 0; i < uw.length; i++) {
+        var w = uw[i], host = '', added = '';
+        try { host = new URL(w.url).host; } catch (e) { host = w.url; }
+        try { var d = new Date(w.addedAt); if (!isNaN(d)) added = ', added ' + d.toLocaleDateString(); } catch (e) {}
+        h += '<div class="exs-row st-row"><div class="exs-rowmain"><div class="exs-body" style="word-break:break-all">' + esc(host) + '</div><div class="exs-cap"><span style="font-family:var(--mono)">key ' + esc((w.pubkey || '').substring(0, 16)) + '\u2026</span>' + esc(added) + '</div></div>' +
+          '<button class="exs-quiet" style="width:auto;flex:none;font-size: var(--fs-caption);padding:6px 0 6px 10px;color:var(--text-faint)" onclick="App.confirmRemoveWitness(\'' + esc(w.pubkey) + '\')">Remove</button></div>';
       }
+      h += stRow(uw.length ? 'Add another server' : 'Add a server', '', 'App.openAddWitnessModal()');
     }
-    html += '</div>';
-
-    // Install to home screen (prominent)
-    html += '<div style="margin-bottom:16px;">';
-    html += '<button style="width:100%; padding:14px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--bg); font-size:var(--fs-md); font-weight:500; cursor:pointer; box-shadow:var(--shadow);" onclick="App.installFromSettings()">Install to home screen</button>';
-    html += '</div>';
-
-    // Data (Export, Import, Change PIN)
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--text-faint); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Data</div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.exportBackup()">Export backup</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500; margin-bottom:8px;" onclick="App.importBackup()">Import backup</button>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--accent); font-size:var(--fs-sm); font-weight:500;" onclick="App.changePIN()">Change PIN</button>';
-    html += '</div>';
-
-    // Check for updates (low priority, small)
-    html += '<div style="text-align:center; padding:4px 0 16px;">';
-    html += '<button style="background:none; border:none; color:var(--text-faint); font-size:var(--fs-sm); cursor:pointer; text-decoration:underline;" onclick="App.forceUpdate()">Check for updates</button>';
-    html += '</div>';
-
-    // Danger zone
-    html += '<div style="background:var(--bg-raised); border:1px solid var(--red-light); border-radius:var(--radius); padding:16px; margin-bottom:16px;">';
-    html += '<div style="font-size:var(--fs-xs); color:var(--red); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Danger zone</div>';
-    html += '<button style="width:100%; padding:10px; background:none; border:1px solid var(--red); border-radius:var(--radius-sm); color:var(--red); font-size:var(--fs-sm); font-weight:500;" onclick="App.deleteChain()">Delete chain</button>';
-    html += '<div style="font-size:var(--fs-sm); color:var(--text-faint); margin-top:8px; line-height:1.5;">This permanently deletes your chain and keys. Export a backup first.</div>';
-    html += '</div>';
-
-    // Version
-    html += '<div style="text-align:center; padding:16px 0; color:var(--text-faint); font-size:var(--fs-sm);">HEP v' + APP_VERSION + '</div>';
-
-    el.innerHTML = html;
-
-    // Auto-check witness status on render
+    // This app
+    h += '<div class="exs-cap mc-group">This app</div>';
+    h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
+    h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
+    // Delete, last and alone (rule 8a: red tonally, no filled block)
+    h += '<div class="exs-cap mc-group">Delete</div>';
+    h += stRow('Delete chain', 'Permanently deletes your chain and keys from this device. Back up first.', 'App.deleteChain()', 'st-danger');
+    el.innerHTML = h;
     checkWitnessStatus();
   }
 
@@ -13695,16 +15415,17 @@ function init() {
 
   return {
     init, setupStep, completeSetup: completeSetupWrapped, goToInstallOrPin,
-    switchTab, histFilter, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
+    switchTab, histFilter, rsClose, exDoorsOpen, exListOpen, exFilterOpen, exFilterSet, exDetailOpen, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
+    pkOpen, pkCreate, pkCheck, setupChoose, attachNewStart, atNewName, atNewCodeScreen, atNewContinue, atClose, atCodeInput, atPwToggle, attachOldStart, atOldCreatePw, atOldEnter, atOldConnect, atOldAdd, syncChoose, syncPick, syncBack, syncCodeInput, syncConnect, syncMatch, syncNext,
     coopReceiveProposal, sessionCodeInput, sessionConnect, sessionConfirm, sessionReject, sendSessionProposal, sessionThreadTab,
     setProposalPath, scanConfirmation, parseExConfirmation, parseExConfirmationMsg,
     finishExchange, settleViaMessage, shareSettlement, copySettlement,
@@ -13722,14 +15443,14 @@ function init() {
     openShare, copyShareLink, copyShareLinkRef, shareViaSystem, openInvite, closeInvitePipe, invitePipeConnect, createInvitePipe, roomStartExchange, roomBackToQueue, inviteStartFresh,
     openLearn, learnOpen, learnBack, learnPrev, learnNext, calUpdate,
     openLessonTile, lessonClose, lessonNext, lessonPrev,
-    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
+    openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, exQtyInput, exQtyDone, pkEdit, pkFromList, pkAddItem, pkLine, pkLineTot, pkLineSave, pkLineRemove, pkSave, pkRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
     togglePrivacy, toggleMotionTab, toggleLocationTab,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
     checkWitnessStatus,
     toggleOperatorSurface, openAddWitnessModal, verifyAndAddWitness, confirmRemoveWitness,
-    exportBackup: exportBackupAction, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
+    exportBackup: bkOpenHome, recOpen, recOpenHome, recSyncHome, recBackupInline, bkSavedSheet, recClose, recDev, recBkOpen, bkOpenHome, recBackup, faqOpen, importBackup: importBackupAction, handleImportFile, openBackupInfo, closeBackupInfo, closeImportSheet, importChooseFile, importBackUpFirst,
     changePIN, installFromSettings, forceUpdate, dismissUpdateBanner, deleteChain, closeModal,
     installApp, dismissInstall, skipInstallFirst,
   };

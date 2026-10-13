@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.99.3';
+const APP_VERSION='2.136.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -116,7 +116,7 @@ const HEP_SEEDS = [
   },
 ];
 const HCP=(()=>{'use strict';
-const PV='2.0.0',SV=6,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5;
+const PV='2.0.0',SV=7,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5,SV_V6=6;
 const SCALE_MAX=1000000;
 const MAX_PHOTO_BYTES=100000;
 const CURVE={name:'ECDSA',namedCurve:'P-256'},SALG={name:'ECDSA',hash:'SHA-256'},HALG='SHA-256';
@@ -126,11 +126,19 @@ const COMMITMENT_TEXT='This protocol is free, will never require payment, and ne
 const XP={SESSION:'session',QR:'qr',OFFLINE:'offline'}; // exchange_path values
 const RT_PING='ping'; // record type for genesis ping (not an exchange)
 const RT_GENESIS='genesis'; // record type for chain origin anchor
-function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS;}
+// Step 1 (v2.101.0): the parent key record. Not an exchange: no value, no direction.
+const RT_PARENT='parent';
+// Step 2 (v2.102.0): the device certificate record. Not an exchange either.
+const RT_DEVICE='device';
+// Step 4 (v2.109.0): the repair record. A copy of an exchange first written on
+// another of the person's devices. It IS an act (it counts once, by
+// originalHash); it names where it came from so the fork stays visible.
+const RT_REPAIR='repair';
+function isAct(r){return r.type!==RT_PING&&r.type!==RT_GENESIS&&r.type!==RT_PARENT&&r.type!==RT_DEVICE;}
 const u8=new TextEncoder(),u8d=new TextDecoder();
 const bth=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
 const htb=h=>{const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a.buffer};
-const btb=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const btb=b=>{const a=new Uint8Array(b);let s='';for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode.apply(null,a.subarray(i,i+0x8000));return btoa(s);};
 const btf=s=>{const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a.buffer};
 const rb=n=>crypto.getRandomValues(new Uint8Array(n));
 const now=()=>new Date().toISOString();
@@ -166,6 +174,9 @@ function cr(f){
   if(typeof f.clockSkew==='number')r.clockSkew=f.clockSkew;
   if(f.chainMerkleRoot)r.chainMerkleRoot=f.chainMerkleRoot;
   if(f.counterpartyDeviceHash)r.counterpartyDeviceHash=f.counterpartyDeviceHash;
+  // Countersignature (SV=7): the shared act hash and the other person's signature over it
+  if(f.actHash)r.actHash=f.actHash;
+  if(f.counterpartySig)r.counterpartySig=f.counterpartySig;
   // Proof of Human snapshot (null for regular records, populated on PoH ping)
   if(f.pohSnapshot)r.pohSnapshot=f.pohSnapshot;
   return r;
@@ -183,6 +194,108 @@ async function cg(f){
   if(f.pohSnapshot)r.pohSnapshot=f.pohSnapshot;
   if(typeof f.connectivityAvailable==='boolean')r.connectivityAvailable=f.connectivityAvailable;
   return r;
+}
+
+// --- Parent key (Step 1, v2.101.0) ---
+// A second key above the chain key. The parent signs the binding string
+// 'hp1|<chain key fingerprint>|<parent fingerprint>'; the chain key signs the
+// parent record itself (the normal record signature). The parent private key
+// is encrypted under a password the person sets and stays on this device.
+// Nothing about it goes to a server.
+const PARENT_PBKDF_I=600000;
+function parBind(chainFp,parentFp){return 'hp1|'+chainFp+'|'+parentFp}
+async function dkpI(pw,salt,iter){const km=await crypto.subtle.importKey('raw',u8.encode(pw),'PBKDF2',false,['deriveKey']);return await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},km,{name:AESN,length:AESL},false,['encrypt','decrypt'])}
+async function mkpar(chainPubJwk,password,hint){
+  if(!password)throw new Error('Password required');
+  const pair=await gkp();
+  const pubJ=await ek(pair.publicKey),privJ=await ek(pair.privateKey);
+  const chainFp=await kfp(chainPubJwk),parentFp=await kfp(pubJ);
+  const parentSig=btb(await crypto.subtle.sign(SALG,pair.privateKey,u8.encode(parBind(chainFp,parentFp))));
+  const salt=rb(SLL),iv=rb(IVL),key=await dkpI(password,salt,PARENT_PBKDF_I);
+  const ct=await crypto.subtle.encrypt({name:AESN,iv},key,u8.encode(JSON.stringify(privJ)));
+  return{
+    record:{serVersion:SV,type:RT_PARENT,value:0,energyState:'none',counterparty:'',counterpartyName:'',timestamp:now(),seq:null,prevHash:null,prevHash3:null,signature:null,parentKey:{crv:pubJ.crv,kty:pubJ.kty,x:pubJ.x,y:pubJ.y},parentSig:parentSig},
+    stored:{v:1,parentFp:parentFp,publicKey:{crv:pubJ.crv,kty:pubJ.kty,x:pubJ.x,y:pubJ.y},hint:hint||'',iter:PARENT_PBKDF_I,salt:btb(salt),iv:btb(iv),ciphertext:btb(ct),created:now()}
+  };
+}
+async function unpar(stored,password){
+  const key=await dkpI(password,new Uint8Array(btf(stored.salt)),stored.iter||PARENT_PBKDF_I);
+  let privJ;
+  try{privJ=JSON.parse(u8d.decode(await crypto.subtle.decrypt({name:AESN,iv:new Uint8Array(btf(stored.iv))},key,btf(stored.ciphertext))))}
+  catch(e){throw new Error('Wrong password')}
+  return await isk(privJ);
+}
+async function vpar(r,chainPubJwk){
+  try{
+    if(r.type!==RT_PARENT||!r.parentKey||!r.parentSig)return false;
+    const chainFp=await kfp(chainPubJwk),parentFp=await kfp(r.parentKey);
+    const pk=await ipk(r.parentKey);
+    return await crypto.subtle.verify(SALG,pk,btf(r.parentSig),u8.encode(parBind(chainFp,parentFp)));
+  }catch(e){return false}
+}
+
+// --- Device certificate (Step 2, v2.102.0) ---
+// The parent signs a new device's public key, its label and the time:
+// JSON ['hd1', parentFp, deviceFp, label, certTs] (JSON so a label holding
+// any character cannot be confused with the separators). The record is
+// appended by whichever trusted key holds the chain; the parent signature is
+// what certifies the device. Readers accept records signed by a certified
+// device key (vcm). Revocation comes in Step 6.
+function devBind(parentFp,deviceFp,label,certTs){return JSON.stringify(['hd1',parentFp,deviceFp,label,certTs])}
+// Option B (Michael, Oct 5): the record carries only a salted hash of the
+// label. The readable label and its salt stay on the person's own devices
+// (returned as `local`), so counterparties who see the paperwork learn nothing.
+async function lblHash(label,salt){return bth(await crypto.subtle.digest(HALG,u8.encode('hl1|'+salt+'|'+label)))}
+async function mkdev(parentPrivKey,parentPubJwk,devicePubJwk,label){
+  const parentFp=await kfp(parentPubJwk),deviceFp=await kfp(devicePubJwk),certTs=now(),lab=String(label||'').slice(0,60);
+  const salt=bth(rb(16)),lh=await lblHash(lab,salt);
+  const deviceSig=btb(await crypto.subtle.sign(SALG,parentPrivKey,u8.encode(devBind(parentFp,deviceFp,lh,certTs))));
+  return{record:{serVersion:SV,type:RT_DEVICE,value:0,energyState:'none',counterparty:'',counterpartyName:'',timestamp:now(),seq:null,prevHash:null,prevHash3:null,signature:null,
+    deviceKey:{crv:devicePubJwk.crv,kty:devicePubJwk.kty,x:devicePubJwk.x,y:devicePubJwk.y},deviceLabelHash:lh,deviceCertTs:certTs,deviceSig:deviceSig},
+    local:{deviceFp:deviceFp,label:lab,salt:salt,labelHash:lh}};
+}
+async function vlbl(r,label,salt){return !!r&&r.deviceLabelHash===await lblHash(String(label||''),salt||'')}
+async function vdev(r,parentPubJwk){
+  try{
+    if(r.type!==RT_DEVICE||!r.deviceKey||!r.deviceSig||!parentPubJwk)return false;
+    const parentFp=await kfp(parentPubJwk),deviceFp=await kfp(r.deviceKey);
+    const pk=await ipk(parentPubJwk);
+    return await crypto.subtle.verify(SALG,pk,btf(r.deviceSig),u8.encode(devBind(parentFp,deviceFp,r.deviceLabelHash||'',r.deviceCertTs||'')));
+  }catch(e){return false}
+}
+
+// --- Key binding (Step 3b, v2.103.0) ---
+// Does this public key speak for this fingerprint? Either the key IS the
+// fingerprint (one key, one phone), or the partner carries paperwork: the
+// chain's root key, its parent record and a device record certifying exactly
+// this key. Log only for now (observe before enforce).
+async function vbind(fp,pubJwk,proof){
+  try{
+    if(!fp||!pubJwk)return{ok:false,mode:'missing'};
+    if(await kfp(pubJwk)===fp)return{ok:true,mode:'key'};
+    if(!proof||!proof.root||!proof.parent||!proof.device)return{ok:false,mode:'unbound'};
+    if(await kfp(proof.root)!==fp)return{ok:false,mode:'proof',error:'root key does not match fingerprint'};
+    const rk=await ipk(proof.root);
+    if(!await vpar(proof.parent,proof.root))return{ok:false,mode:'proof',error:'parent not bound to root'};
+    if(!await vr(proof.parent,rk))return{ok:false,mode:'proof',error:'parent record not signed by root'};
+    if(!await vdev(proof.device,proof.parent.parentKey))return{ok:false,mode:'proof',error:'device certificate invalid'};
+    if(await kfp(proof.device.deviceKey)!==await kfp(pubJwk))return{ok:false,mode:'proof',error:'certificate names another key'};
+    if(!await vr(proof.device,rk))return{ok:false,mode:'proof',error:'device record not signed by root'};
+    return{ok:true,mode:'device'};
+  }catch(e){return{ok:false,mode:'error',error:e.message}}
+}
+
+// --- Same-owner rule (protocol, Oct 5 2026) ---
+// Two chains with the same owner cannot exchange. Same owner: the same root
+// fingerprint, or both sides show a parent key and the parent fingerprints
+// match (the parent key is the decider across devices). Inputs are
+// {fp, parentFp}; parentFp may be null when a side has no parent or did not
+// show it, and then only the root comparison applies.
+function sown(a,b){
+  if(!a||!b)return false;
+  if(a.fp&&b.fp&&a.fp===b.fp)return true;
+  if(a.parentFp&&b.parentFp&&a.parentFp===b.parentFp)return true;
+  return false;
 }
 
 // --- Ping record (proof-of-human heartbeat, no counterparty/value) ---
@@ -290,7 +403,7 @@ function ser(r){
       `cd:${r.counterpartyDeviceHash||''}`
     ].join('|');
   }
-  if(r.serVersion===SV){
+  if(r.serVersion===SV_V6){
     return[
       `sv:${r.serVersion}`,`ty:${r.type}`,`va:${r.value}`,`es:${r.energyState}`,
       `cp:${r.counterparty}`,`cn:${r.counterpartyName||''}`,
@@ -314,6 +427,54 @@ function ser(r){
       `cd:${r.counterpartyDeviceHash||''}`,
       `pd:${r.photoData||''}`
     ].join('|');
+  }
+  // SV=7 (v2.100.0, Oct 5 2026, Step 0 of the countersignature build): the
+  // act hash both phones computed and the counterparty's signature over it
+  // are inside the hash, so the record's content cannot change without the
+  // other person's key. Empty on genesis, pings, and offline/QR records.
+  if(r.serVersion===SV){
+    return[
+      `sv:${r.serVersion}`,`ty:${r.type}`,`va:${r.value}`,`es:${r.energyState}`,
+      `cp:${r.counterparty}`,`cn:${r.counterpartyName||''}`,
+      `du:${r.duration!==undefined?r.duration:''}`,
+      `de:${r.description||''}`,`ca:${r.category||''}`,
+      `st:${r.street||''}`,`ci:${r.city||''}`,`sa:${r.state||''}`,
+      `ts:${r.timestamp}`,`sq:${r.seq}`,
+      `ph:${r.prevHash||'genesis'}`,
+      `p3:${r.prevHash3||'genesis'}`,
+      `ge:${r.geo?JSON.stringify(r.geo):''}`,
+      `dv:${r.device?JSON.stringify(r.device):''}`,
+      `sh:${r.sensorHash||''}`,
+      `ep:${r.entropyPrev||''}`,
+      `xp:${r.exchangePath||''}`,
+      `cs:${typeof r.clockSkew==='number'?r.clockSkew:''}`,
+      `mr:${r.chainMerkleRoot||''}`,
+      `po:${r.pohSnapshot?JSON.stringify(r.pohSnapshot):''}`,
+      `pc:${r.protocolCommitment||''}`,
+      `pt:${r.photoHash||''}`,
+      `co:${typeof r.connectivityAvailable==='boolean'?r.connectivityAvailable?1:0:''}`,
+      `cd:${r.counterpartyDeviceHash||''}`,
+      `pd:${r.photoData||''}`,
+      `ah:${r.actHash||''}`,
+      `cg:${r.counterpartySig||''}`
+    ].concat(r.type===RT_PARENT?[
+      // Step 1 (v2.101.0): parent fields exist only on parent records, so
+      // every other SV7 record serializes exactly as before.
+      `pk:${r.parentKey?JSON.stringify({crv:r.parentKey.crv,kty:r.parentKey.kty,x:r.parentKey.x,y:r.parentKey.y}):''}`,
+      `pg:${r.parentSig||''}`
+    ]:r.type===RT_DEVICE?[
+      // Step 2 (v2.102.0): device fields exist only on device records.
+      `dk:${r.deviceKey?JSON.stringify({crv:r.deviceKey.crv,kty:r.deviceKey.kty,x:r.deviceKey.x,y:r.deviceKey.y}):''}`,
+      `dl:${r.deviceLabelHash||''}`,
+      `dt:${r.deviceCertTs||''}`,
+      `dg:${r.deviceSig||''}`
+    ]:r.type===RT_REPAIR?[
+      // Step 4 (v2.109.0): repair fields exist only on repair records. The act
+      // fields, actHash and counterpartySig ride in the common fields above.
+      `oh:${r.originalHash||''}`,
+      `of:${r.originalFp||''}`,
+      `ot:${r.originalType||''}`
+    ]:[]).join('|');
   }
   throw new Error('Unsupported serVersion: '+r.serVersion);
 }
@@ -381,7 +542,7 @@ async function vc(c,k){
       if(c[i].prevHash!==null)e.push('Record 0: should be genesis');
     }else{
       if(c[i].prevHash!==await hr(c[i-1]))e.push(`Record ${i}: SHA-256 hash mismatch`);
-      if((c[i].serVersion===SV||c[i].serVersion===SV_V5||c[i].serVersion===SV_V4||c[i].serVersion===SV_V3||c[i].serVersion===SV_V2)&&c[i].prevHash3){
+      if((c[i].serVersion===SV||c[i].serVersion===SV_V6||c[i].serVersion===SV_V5||c[i].serVersion===SV_V4||c[i].serVersion===SV_V3||c[i].serVersion===SV_V2)&&c[i].prevHash3){
         if(c[i].prevHash3!==hr3(c[i-1]))e.push(`Record ${i}: SHA3 hash mismatch`);
       }
     }
@@ -393,10 +554,90 @@ async function vc(c,k){
   }
   return{valid:e.length===0,errors:e};
 }
-function cd(c){const ex=c.filter(isAct);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
-function wb(c){let b=0;for(const r of c){if(!isAct(r))continue;if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
+// Multi-key chain verification (Step 2, v2.102.0). Same sequence and hash
+// checks as vc. Signatures may come from the chain's root key or from any
+// device key certified earlier in the chain: a valid parent record (signed by
+// a trusted key, parent signature bound to the root key) sets the parent; a
+// device record signed by a trusted key and carrying a valid parent
+// signature adds that device's key. Only one parent per chain. Passthrough:
+// the app logs the result; nothing is rejected on it yet. selfActs lists acts
+// whose counterparty is this chain's own root (same-owner rule, Oct 5 2026);
+// reported apart from errors until Step 0b enforcement.
+async function vcm(c,rootPubJwk){
+  const e=[],signers=[],devices=[],selfActs=[],repSeen=new Set();
+  const rootFp=await kfp(rootPubJwk);
+  const trusted=[{fp:rootFp,key:await ipk(rootPubJwk)}];
+  let parentJwk=null,parentFp=null;
+  for(let i=0;i<c.length;i++){
+    const r=c[i];
+    if(r.seq!==i)e.push(`Record ${i}: seq mismatch`);
+    if(i===0){
+      if(r.prevHash!==null)e.push('Record 0: should be genesis');
+    }else{
+      if(r.prevHash!==await hr(c[i-1]))e.push(`Record ${i}: SHA-256 hash mismatch`);
+      if(r.serVersion!==SV_LEGACY&&r.prevHash3&&r.prevHash3!==hr3(c[i-1]))e.push(`Record ${i}: SHA3 hash mismatch`);
+    }
+    if(isAct(r)&&r.counterparty&&r.counterparty===rootFp)selfActs.push(i);
+    if(r.type===RT_REPAIR){if(!r.originalHash)e.push(`Record ${i}: repair without originalHash`);else if(repSeen.has(r.originalHash))e.push(`Record ${i}: repeated repair`);else repSeen.add(r.originalHash);}
+    let signer=null;
+    for(const t of trusted){if(await vr(r,t.key)){signer=t.fp;break;}}
+    signers.push(signer);
+    if(!signer){e.push(`Record ${i}: no trusted signer`);continue;}
+    if(r.type===RT_PARENT){
+      if(parentJwk)e.push(`Record ${i}: second parent record`);
+      else if(await vpar(r,rootPubJwk)){parentJwk=r.parentKey;parentFp=await kfp(r.parentKey);}
+      else e.push(`Record ${i}: parent signature invalid`);
+    }else if(r.type===RT_DEVICE){
+      if(!parentJwk)e.push(`Record ${i}: device record before any parent`);
+      else if(await vdev(r,parentJwk)){
+        const dfp=await kfp(r.deviceKey);
+        if(!trusted.some(t=>t.fp===dfp))trusted.push({fp:dfp,key:await ipk(r.deviceKey)});
+        devices.push({fp:dfp,labelHash:r.deviceLabelHash||'',seq:i,certTs:r.deviceCertTs||''});
+      }else e.push(`Record ${i}: device certificate invalid`);
+    }
+  }
+  return{valid:e.length===0,errors:e,signers:signers,rootFp:rootFp,parentFp:parentFp,devices:devices,selfActs:selfActs};
+}
+// Acts counted once: a repair whose originalHash already appeared is skipped.
+// Sync never writes such a duplicate; this is the safety net (Step 4).
+function acts(c){const seen=new Set(),o=[];for(const r of c){if(!isAct(r))continue;if(r.type===RT_REPAIR&&r.originalHash){if(seen.has(r.originalHash))continue;seen.add(r.originalHash);}o.push(r);}return o}
+function cd(c){const ex=acts(c);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
+function wb(c){let b=0;for(const r of acts(c)){if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
 function er(a,b){const da=cd(a),db=cd(b);if(!db||!da)return 1;return da/db}
-function grr(c){const ex=c.filter(isAct);if(!ex.length)return{provided:0,received:0,ratio:0};let p=0,r=0;for(const x of ex){if(x.energyState==='provided')p++;else if(x.energyState==='received')r++;}return{provided:p,received:r,ratio:p/(p+r||1)}}
+function grr(c){const ex=acts(c);if(!ex.length)return{provided:0,received:0,ratio:0};let p=0,r=0;for(const x of ex){if(x.energyState==='provided')p++;else if(x.energyState==='received')r++;}return{provided:p,received:r,ratio:p/(p+r||1)}}
+
+// Step 4 (v2.109.0): make an unsigned repair record from an act found on
+// another device's chain. origHash is the act's first hash (a repair passes
+// its own originalHash through, so a repair of a repair still names the very
+// first record); origFp is the key that first signed it. Append with atc.
+function crep(o,origHash,origFp){
+  const r={serVersion:SV,type:RT_REPAIR,value:o.value,energyState:o.energyState,counterparty:o.counterparty,timestamp:o.timestamp,seq:null,prevHash:null,prevHash3:null,signature:null,
+    originalHash:origHash,originalFp:origFp,originalType:o.type===RT_REPAIR?(o.originalType||''):o.type};
+  // v2.113.1: street, city, state, geo carried too (Reach places exchanges by them; copies were missing from it).
+  for(const k of['counterpartyName','duration','description','category','actHash','counterpartySig','street','city','state','geo'])if(o[k]!==undefined&&o[k]!=='')r[k]=o[k];
+  // v2.113.1: the witness attestation sits outside ser (unsigned, attests the original's mint hash); carried so a copy does not read as unwitnessed.
+  if(o.witnessAttestation)r.witnessAttestation=JSON.parse(JSON.stringify(o.witnessAttestation));
+  return r;
+}
+// The sync step, one direction: given my chain and the other device's chain
+// (already verified under the same root; theirSigners is vcm(theirs).signers),
+// return the repair records I should append, in their order. Idempotent: run
+// again after appending and it returns nothing. Pings, genesis, parent and
+// device records are never copied.
+async function mergeFrom(mine,theirs,theirSigners){
+  const known=new Set();
+  for(const r of mine){if(!isAct(r))continue;known.add(r.type===RT_REPAIR&&r.originalHash?r.originalHash:await hr(r));}
+  const out=[];
+  for(let i=0;i<theirs.length;i++){
+    const r=theirs[i];if(!isAct(r))continue;
+    const isRep=r.type===RT_REPAIR&&r.originalHash;
+    const key=isRep?r.originalHash:await hr(r);
+    if(known.has(key))continue;
+    known.add(key);
+    out.push(crep(r,key,isRep?(r.originalFp||''):((theirSigners&&theirSigners[i])||'')));
+  }
+  return out;
+}
 
 // --- Encryption ---
 async function dkp(pin,salt){const km=await crypto.subtle.importKey('raw',u8.encode(pin),'PBKDF2',false,['deriveKey']);return await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:PBKDF_I,hash:'SHA-256'},km,{name:AESN,length:AESL},false,['encrypt','decrypt'])}
@@ -404,8 +645,22 @@ async function ewp(data,pin){const salt=rb(SLL),iv=rb(IVL),key=await dkp(pin,sal
 async function dwp(enc,pin){const key=await dkp(pin,new Uint8Array(btf(enc.salt)));return JSON.parse(u8d.decode(await crypto.subtle.decrypt({name:AESN,iv:new Uint8Array(btf(enc.iv))},key,btf(enc.ciphertext))))}
 
 // --- Backup ---
-async function xb(c,pj,sj,pin){return{hcpVersion:PV,serVersion:SV,exportedAt:now(),fingerprint:await kfp(pj),keys:await ewp({publicKey:pj,privateKey:sj},pin),chain:c,chainLength:c.length,balance:wb(c),density:cd(c)}}
-async function ib(bk,pin){const keys=await dwp(bk.keys,pin),pk=await ipk(keys.publicKey),sk=await isk(keys.privateKey),v=await vc(bk.chain,pk);if(!v.valid)throw new Error('Chain verification failed');return{chain:bk.chain,publicKey:pk,privateKey:sk,publicKeyJwk:keys.publicKey,privateKeyJwk:keys.privateKey}}
+// v2.107.0 (Step 3b): on an attached device pj is the chain's root key and sj the device's private key;
+// dpj (the device public key) rides inside the encrypted keys so a restore keeps signing as that device.
+// rootPublicKey sits beside the keys so a reader can verify the chain without the PIN.
+async function xb(c,pj,sj,pin,dpj){const k={publicKey:pj,privateKey:sj};if(dpj)k.devicePublicKey=dpj;const o={hcpVersion:PV,serVersion:SV,exportedAt:now(),fingerprint:await kfp(pj),rootPublicKey:{crv:pj.crv,kty:pj.kty,x:pj.x,y:pj.y},keys:await ewp(k,pin),chain:c,chainLength:c.length,balance:wb(c),density:cd(c)};if(dpj)o.attachedDevice=true;return o}
+async function ib(bk,pin){const keys=await dwp(bk.keys,pin),pk=await ipk(keys.publicKey),sk=await isk(keys.privateKey),v=await vc(bk.chain,pk);
+  // Step 3 prep (v2.102.1): multi-key verifier runs beside single-key vc, logged. vc stays the decision for every chain without
+  // device records; a chain holding device records (Step 3 onward) is accepted only if vcm passes.
+  let m=null;try{m=await vcm(bk.chain,keys.publicKey)}catch(x){console.log('[chain-multi] import check failed:',x.message)}
+  const hasDev=bk.chain.some(r=>r&&r.type===RT_DEVICE);
+  if(m)console.log('[chain-multi] import: single-key '+(v.valid?'valid':'invalid')+', multi-key '+(m.valid?'valid':'INVALID: '+m.errors.slice(0,3).join('; '))+', devices '+m.devices.length);
+  const ok=v.valid||(hasDev&&m&&m.valid);
+  if(!ok)throw new Error('Chain verification failed');
+  // v2.107.0: a device backup must hold a certificate for its device key, or the restored device could not sign.
+  let dpj=keys.devicePublicKey||null;
+  if(dpj&&!(m&&m.valid&&bk.chain.some(r=>r&&r.type===RT_DEVICE&&r.deviceKey&&r.deviceKey.x===dpj.x&&r.deviceKey.y===dpj.y)))throw new Error('This backup is from an added device whose certificate is missing');
+  return{chain:bk.chain,publicKey:pk,privateKey:sk,publicKeyJwk:keys.publicKey,privateKeyJwk:keys.privateKey,devicePublicKeyJwk:dpj}}
 
 // --- Handshake payloads ---
 // --- Payload signing ---
@@ -538,7 +793,16 @@ function cs(c){
 async function gcp(pj,c,proposal,privKey,deviceHash){const ex=c.filter(isAct);const o={h:PV,a:'cf',p:{c:pj.crv,k:pj.kty,x:pj.x,y:pj.y},f:await kfp(pj),d:cd(c),n:ex.length,o:proposal.fp,z:now()};if(deviceHash)o.dh=deviceHash;if(privKey)return await spld(o,privKey);return JSON.stringify(o)}
 function pcp(j){const d=JSON.parse(j);if(d.a!=='cf'&&d.action!=='confirmation')throw new Error('Not a confirmation');const pub=d.p||d.pub;if(!pub||!pub.x)throw new Error('Missing key');const origFp=d.o||d.originalFp;if(!origFp)throw new Error('Missing original fingerprint');return{pub:{crv:pub.c||pub.crv,kty:pub.k||pub.kty,x:pub.x,y:pub.y},fp:d.f||d.fp,density:d.d!==undefined?d.d:(d.density||0),chainLen:d.n!==undefined?d.n:(d.chainLen||0),originalFp:origFp,ts:d.z||d.ts,sig:d.sig||null,deviceHash:d.dh||null}}
 async function gsp(pj,confirmFp,privKey){const o={h:PV,a:'st',f:await kfp(pj),o:confirmFp,z:now()};if(privKey)return await spld(o,privKey);return JSON.stringify(o)}
-async function cmh(iPub,cPub,ts){const s=iPub.x+':'+iPub.y+':'+cPub.x+':'+cPub.y+':'+ts;return bth(await crypto.subtle.digest(HALG,u8.encode(s)))}
+// Mint hash. v2.100.0: when the record carries an act hash, it is folded in,
+// so the witness attestation locks content and time together, not only who and when.
+async function cmh(iPub,cPub,ts,ah){const s=iPub.x+':'+iPub.y+':'+cPub.x+':'+cPub.y+':'+ts+(ah?':'+ah:'');return bth(await crypto.subtle.digest(HALG,u8.encode(s)))}
+// --- Act hash and countersignature (Step 0, Oct 5 2026) ---
+// Both phones compute the same hash from the proposal as the proposer stated
+// it (direction is the proposer's energyState), the two fingerprints, and the
+// proposal's device timestamp, which the witness returns to both sides.
+async function cah(f){const s=['ah1',f.proposerFp||'',f.confirmerFp||'',f.value,f.direction||'',f.description||'',f.category||'',f.duration||0,f.proposalTs||''].join('|');return bth(await crypto.subtle.digest(HALG,u8.encode(s)))}
+async function sah(ah,privKey){return btb(await crypto.subtle.sign(SALG,privKey,u8.encode(ah)))}
+async function vah(ah,sig,pubJwk){try{const pk=await ipk(pubJwk);return await crypto.subtle.verify(SALG,pk,btf(sig),u8.encode(ah))}catch(e){return false}}
 async function chi(iPub,cPub,ts){return await cmh(iPub,cPub,ts)}
 function psp(j){const d=JSON.parse(j);if(d.a!=='st')throw new Error('Not a settlement');if(!d.f||!d.o)throw new Error('Missing fingerprints');return{fp:d.f,confirmFp:d.o,ts:d.z}}
 
@@ -639,7 +903,23 @@ async function vws(msg,sigHex,pubHex){
   }catch{return false}
 }
 
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,isAct:isAct,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws}
+// Ping anchor (v2.135.0, registry Component 1 "PING ANCHORS THE CHAIN'S HISTORY").
+// A witness v2.10.0+ signs ping2:<chainFp>:<headHash>:<serverTs>, where headHash is
+// the hash of the ping record itself (hr, which links to every record before it).
+// Returns {status, detail}: 'ok' | 'no-anchor' (older witness, or no attestation) |
+// 'head-mismatch' (the record was changed after the ping) | 'bad-signature'.
+// Observe only for now: callers log the result. Enforcement, and checking that
+// server_pubkey is a known witness, come after a validation cycle.
+async function vpa(r,chainFp){
+  const a=r&&r.witnessAttestation;
+  if(!a)return{status:'no-anchor',detail:'not attested'};
+  if(!a.head_hash)return{status:'no-anchor',detail:'witness did not sign a head'};
+  const h=await hr(r);
+  if(h!==String(a.head_hash).toLowerCase())return{status:'head-mismatch',detail:'record hash '+h.slice(0,12)+' vs signed '+String(a.head_hash).slice(0,12)};
+  const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
+  return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
+}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
 })();
 
 // ============================================================
