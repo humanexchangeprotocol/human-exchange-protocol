@@ -3941,17 +3941,46 @@ const PAIR_CODE_LENGTH = 4;
   // sealed) before this phone shares anything about the person. No fallback to the
   // old unsigned agreement: an older app on the other side is refused.
   var _sessKeys = {}; // my code -> this session's keys and transcript half
-  async function sessJoinBody(myCode, theirCode, fp, signPub, signPriv) {
+  async function sessJoinBody(myCode, theirCode, fp, signPub, signPriv, commit) {
     var k = await HCP.makeSessionKey();
     var sig = await HCP.signSessionKey(myCode, theirCode, fp, k.pub, signPriv);
-    _sessKeys[myCode] = { pub: k.pub, priv: k.priv, signPub: signPub, fp: fp, theirCode: theirCode };
+    _sessKeys[myCode] = { pub: k.pub, priv: k.priv, sig: sig, signPub: signPub, fp: fp, theirCode: theirCode, commit: !!commit, revealed: false };
+    // v2.140.0, the mark (batch three): the exchange path joins with a commitment to the
+    // key (a hash) and reveals the key only after the other side has joined, so a witness
+    // cannot grind either side's key toward a chosen mark. Sync and attach keep the plain
+    // join: strict binding (the key must be the fingerprint) already rules out a substitute.
+    if (commit) return { my_code: myCode, their_code: theirCode, fingerprint: fp, public_key: signPub, session_commit: await HCP.commitSessionKey(myCode, theirCode, fp, k.pub) };
     return { my_code: myCode, their_code: theirCode, fingerprint: fp, public_key: signPub, session_key: k.pub, session_sig: sig };
+  }
+  // The reveal, once per session, only after the partner's row (its commitment) is seen.
+  // Idempotent on the witness; the phone sends it once and does not wait on the answer here.
+  async function sessReveal(myCode) {
+    var me = _sessKeys[myCode]; if (!me || !me.commit || me.revealed) return;
+    me.revealed = true;
+    try {
+      var url = getSessionWitnessUrl();
+      var r = await serverFetch(url + '/session/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ my_code: myCode, session_key: me.pub, session_sig: me.sig }) });
+      if (!r.ok) { me.revealed = false; console.log('[sess] reveal refused: ' + r.status); return; }
+      var j = await r.json(); if (!j.revealed) me.revealed = false; // waiting: try again on the next poll
+      console.log('[sess] reveal ' + (j.revealed ? 'accepted' : 'waiting'));
+    } catch (e) { me.revealed = false; console.log('[sess] reveal failed:', e.message); }
+  }
+  // What a connected poll says on the exchange path (v2.140.0). Returns 'older' (the
+  // other side joined without a commitment), 'waiting' (committed, key not yet revealed)
+  // or 'ready' (key and commitment both in).
+  function sessPartnerStage(partner) {
+    if (!partner || !partner.session_commit) return 'older';
+    return partner.session_key ? 'ready' : 'waiting';
   }
   // strict: the partner key must be the fingerprint itself (sync, attach). Otherwise a
   // key that is not the fingerprint is allowed in while its device proof is awaited,
   // and nothing about the person is sent until that proof verifies.
   async function sessEstablish(myCode, partner, strict) {
     var me = _sessKeys[myCode]; if (!me) return { ok: false, reason: 'no session key for code ' + myCode };
+    if (me.commit) {
+      var cv = await HCP.verifySessionCommit(partner, myCode, me.theirCode);
+      if (!cv.ok) return { ok: false, reason: cv.error, old: cv.error === 'no commitment' };
+    }
     var v = await HCP.verifySessionKey(partner, myCode, me.theirCode);
     if (!v.ok) return { ok: false, reason: v.error, old: v.error === 'no session key' };
     var bind = await HCP.verifyKeyBinding(partner.fingerprint, partner.public_key, null);
@@ -5673,6 +5702,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function cleanupSession() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
+    try { _exRevealOnce = false; _exWaitT0 = 0; } catch(_) {}
     stopSessionPoll();
     exPresenceStop();
     _exPresenceLive = false;
@@ -10352,7 +10382,7 @@ function init() {
       var url = getSessionWitnessUrl();
       if (!url) { toast('No server available'); return; }
 
-      var joinPayload = await sessJoinBody(myCode, theirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk);
+      var joinPayload = await sessJoinBody(myCode, theirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk, true);
       // v2.134.0 (security tenet gate): the role (who is giving) never goes to the witness.
       // It travels sealed in the snapshot as _role; the joiner reads it there.
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
@@ -10381,10 +10411,9 @@ function init() {
 
       var data = await resp.json();
 
-      if (data.connected) {
-        sessionPartner = data.partner; logPartnerBinding(data.partner);
-        exOnConnected();
-      } else {
+      if (data.connected && exOnConnectData(data)) {
+        // handled: either moved on, or revealed and polling for the other key
+      } else if (!data.connected) {
         // Show waiting and poll
         if (exConnectMode === 'join') {
           var statusEl = document.getElementById('ex-join-status');
@@ -10417,6 +10446,28 @@ function init() {
 
   let exConnectPollTimer = null;
 
+  // v2.140.0: a connected answer on the exchange path. Older app on the other side
+  // (no commitment): stop, ask for an update, blame no witness. Committed but not yet
+  // revealed: send our reveal (once) and keep polling. Both in: establish the session.
+  // Returns true when the poll should keep going or has moved on.
+  var _exRevealOnce = false, _exWaitT0 = 0;
+  var EX_REVEAL_STALL_MS = 30000; // a committed partner whose key never arrives: end it, blame no one
+  function exOnConnectData(data) {
+    var stage = sessPartnerStage(data.partner);
+    if (stage === 'older') { exStopConnectPoll(); sessionViolation('session: no session key', sessFailMsg({ old: true })); return true; }
+    sessionPartner = data.partner;
+    if (stage === 'waiting') {
+      if (!_exRevealOnce) { _exRevealOnce = true; _exWaitT0 = Date.now(); sessReveal(sessionCode); }
+      else if (Date.now() - _exWaitT0 > EX_REVEAL_STALL_MS) { exStopConnectPoll(); sessionViolation('session stalled: key never revealed', 'The other phone did not finish connecting. Nothing was shared. Try again.'); return true; }
+      if (!exConnectPollTimer) exStartConnectPoll();
+      return true;
+    }
+    exStopConnectPoll();
+    if (!_exRevealOnce) { _exRevealOnce = true; sessReveal(sessionCode); }
+    logPartnerBinding(data.partner);
+    exOnConnected();
+    return true;
+  }
   function exStartConnectPoll() {
     exStopConnectPoll();
     const url = getSessionWitnessUrl();
@@ -10434,11 +10485,7 @@ function init() {
         try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
         var validation = sessionValidateResponse(data, rawText.length);
         if (!validation.valid) { sessionViolation(validation.reason); return; }
-        if (data.connected && data.partner) {
-          exStopConnectPoll();
-          sessionPartner = data.partner; logPartnerBinding(data.partner);
-          exOnConnected();
-        }
+        if (data.connected && data.partner) exOnConnectData(data);
       } catch(e) {}
     }, 3000);
 
@@ -10452,11 +10499,7 @@ function init() {
         try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
         var validation = sessionValidateResponse(data, rawText.length);
         if (!validation.valid) { sessionViolation(validation.reason); return; }
-        if (data.connected && data.partner) {
-          exStopConnectPoll();
-          sessionPartner = data.partner; logPartnerBinding(data.partner);
-          exOnConnected();
-        }
+        if (data.connected && data.partner) exOnConnectData(data);
       } catch(e) {}
     }, 1500);
   }
@@ -10613,8 +10656,10 @@ function init() {
     // Compute SAS from both fingerprints
     const myFp = state.fingerprint || '';
     const theirFp = sessionPartner.fingerprint || '';
-    const sasResult = await computeSAS(myFp, theirFp);
-    sessionSASHash = sasResult.fullHash; // store for automatic collision detection
+    // v2.140.0: the mark is drawn from the session id (the whole handshake transcript,
+    // both session keys included), 4 characters, never from the fingerprints alone.
+    const sasResult = { code: await HCP.sessionMark(sessionSid), fullHash: sessionSid };
+    sessionSASHash = sasResult.fullHash;
 
     // Get partner name from snapshot (may not be available yet)
     let partnerName = 'Connected';
