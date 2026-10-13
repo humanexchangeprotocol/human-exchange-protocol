@@ -1440,7 +1440,7 @@ const PAIR_CODE_LENGTH = 4;
     var h = atHead('Sync with ' + AT.label, true, 'syncBack');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
     h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Enter this code on ' + esc(AT.label) + '</div>';
-    h += '<div class="exs-cap">Record keeping, ' + esc(syMyName()) + ', Sync now</div></div>';
+    h += '<div class="exs-cap">Account, Sync and backup, ' + esc(syMyName()) + ', Sync</div></div>';
     h += '<div class="exs-grow"></div><div class="exs-wait" style="padding-bottom:24px;"><i></i><span>Waiting for ' + esc(AT.label) + '</span></div>';
     atShow(h);
     console.log('[sync] show: code ' + AT.code);
@@ -1499,7 +1499,7 @@ const PAIR_CODE_LENGTH = 4;
         if (d.partner.encrypted_snapshot) {
           var early = null;
           try { early = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared); } catch (de) {}
-          if (early && early.t && early.t !== 'sync-pack') { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+          if (early && early.t && early.t !== 'sync-pack') { atProblem('The other device is not syncing. Open Sync and backup on both.'); return; }
         }
         console.log('[sync] connected to ' + AT.partnerFp.slice(0, 12) + (AT.partnerFp !== AT.rowFp ? ' (row was ' + String(AT.rowFp).slice(0, 12) + ')' : ''));
         syncConnecting(true);
@@ -1511,7 +1511,7 @@ const PAIR_CODE_LENGTH = 4;
       if (AT.sent && !AT.theirs && d.partner.encrypted_snapshot) {
         var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
         if (p && p.t === 'sync-pack') { AT.theirs = p; atStopPoll(); await syncReceive(p); }
-        else if (p && p.t) { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+        else if (p && p.t) { atProblem('The other device is not syncing. Open Sync and backup on both.'); return; }
       }
     } catch (e) { console.log('[sync] poll error', e.message); }
     finally { if (AT) AT.busy = false; }
@@ -10628,7 +10628,7 @@ function init() {
     } catch(e) {}
 
     // Show verify step: name + 2-char SAS code
-    document.getElementById('ex-verify-avatar').textContent = partnerInitial;
+    exVerifyAvatarFill(sessionPartner.thread_snapshot, partnerInitial);
     document.getElementById('ex-verify-name').textContent = partnerName;
     exVerifyWords(partnerName === 'Connected' ? '' : partnerName);
     document.getElementById('ex-sas-code').textContent = sasResult.code;
@@ -10649,7 +10649,7 @@ function init() {
           var avatarEl = document.getElementById('ex-verify-avatar');
           if (nameEl) nameEl.textContent = decrypted._name;
           exVerifyWords(decrypted._name);
-          if (avatarEl) avatarEl.textContent = decrypted._name.charAt(0).toUpperCase();
+          if (avatarEl) exVerifyAvatarFill(decrypted, decrypted._name.charAt(0).toUpperCase());
         }
         // If the user already confirmed SAS and the Review screen is
         // showing (ex-review-container exists and is visible), the
@@ -10667,6 +10667,24 @@ function init() {
           try { exRenderReceiverWait(); } catch(e) { console.log('[ex-flow] Wait re-render after snapshot failed:', e.message); }
         }
       });
+    }
+  }
+
+  // v2.139.1 (Michael, Oct 13 walk): the mark screen shows their photo, not only the
+  // initial. Read from the sealed snapshot already on this phone (current photo, else the
+  // first). Plain picture, no tap: the side-by-side photo check lives on the chain read.
+  function exVerifyAvatarFill(snap, initial) {
+    var el = document.getElementById('ex-verify-avatar'); if (!el) return;
+    var src = (snap && (snap._photo || snap._genesisPhoto)) || '';
+    if (src && /^data:image\//.test(src)) {
+      el.textContent = '';
+      var img = document.createElement('img');
+      img.src = src; img.alt = '';
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;';
+      el.appendChild(img);
+      el.style.overflow = 'hidden';
+    } else {
+      el.textContent = initial || '?';
     }
   }
 
