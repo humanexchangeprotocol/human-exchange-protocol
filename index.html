@@ -755,6 +755,10 @@ textarea.exs-box-in { min-height: 72px; resize: vertical; line-height: 1.45; }
 .exs-cells { position: relative; display: flex; justify-content: center; gap: 10px; }
 .exs-cell { width: 54px; height: 64px; border: 2px solid var(--border); border-radius: 10px; background: var(--bg-raised); font-family: var(--font-mono); font-size: 30px; font-weight: 600; color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .exs-cell.on { border-color: var(--accent); }
+.exs-cells.six { gap: 7px; }
+.exs-cells.six .exs-cell { width: 44px; height: 58px; font-size: 26px; }
+.exs-cells.six .exs-cell.street { color: var(--text-dim); }
+.exs-cells.six #ex-join-cell-1 { margin-right: 10px; }
 .exs-cell.empty { color: var(--text-faint); }
 /* Anchored to the screen bottom and extended behind the tab bar by its measured height (--tabbar-h, set below), so no page shows through or between the two. */
 .doors-strip { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 16px calc(10px + var(--tabbar-h, 64px)); background: var(--bg-raised); border-top: 1px solid var(--border); }
