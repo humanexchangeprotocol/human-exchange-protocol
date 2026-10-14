@@ -10302,15 +10302,19 @@ function init() {
   // carries this one join only: it is never added to the trust set, never stored, never
   // attests (attestation goes to the configured witness), and faces every handshake check
   // (signed session keys, the mark, signed sealed snapshots, quarantine on failure).
-  // Usable peers: a name on port 443 (https); loopback for local testing. Bare IPs and
-  // other ports cannot be called from an https page and are skipped.
+  // Usable peers: a name on port 443 (https). Loopback only when the app itself runs on
+  // loopback (the headless harness), so a hostile peer list cannot make a real phone probe
+  // ports on its own machine. Bare IPs and other ports cannot be called from an https page.
   // Security tenet gate: /peers and /status carry no body and nothing about the person.
   // A replayed old list is harmless: its peers still have to prove their key at /status.
   var GOSSIP_TTL_MS = 10 * 60 * 1000, _gossipPeers = null, _gossipAt = 0;
   function gossipPeerUrl(ep) {
     if (!ep || typeof ep.host !== 'string' || !Number.isInteger(ep.port)) return null;
     var h = ep.host.trim().toLowerCase();
-    if (h === 'localhost' || h === '127.0.0.1') return 'http://' + h + ':' + ep.port;
+    if (h === 'localhost' || h === '127.0.0.1') {
+      var here = (typeof location !== 'undefined' && location.hostname) || '';
+      return (here === 'localhost' || here === '127.0.0.1') ? 'http://' + h + ':' + ep.port : null;
+    }
     if (ep.port !== 443) return null;
     if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/.test(h) || /^[0-9.]+$/.test(h)) return null;
     return 'https://' + h;
