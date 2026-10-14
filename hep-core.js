@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.142.1';
+const APP_VERSION='2.142.2';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -97,11 +97,9 @@ const HEP_SEEDS = [
     pubkey: 'a5de62413185a63c4fb9574cb9c57dde66a796a2068f6e731f1726a559486625',
     url: 'https://hepwitness5.duckdns.org',
   },
-  // Patrick's Pi instance (LAN-only; trust anchor, no public bootstrap URL yet)
-  {
-    pubkey: '71dd5577899043eb00d9002367ea77f986b36926ddcbff615edc2308c1546003',
-  },
 ];
+// Oct 15, 2026 (Michael): the LAN-only Pi trust anchor (pubkey 71dd5577...) is
+// retired from this list; it never had a public URL and is no longer run.
 const HCP=(()=>{'use strict';
 const PV='2.0.0',SV=7,SV_LEGACY=1,SV_V2=2,SV_V3=3,SV_V4=4,SV_V5=5,SV_V6=6;
 const SCALE_MAX=1000000;
