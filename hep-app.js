@@ -10254,7 +10254,7 @@ function init() {
   // shows the full code; the joiner reads the street, joins on every known witness on
   // that street at once, and the one that pairs wins. Nothing new leaves the phone: the
   // join itself goes to a few witnesses instead of one, and the street names a server,
-  // not a person. Witnesses the phone has not learned yet (gossip lag) are owed.
+  // not a person. A street this phone does not know is looked up through gossip (v2.142.0, below).
   var EX_STREET_LEN = 2;
   var _streetCache = {};
   async function witnessStreet(pubkey, len) {
@@ -10290,6 +10290,75 @@ function init() {
       var st = await witnessStreet(cands[i].pubkey, Math.max(street.length, EX_STREET_LEN));
       if (st.indexOf(street) === 0 || street.indexOf(st) === 0) out.push(cands[i].url);
     }
+    if (out.length === 0) out = await gossipStreetBundle(street);
+    return out;
+  }
+
+  // === THE GOSSIP STREET LOOKUP (v2.142.0, Michael Oct 14) ===
+  // When a typed street matches no witness this phone knows, the phone asks the witnesses
+  // it trusts for their signed peer lists (/peers?signed=1), checks each list's signature
+  // against that witness's own key, and looks for the street among the peers. A matching
+  // peer must then answer /status with the key it was announced under. A learned witness
+  // carries this one join only: it is never added to the trust set, never stored, never
+  // attests (attestation goes to the configured witness), and faces every handshake check
+  // (signed session keys, the mark, signed sealed snapshots, quarantine on failure).
+  // Usable peers: a name on port 443 (https). Loopback only when the app itself runs on
+  // loopback (the headless harness), so a hostile peer list cannot make a real phone probe
+  // ports on its own machine. Bare IPs and other ports cannot be called from an https page.
+  // Security tenet gate: /peers and /status carry no body and nothing about the person.
+  // A replayed old list is harmless: its peers still have to prove their key at /status.
+  var GOSSIP_TTL_MS = 10 * 60 * 1000, _gossipPeers = null, _gossipAt = 0;
+  function gossipPeerUrl(ep) {
+    if (!ep || typeof ep.host !== 'string' || !Number.isInteger(ep.port)) return null;
+    var h = ep.host.trim().toLowerCase();
+    if (h === 'localhost' || h === '127.0.0.1') {
+      var here = (typeof location !== 'undefined' && location.hostname) || '';
+      return (here === 'localhost' || here === '127.0.0.1') ? 'http://' + h + ':' + ep.port : null;
+    }
+    if (ep.port !== 443) return null;
+    if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/.test(h) || /^[0-9.]+$/.test(h)) return null;
+    return 'https://' + h;
+  }
+  async function gossipLearn() {
+    if (_gossipPeers && Date.now() - _gossipAt < GOSSIP_TTL_MS) return _gossipPeers;
+    var sources = exWitnessCandidates(), rep = getServerReputation(), known = {};
+    getEffectiveTrustSet().forEach(function(w) { if (w.pubkey) known[String(w.pubkey).toLowerCase()] = true; });
+    var lists = await Promise.all(sources.map(function(w) {
+      return serverFetch(w.url + '/peers?signed=1', { signal: AbortSignal.timeout(4000) })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(async function(d) {
+          if (!d || typeof d.signature !== 'string' || !Array.isArray(d.peers)) return [];
+          if (String(d.server_pubkey || '').toLowerCase() !== String(w.pubkey).toLowerCase()) return [];
+          if (!(await HCP.verifyWitnessPayload(d, w.pubkey))) { console.warn('[gossip] signature failed on the peer list from ' + w.url); return []; }
+          return d.peers;
+        }).catch(function() { return []; });
+    }));
+    var out = [], seen = {};
+    lists.forEach(function(peers) { peers.forEach(function(p) {
+      var pk = (p && typeof p.pubkey === 'string') ? p.pubkey.toLowerCase() : '';
+      if (!/^[0-9a-f]{64}$/.test(pk) || known[pk] || seen[pk]) return;
+      var u = gossipPeerUrl(p.endpoint);
+      if (!u || (rep[u] && rep[u].integrity)) return;
+      seen[pk] = true; out.push({ url: u, pubkey: pk });
+    }); });
+    console.log('[gossip] ' + out.length + ' usable peer(s) learned from ' + sources.length + ' trusted witness(es)');
+    _gossipPeers = out; _gossipAt = Date.now();
+    return out;
+  }
+  async function gossipStreetBundle(street) {
+    var learned = await gossipLearn(), matches = [];
+    for (var i = 0; i < learned.length; i++) {
+      var st = await witnessStreet(learned[i].pubkey, Math.max(street.length, EX_STREET_LEN));
+      if (st.indexOf(street) === 0 || street.indexOf(st) === 0) matches.push(learned[i]);
+    }
+    var ok = await Promise.all(matches.map(function(c) {
+      return serverFetch(c.url + '/status', { signal: AbortSignal.timeout(3000) })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) { return !!(d && typeof d.server_pubkey === 'string' && d.server_pubkey.trim().toLowerCase() === c.pubkey); })
+        .catch(function() { return false; });
+    }));
+    var out = matches.filter(function(c, k) { return ok[k]; }).map(function(c) { return c.url; });
+    console.log('[gossip] street ' + street + ': ' + matches.length + ' learned match(es), ' + out.length + ' proved their key');
     return out;
   }
   var sessionStreet = '';
