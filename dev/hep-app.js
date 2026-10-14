@@ -10247,7 +10247,57 @@ function init() {
     exBeginStart();
   }
 
-  function exBeginStart() {
+  // === THE STREET CODE (v2.141.0, ruled by Michael Oct 13) ===
+  // A code is STREET + SESSION. The street is the leading letters of a hash of the
+  // witness's public key (two today; more as the network grows, the session is always
+  // the last four). The starter posts its session on a random live witness it trusts and
+  // shows the full code; the joiner reads the street, joins on every known witness on
+  // that street at once, and the one that pairs wins. Nothing new leaves the phone: the
+  // join itself goes to a few witnesses instead of one, and the street names a server,
+  // not a person. Witnesses the phone has not learned yet (gossip lag) are owed.
+  var EX_STREET_LEN = 2;
+  var _streetCache = {};
+  async function witnessStreet(pubkey, len) {
+    len = len || EX_STREET_LEN;
+    var k = pubkey + ':' + len; if (_streetCache[k]) return _streetCache[k];
+    var h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hep-street1|' + pubkey)));
+    var out = ''; for (var i = 0; i < len; i++) out += PAIR_CHARS[h[i] % PAIR_CHARS.length];
+    _streetCache[k] = out; return out;
+  }
+  function exWitnessCandidates() {
+    var rep = getServerReputation();
+    return getEffectiveTrustSet().filter(function(w) { return w.url && w.pubkey && !(rep[w.url] && rep[w.url].integrity); });
+  }
+  // The starter's witness: every trusted, unquarantined witness is probed at once (3 s);
+  // one of the live ones is chosen at random. Falls back to the configured witness.
+  async function exPickStartWitness() {
+    var cands = exWitnessCandidates();
+    var probes = cands.map(function(w) {
+      return serverFetch(w.url + '/status', { signal: AbortSignal.timeout(3000) }).then(function(r) { return r.ok ? w : null; }).catch(function() { return null; });
+    });
+    var live = (await Promise.all(probes)).filter(Boolean);
+    if (live.length === 0) { console.log('[street] no witness answered; using the configured one'); return null; }
+    var pick = live[crypto.getRandomValues(new Uint8Array(1))[0] % live.length];
+    pick.street = await witnessStreet(pick.pubkey);
+    console.log('[street] ' + live.length + ' live of ' + cands.length + '; starting on ' + pick.url + ' (street ' + pick.street + ')');
+    return pick;
+  }
+  // The joiner's bundle: every known witness whose street starts with the typed street
+  // (a shorter local list still matches on its leading letters).
+  async function exStreetBundle(street) {
+    var cands = exWitnessCandidates(), out = [];
+    for (var i = 0; i < cands.length; i++) {
+      var st = await witnessStreet(cands[i].pubkey, Math.max(street.length, EX_STREET_LEN));
+      if (st.indexOf(street) === 0 || street.indexOf(st) === 0) out.push(cands[i].url);
+    }
+    return out;
+  }
+  var sessionStreet = '';
+  function exCodeHtml(street, code) {
+    return '<div class="exs-code">' + (street ? '<span style="color:var(--text-dim)">' + esc(street) + '</span>&thinsp;&thinsp;' : '') + esc(code) + '</div>';
+  }
+
+  async function exBeginStart() {
     var url = getWitnessUrl();
     if (!url) { openCooperate(); return; }
 
@@ -10269,12 +10319,20 @@ function init() {
     sessionCode = Array.from(bytes).map(b => PAIR_CHARS[b % PAIR_CHARS.length]).join('');
     sessionTheirCode = deriveJoinCode(sessionCode);
 
+    // v2.141.0: the street. Pick a live witness first; the code screen waits for it.
+    document.getElementById('ex-connect-content').innerHTML = '<div class="exs-grow"></div><div class="exs-wait" style="justify-content:center"><i></i><span>Finding a server</span></div><div class="exs-grow"></div>';
+    var picked = null;
+    try { picked = await exPickStartWitness(); } catch (e) { console.log('[street] pick failed:', e.message); }
+    if (!exFlowActive || exConnectMode !== 'start') return; // left while probing
+    sessionWitnessUrl = picked ? picked.url : null;
+    sessionStreet = picked ? picked.street : '';
+
     // Start (ruled Oct 2, tenth session): centered, "Your code", the
     // code at display size, the pulsing wait, and two invite buttons for
     // someone not in the room. X top right leaves (first screen).
     var html = '<div class="exs-h" style="text-align:center;">Your code</div>';
     html += '<div style="height:40px"></div>';
-    html += '<div class="exs-code">' + esc(sessionCode) + '</div>';
+    html += exCodeHtml(sessionStreet, sessionCode);
     html += '<div style="height:30px"></div>';
     html += '<div class="exs-wait"><i></i><span>Waiting for them to join</span></div>';
     html += '<div class="exs-grow"></div>';
@@ -10324,11 +10382,11 @@ function init() {
     // their code instead" is ruled but needs a camera scanner the app
     // does not have yet; it lands in its own build cycle.
     var html = '<div class="exs-h" style="text-align:center;">Join</div>';
-    html += '<div class="exs-m" style="text-align:center;">The four characters on their screen.</div>';
+    html += '<div class="exs-m" style="text-align:center;">The six characters on their screen.</div>';
     html += '<div style="height:30px"></div>';
-    html += '<div class="exs-cells" id="ex-join-cells">';
-    for (var ci = 0; ci < 4; ci++) html += '<div class="exs-cell empty" id="ex-join-cell-' + ci + '">&middot;</div>';
-    html += '<input type="text" id="ex-join-code" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" oninput="App.exCodeInput(this)" aria-label="Their code">';
+    html += '<div class="exs-cells six" id="ex-join-cells">';
+    for (var ci = 0; ci < 6; ci++) html += '<div class="exs-cell empty' + (ci < EX_STREET_LEN ? ' street' : '') + '" id="ex-join-cell-' + ci + '">&middot;</div>';
+    html += '<input type="text" id="ex-join-code" maxlength="6" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" oninput="App.exCodeInput(this)" aria-label="Their code">';
     html += '</div>';
     html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
     html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
@@ -10341,17 +10399,19 @@ function init() {
   }
 
   function exCodeInput(el) {
-    el.value = el.value.toUpperCase().replace(/[^ACDEFGHJKMNPQRTUVWXYZ]/g, '').substring(0, 4);
-    // Paint the four cells; the fourth character connects by itself.
-    for (var i = 0; i < 4; i++) {
+    el.value = el.value.toUpperCase().replace(/[^ACDEFGHJKMNPQRTUVWXYZ]/g, '').substring(0, 6);
+    // Paint the six cells; the sixth character connects by itself. A four-letter code
+    // (an older app's) connects through the Connect button on the configured witness.
+    for (var i = 0; i < 6; i++) {
       var cell = document.getElementById('ex-join-cell-' + i);
       if (!cell) continue;
       var ch = el.value.charAt(i);
       cell.textContent = ch || '\u00b7';
       cell.classList.toggle('empty', !ch);
-      cell.classList.toggle('on', i === el.value.length || (i === 3 && el.value.length === 4));
+      cell.classList.toggle('on', i === el.value.length || (i === 5 && el.value.length === 6));
     }
-    if (el.value.length === 4 && !el._exConnecting) {
+    var btn = document.getElementById('ex-join-btn'); if (btn) btn.style.display = (el.value.length === 4) ? '' : 'none';
+    if (el.value.length === 6 && !el._exConnecting) {
       el._exConnecting = true;
       exConnect().finally(function() { el._exConnecting = false; });
     }
@@ -10363,23 +10423,41 @@ function init() {
     if (btn) { btn.textContent = 'Connecting...'; btn.disabled = true; }
 
     var rawVal = (document.getElementById('ex-join-code') || {}).value;
-    var starterCode = (rawVal || '').trim().toUpperCase();
-    if (!starterCode || starterCode.length !== 4) {
-      toast('Enter the 4-letter code');
+    var typed = (rawVal || '').trim().toUpperCase();
+    if (!typed || (typed.length !== 4 && typed.length !== 6)) {
+      toast('Enter the code on their screen');
       if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
       return;
+    }
+    // v2.141.0: the last four letters are the session, anything before is the street.
+    var starterCode = typed.slice(-4), street = typed.slice(0, -4), bundle;
+    if (street) {
+      bundle = await exStreetBundle(street);
+      if (bundle.length === 0) {
+        toast('No server known for that code. Ask them to start again.');
+        if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
+        exJoinWrongCode();
+        return;
+      }
+    } else {
+      bundle = [getWitnessUrl()]; // an older app's four-letter code meets on the configured witness
     }
 
     // Joiner's my_code is derived from the starter's code
     sessionCode = deriveJoinCode(starterCode);
     sessionTheirCode = starterCode;
+    sessionStreet = street;
 
-    await exPostJoin(sessionCode, sessionTheirCode);
+    await exPostJoin(sessionCode, sessionTheirCode, bundle);
   }
 
-  async function exPostJoin(myCode, theirCode) {
+  async function exPostJoin(myCode, theirCode, bundle) {
     try {
-      var url = getSessionWitnessUrl();
+      // v2.141.0: the joiner posts the same join to every witness on the street at once;
+      // the first that already holds the starter wins and becomes the session witness.
+      // The starter posts to the witness it picked. Leftover joins expire in ten minutes.
+      bundle = (bundle && bundle.length) ? bundle : [getSessionWitnessUrl()];
+      var url = bundle[0];
       if (!url) { toast('No server available'); return; }
 
       var joinPayload = await sessJoinBody(myCode, theirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk, true);
@@ -10391,11 +10469,25 @@ function init() {
         has_pubkey: !!mySigningKeyJwk(), device_key: !!state.devicePublicKeyJwk,
       }));
 
-      var resp = await serverFetch(url + '/session/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(joinPayload),
-      });
+      var resp = null;
+      if (bundle.length > 1) {
+        var results = await Promise.all(bundle.map(function(u) {
+          return serverFetch(u + '/session/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(joinPayload), signal: AbortSignal.timeout(8000) })
+            .then(function(r) { return r.ok ? r.clone().json().then(function(j) { return { u: u, r: r, j: j }; }) : { u: u, r: r, j: null }; })
+            .catch(function() { return { u: u, r: null, j: null }; });
+        }));
+        var hit = results.filter(function(x) { return x.j && x.j.connected; })[0] || results.filter(function(x) { return x.r && x.r.ok; })[0] || results[0];
+        url = hit.u; resp = hit.r;
+        console.log('[street] joined ' + bundle.length + ' witnesses on ' + sessionStreet + '; ' + (hit.j && hit.j.connected ? 'paired on ' : 'none paired, polling ') + url);
+        if (!resp) { toast('No server answered. Try again.'); if (exConnectMode === 'join') { var b0 = document.getElementById('ex-join-btn'); if (b0) { b0.textContent = 'Connect'; b0.disabled = false; } } return; }
+      } else {
+        resp = await serverFetch(url + '/session/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(joinPayload),
+        });
+      }
+      sessionWitnessUrl = url;
 
       if (!resp.ok) {
         var errBody = '';

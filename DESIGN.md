@@ -43,6 +43,7 @@ One page. Read it before designing or mocking up any surface. Every mockup start
 12. One field style, used everywhere a person types: label above in caption size, a single quiet box (`--bg-input`, one border, `--radius-sm`), body text inside, accent border on focus. No field is styled per spot.
 13. Editing a value in place (a name, an amount in the flow) uses the same field, shown large enough to read and sized to its content, with the unit mark beside it. It never looks different from a field elsewhere.
 13a. A password field is the same field with the word Show at the right edge inside the box, caption size, faint; tapping it reveals the text and the word becomes Hide. A word, not an eye, per rule 15 (ruled Oct 5, Michael mistyped a device password with no way to see it).
+13b. **The exchange code** (ruled Oct 13 by Michael, "the code also functions as a kind of a map"; built dev v2.141.0) is six letters shown as two groups: the street (two letters, `--text-dim`) then the session (four, accent), one thin space apart in `.exs-code`. Typing it is six cells (`.exs-cells.six`, 44px wide), the first two in `--text-dim` with a 10px gap after them; the sixth letter connects by itself. A four-letter code (an older app's) shows the Connect button instead and meets on the configured witness. Sync and Add a device keep their own four-letter code and two-letter mark; they are the same chain on two devices and do not travel the street.
 
 ## Icons
 
