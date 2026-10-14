@@ -1440,7 +1440,7 @@ const PAIR_CODE_LENGTH = 4;
     var h = atHead('Sync with ' + AT.label, true, 'syncBack');
     h += '<div class="exs-grow"></div><div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;">';
     h += '<div class="exs-code">' + esc(AT.code) + '</div><div class="exs-body">Enter this code on ' + esc(AT.label) + '</div>';
-    h += '<div class="exs-cap">Record keeping, ' + esc(syMyName()) + ', Sync now</div></div>';
+    h += '<div class="exs-cap">Account, Sync and backup, ' + esc(syMyName()) + ', Sync</div></div>';
     h += '<div class="exs-grow"></div><div class="exs-wait" style="padding-bottom:24px;"><i></i><span>Waiting for ' + esc(AT.label) + '</span></div>';
     atShow(h);
     console.log('[sync] show: code ' + AT.code);
@@ -1499,7 +1499,7 @@ const PAIR_CODE_LENGTH = 4;
         if (d.partner.encrypted_snapshot) {
           var early = null;
           try { early = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared); } catch (de) {}
-          if (early && early.t && early.t !== 'sync-pack') { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+          if (early && early.t && early.t !== 'sync-pack') { atProblem('The other device is not syncing. Open Sync and backup on both.'); return; }
         }
         console.log('[sync] connected to ' + AT.partnerFp.slice(0, 12) + (AT.partnerFp !== AT.rowFp ? ' (row was ' + String(AT.rowFp).slice(0, 12) + ')' : ''));
         syncConnecting(true);
@@ -1511,7 +1511,7 @@ const PAIR_CODE_LENGTH = 4;
       if (AT.sent && !AT.theirs && d.partner.encrypted_snapshot) {
         var p = await HCP.decryptRelayPayload(d.partner.encrypted_snapshot, AT.shared);
         if (p && p.t === 'sync-pack') { AT.theirs = p; atStopPoll(); await syncReceive(p); }
-        else if (p && p.t) { atProblem('The other device is not syncing. Open Record keeping on both.'); return; }
+        else if (p && p.t) { atProblem('The other device is not syncing. Open Sync and backup on both.'); return; }
       }
     } catch (e) { console.log('[sync] poll error', e.message); }
     finally { if (AT) AT.busy = false; }
@@ -3941,17 +3941,46 @@ const PAIR_CODE_LENGTH = 4;
   // sealed) before this phone shares anything about the person. No fallback to the
   // old unsigned agreement: an older app on the other side is refused.
   var _sessKeys = {}; // my code -> this session's keys and transcript half
-  async function sessJoinBody(myCode, theirCode, fp, signPub, signPriv) {
+  async function sessJoinBody(myCode, theirCode, fp, signPub, signPriv, commit) {
     var k = await HCP.makeSessionKey();
     var sig = await HCP.signSessionKey(myCode, theirCode, fp, k.pub, signPriv);
-    _sessKeys[myCode] = { pub: k.pub, priv: k.priv, signPub: signPub, fp: fp, theirCode: theirCode };
+    _sessKeys[myCode] = { pub: k.pub, priv: k.priv, sig: sig, signPub: signPub, fp: fp, theirCode: theirCode, commit: !!commit, revealed: false };
+    // v2.140.0, the mark (batch three): the exchange path joins with a commitment to the
+    // key (a hash) and reveals the key only after the other side has joined, so a witness
+    // cannot grind either side's key toward a chosen mark. Sync and attach keep the plain
+    // join: strict binding (the key must be the fingerprint) already rules out a substitute.
+    if (commit) return { my_code: myCode, their_code: theirCode, fingerprint: fp, public_key: signPub, session_commit: await HCP.commitSessionKey(myCode, theirCode, fp, k.pub) };
     return { my_code: myCode, their_code: theirCode, fingerprint: fp, public_key: signPub, session_key: k.pub, session_sig: sig };
+  }
+  // The reveal, once per session, only after the partner's row (its commitment) is seen.
+  // Idempotent on the witness; the phone sends it once and does not wait on the answer here.
+  async function sessReveal(myCode) {
+    var me = _sessKeys[myCode]; if (!me || !me.commit || me.revealed) return;
+    me.revealed = true;
+    try {
+      var url = getSessionWitnessUrl();
+      var r = await serverFetch(url + '/session/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ my_code: myCode, session_key: me.pub, session_sig: me.sig }) });
+      if (!r.ok) { me.revealed = false; console.log('[sess] reveal refused: ' + r.status); return; }
+      var j = await r.json(); if (!j.revealed) me.revealed = false; // waiting: try again on the next poll
+      console.log('[sess] reveal ' + (j.revealed ? 'accepted' : 'waiting'));
+    } catch (e) { me.revealed = false; console.log('[sess] reveal failed:', e.message); }
+  }
+  // What a connected poll says on the exchange path (v2.140.0). Returns 'older' (the
+  // other side joined without a commitment), 'waiting' (committed, key not yet revealed)
+  // or 'ready' (key and commitment both in).
+  function sessPartnerStage(partner) {
+    if (!partner || !partner.session_commit) return 'older';
+    return partner.session_key ? 'ready' : 'waiting';
   }
   // strict: the partner key must be the fingerprint itself (sync, attach). Otherwise a
   // key that is not the fingerprint is allowed in while its device proof is awaited,
   // and nothing about the person is sent until that proof verifies.
   async function sessEstablish(myCode, partner, strict) {
     var me = _sessKeys[myCode]; if (!me) return { ok: false, reason: 'no session key for code ' + myCode };
+    if (me.commit) {
+      var cv = await HCP.verifySessionCommit(partner, myCode, me.theirCode);
+      if (!cv.ok) return { ok: false, reason: cv.error, old: cv.error === 'no commitment' };
+    }
     var v = await HCP.verifySessionKey(partner, myCode, me.theirCode);
     if (!v.ok) return { ok: false, reason: v.error, old: v.error === 'no session key' };
     var bind = await HCP.verifyKeyBinding(partner.fingerprint, partner.public_key, null);
@@ -5673,6 +5702,7 @@ const PAIR_CODE_LENGTH = 4;
 
   function cleanupSession() {
     clearTimeout(_exJoinCheck); _exJoinCheck = null;
+    try { _exRevealOnce = false; _exWaitT0 = 0; } catch(_) {}
     stopSessionPoll();
     exPresenceStop();
     _exPresenceLive = false;
@@ -10352,7 +10382,7 @@ function init() {
       var url = getSessionWitnessUrl();
       if (!url) { toast('No server available'); return; }
 
-      var joinPayload = await sessJoinBody(myCode, theirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk);
+      var joinPayload = await sessJoinBody(myCode, theirCode, state.fingerprint, mySigningKeyJwk(), state.privateKeyJwk, true);
       // v2.134.0 (security tenet gate): the role (who is giving) never goes to the witness.
       // It travels sealed in the snapshot as _role; the joiner reads it there.
       console.log('[ex-flow] Posting to /session/join:', JSON.stringify({
@@ -10381,10 +10411,9 @@ function init() {
 
       var data = await resp.json();
 
-      if (data.connected) {
-        sessionPartner = data.partner; logPartnerBinding(data.partner);
-        exOnConnected();
-      } else {
+      if (data.connected && exOnConnectData(data)) {
+        // handled: either moved on, or revealed and polling for the other key
+      } else if (!data.connected) {
         // Show waiting and poll
         if (exConnectMode === 'join') {
           var statusEl = document.getElementById('ex-join-status');
@@ -10417,6 +10446,28 @@ function init() {
 
   let exConnectPollTimer = null;
 
+  // v2.140.0: a connected answer on the exchange path. Older app on the other side
+  // (no commitment): stop, ask for an update, blame no witness. Committed but not yet
+  // revealed: send our reveal (once) and keep polling. Both in: establish the session.
+  // Returns true when the poll should keep going or has moved on.
+  var _exRevealOnce = false, _exWaitT0 = 0;
+  var EX_REVEAL_STALL_MS = 30000; // a committed partner whose key never arrives: end it, blame no one
+  function exOnConnectData(data) {
+    var stage = sessPartnerStage(data.partner);
+    if (stage === 'older') { exStopConnectPoll(); sessionViolation('session: no session key', sessFailMsg({ old: true })); return true; }
+    sessionPartner = data.partner;
+    if (stage === 'waiting') {
+      if (!_exRevealOnce) { _exRevealOnce = true; _exWaitT0 = Date.now(); sessReveal(sessionCode); }
+      else if (Date.now() - _exWaitT0 > EX_REVEAL_STALL_MS) { exStopConnectPoll(); sessionViolation('session stalled: key never revealed', 'The other phone did not finish connecting. Nothing was shared. Try again.'); return true; }
+      if (!exConnectPollTimer) exStartConnectPoll();
+      return true;
+    }
+    exStopConnectPoll();
+    if (!_exRevealOnce) { _exRevealOnce = true; sessReveal(sessionCode); }
+    logPartnerBinding(data.partner);
+    exOnConnected();
+    return true;
+  }
   function exStartConnectPoll() {
     exStopConnectPoll();
     const url = getSessionWitnessUrl();
@@ -10434,11 +10485,7 @@ function init() {
         try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
         var validation = sessionValidateResponse(data, rawText.length);
         if (!validation.valid) { sessionViolation(validation.reason); return; }
-        if (data.connected && data.partner) {
-          exStopConnectPoll();
-          sessionPartner = data.partner; logPartnerBinding(data.partner);
-          exOnConnected();
-        }
+        if (data.connected && data.partner) exOnConnectData(data);
       } catch(e) {}
     }, 3000);
 
@@ -10452,11 +10499,7 @@ function init() {
         try { data = JSON.parse(rawText); } catch(pe) { sessionViolation('invalid_json'); return; }
         var validation = sessionValidateResponse(data, rawText.length);
         if (!validation.valid) { sessionViolation(validation.reason); return; }
-        if (data.connected && data.partner) {
-          exStopConnectPoll();
-          sessionPartner = data.partner; logPartnerBinding(data.partner);
-          exOnConnected();
-        }
+        if (data.connected && data.partner) exOnConnectData(data);
       } catch(e) {}
     }, 1500);
   }
@@ -10613,8 +10656,10 @@ function init() {
     // Compute SAS from both fingerprints
     const myFp = state.fingerprint || '';
     const theirFp = sessionPartner.fingerprint || '';
-    const sasResult = await computeSAS(myFp, theirFp);
-    sessionSASHash = sasResult.fullHash; // store for automatic collision detection
+    // v2.140.0: the mark is drawn from the session id (the whole handshake transcript,
+    // both session keys included), 4 characters, never from the fingerprints alone.
+    const sasResult = { code: await HCP.sessionMark(sessionSid), fullHash: sessionSid };
+    sessionSASHash = sasResult.fullHash;
 
     // Get partner name from snapshot (may not be available yet)
     let partnerName = 'Connected';
@@ -10628,7 +10673,7 @@ function init() {
     } catch(e) {}
 
     // Show verify step: name + 2-char SAS code
-    document.getElementById('ex-verify-avatar').textContent = partnerInitial;
+    exVerifyAvatarFill(sessionPartner.thread_snapshot, partnerInitial);
     document.getElementById('ex-verify-name').textContent = partnerName;
     exVerifyWords(partnerName === 'Connected' ? '' : partnerName);
     document.getElementById('ex-sas-code').textContent = sasResult.code;
@@ -10649,7 +10694,7 @@ function init() {
           var avatarEl = document.getElementById('ex-verify-avatar');
           if (nameEl) nameEl.textContent = decrypted._name;
           exVerifyWords(decrypted._name);
-          if (avatarEl) avatarEl.textContent = decrypted._name.charAt(0).toUpperCase();
+          if (avatarEl) exVerifyAvatarFill(decrypted, decrypted._name.charAt(0).toUpperCase());
         }
         // If the user already confirmed SAS and the Review screen is
         // showing (ex-review-container exists and is visible), the
@@ -10667,6 +10712,24 @@ function init() {
           try { exRenderReceiverWait(); } catch(e) { console.log('[ex-flow] Wait re-render after snapshot failed:', e.message); }
         }
       });
+    }
+  }
+
+  // v2.139.1 (Michael, Oct 13 walk): the mark screen shows their photo, not only the
+  // initial. Read from the sealed snapshot already on this phone (current photo, else the
+  // first). Plain picture, no tap: the side-by-side photo check lives on the chain read.
+  function exVerifyAvatarFill(snap, initial) {
+    var el = document.getElementById('ex-verify-avatar'); if (!el) return;
+    var src = (snap && (snap._photo || snap._genesisPhoto)) || '';
+    if (src && /^data:image\//.test(src)) {
+      el.textContent = '';
+      var img = document.createElement('img');
+      img.src = src; img.alt = '';
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;';
+      el.appendChild(img);
+      el.style.overflow = 'hidden';
+    } else {
+      el.textContent = initial || '?';
     }
   }
 

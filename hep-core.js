@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.139.0';
+const APP_VERSION='2.140.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -845,6 +845,15 @@ async function skver(partner,myCode,theirCode){
     return ok?{ok:true}:{ok:false,error:'session key not signed by the partner key'};
   }catch(e){return{ok:false,error:e.message}}
 }
+// v2.140.0, the mark (batch three): a phone may commit to its session key before the other
+// side joins, and reveal it after. The commitment covers the codes and fingerprint too, so
+// it cannot be moved to another session. The mark is drawn from the session id (the hash of
+// the whole handshake transcript, both session keys included), so a witness in the middle
+// cannot steer it: each side's key is fixed by its commitment before it sees the other's.
+async function skcommit(myCode,theirCode,fp,skPub){return bth(await crypto.subtle.digest(HALG,u8.encode('hep-commit1|'+skmsg(myCode,theirCode,fp,skPub))))}
+async function skcver(partner,myCode,theirCode){try{if(!partner||!partner.session_commit)return{ok:false,error:'no commitment'};if(!partner.session_key)return{ok:false,error:'not revealed'};const h=await skcommit(theirCode,myCode,partner.fingerprint,partner.session_key);return h===partner.session_commit?{ok:true}:{ok:false,error:'revealed key does not match the commitment'}}catch(e){return{ok:false,error:e.message}}}
+const MARK_CHARS='ABCDEFGHJKMNPQRTUVWXYZ23456789';
+async function smark(sid){const h=new Uint8Array(await crypto.subtle.digest(HALG,u8.encode('hep-mark1|'+sid)));let m='';for(let i=0;i<4;i++)m+=MARK_CHARS[h[i]%MARK_CHARS.length];return m}
 function kstr(j){return j?(j.x||'')+'.'+(j.y||''):''}
 function stinfo(t){return[SESS_TAG,[t.myCode,t.theirCode].sort().join(','),[t.myFp,t.theirFp].sort().join(','),[kstr(t.mySignPub),kstr(t.theirSignPub)].sort().join(','),[kstr(t.mySkPub),kstr(t.theirSkPub)].sort().join(',')].join('|')}
 // Session id: the same on both phones, different for any other session or any tampered handshake.
@@ -962,7 +971,7 @@ async function vpa(r,chainFp){
   const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
   return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
 }
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
 })();
 
 // ============================================================
