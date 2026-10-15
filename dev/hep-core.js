@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.145.1';
+const APP_VERSION='2.146.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -791,6 +791,69 @@ async function vah(ah,sig,pubJwk){try{const pk=await ipk(pubJwk);return await cr
 async function chi(iPub,cPub,ts){return await cmh(iPub,cPub,ts)}
 function psp(j){const d=JSON.parse(j);if(d.a!=='st')throw new Error('Not a settlement');if(!d.f||!d.o)throw new Error('Missing fingerprints');return{fp:d.f,confirmFp:d.o,ts:d.z}}
 
+// --- Offline codes: three scans, countersigned (Oct 15 2026 rebuild, registry Component 1) ---
+// No witness, no relay: the two phones show each other screens. Each payload is signed
+// by the key it carries, every fingerprint is checked against its key, every step is
+// tied to the offer's nonce, and both records end up carrying the act hash and the
+// other person's signature over it, exactly as the session path writes them.
+//   scan 1 (o1, proposer):  key, fingerprint, name, terms, a compact chain read, nonce.
+//   scan 2 (o2, confirmer): key, fingerprint, name, nonce, act hash, signature over it.
+//   scan 3 (o3, proposer):  fingerprint, nonce, act hash, signature over it.
+// What offline loses against the session path is only the witness timestamp (the
+// attestation queue carries the record to any trusted witness later) and the
+// stranger-in-the-middle protections, which have no relay to apply to.
+function ofrd(c){const s=cs(c);return{n:s.n,d:s.d,g:s.g,r:s.r,t0:s.t0,t1:s.t1,p:s.pings}}
+function ofnonce(){return bth(crypto.getRandomValues(new Uint8Array(16)).buffer)}
+function ofpub(pj){return{c:pj.crv,k:pj.kty,x:pj.x,y:pj.y}}
+function ofjwk(p){return{crv:p.c||p.crv,kty:p.k||p.kty,x:p.x,y:p.y}}
+async function ofah(o1,confirmerFp){return await cah({proposerFp:o1.fp,confirmerFp:confirmerFp,value:o1.exchange.value,direction:o1.exchange.energyState,description:o1.exchange.description||'',category:o1.exchange.category||'',duration:o1.exchange.duration||0,proposalTs:o1.ts})}
+async function of1(pj,c,ex,name,privKey){
+  const o={h:PV,a:'o1',p:ofpub(pj),f:await kfp(pj),m:name||undefined,e:{t:ex.type,v:ex.value,s:ex.energyState,d:ex.description||undefined,c:ex.category||undefined,u:ex.duration||undefined},r:ofrd(c),n:ofnonce(),z:now()};
+  return await spld(o,privKey)}
+// Parses and checks scan 1. Throws on anything wrong; the caller shows nothing from a bad code.
+async function ofv1(j){
+  const d=JSON.parse(j);if(d.a!=='o1')throw new Error('Not an offer');
+  if(!d.p||!d.p.x||!d.p.y||!d.f||!d.e||!d.n||!d.z||!d.sig)throw new Error('Offer incomplete');
+  const pub=ofjwk(d.p);
+  if((await kfp(pub))!==d.f)throw new Error('Offer key does not match its fingerprint');
+  if(!(await vpld(j,pub)).valid)throw new Error('Offer signature failed');
+  if(typeof d.e.v!=='number'||!(d.e.v>=0))throw new Error('Offer has no value');
+  if(d.e.s!=='provided'&&d.e.s!=='received')throw new Error('Offer has no direction');
+  return{pub,fp:d.f,name:d.m||'',exchange:{type:d.e.t||'exchange',value:d.e.v,energyState:d.e.s,description:d.e.d||'',category:d.e.c||'',duration:d.e.u||0},read:d.r||null,nonce:d.n,ts:d.z}}
+// The confirmer's answer: signs the act hash and binds it to the offer's nonce.
+async function of2(pj,c,o1,name,privKey){
+  const f=await kfp(pj),ah=await ofah(o1,f);
+  const o={h:PV,a:'o2',p:ofpub(pj),f,m:name||undefined,o:o1.fp,n:o1.nonce,ah,s:await sah(ah,privKey),r:ofrd(c),z:now()};
+  return{payload:await spld(o,privKey),actHash:ah}}
+// The proposer checks scan 2 against the offer it is holding.
+async function ofv2(j,o1parsed,myFp){
+  const d=JSON.parse(j);if(d.a!=='o2')throw new Error('Not an answer');
+  if(!d.p||!d.p.x||!d.p.y||!d.f||!d.o||!d.n||!d.ah||!d.s||!d.sig)throw new Error('Answer incomplete');
+  if(d.n!==o1parsed.nonce)throw new Error('Answer is for a different offer');
+  if(d.o!==myFp)throw new Error('Answer is addressed to another chain');
+  const pub=ofjwk(d.p);
+  if((await kfp(pub))!==d.f)throw new Error('Answer key does not match its fingerprint');
+  if(!(await vpld(j,pub)).valid)throw new Error('Answer signature failed');
+  const ah=await ofah(o1parsed,d.f);
+  if(ah!==d.ah)throw new Error('Answer does not match the offer');
+  if(!(await vah(ah,d.s,pub)))throw new Error('Answer act signature failed');
+  return{pub,fp:d.f,name:d.m||'',actHash:ah,actSig:d.s,read:d.r||null,nonce:d.n,ts:d.z}}
+// The proposer's seal: its own signature over the same act hash, for the confirmer's record.
+async function of3(pj,o2parsed,privKey){
+  const o={h:PV,a:'o3',f:await kfp(pj),o:o2parsed.fp,n:o2parsed.nonce,ah:o2parsed.actHash,s:await sah(o2parsed.actHash,privKey),z:now()};
+  return await spld(o,privKey)}
+// The confirmer checks scan 3 against the offer it answered (it holds the proposer's key from scan 1).
+async function ofv3(j,held){
+  const d=JSON.parse(j);if(d.a!=='o3')throw new Error('Not a seal');
+  if(!d.f||!d.o||!d.n||!d.ah||!d.s||!d.sig)throw new Error('Seal incomplete');
+  if(d.n!==held.nonce)throw new Error('Seal is for a different exchange');
+  if(d.f!==held.proposerFp)throw new Error('Seal is not from the person who offered');
+  if(d.o!==held.myFp)throw new Error('Seal is addressed to another chain');
+  if(d.ah!==held.actHash)throw new Error('Seal does not match the exchange');
+  if(!(await vpld(j,held.proposerPub)).valid)throw new Error('Seal signature failed');
+  if(!(await vah(d.ah,d.s,held.proposerPub)))throw new Error('Seal act signature failed');
+  return{actHash:d.ah,actSig:d.s,ts:d.z}}
+
 // --- ECDH relay encryption ---
 // Derives a shared AES-256-GCM key from two P-256 key pairs via ECDH.
 // Same curve as ECDSA signing keys. Re-imports with ECDH algorithm.
@@ -956,7 +1019,7 @@ async function vpa(r,chainFp){
   const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
   return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
 }
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah}
 })();
 
 // ============================================================
