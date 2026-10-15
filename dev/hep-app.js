@@ -5219,21 +5219,29 @@ const PAIR_CODE_LENGTH = 4;
         // the sealed snapshot, refreshed here before confirming; nothing readable goes to the witness.
         if (!sessionSharedKey) { toast('Could not set up a secure connection. Nothing was recorded.'); _sessionWritten = false; if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; } return; }
         await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' } });
-        // Countersignature, confirmer side. Passthrough (observe before enforce):
-        // a mismatch or a bad proposer signature is logged, never blocks.
-        var confirmActSig = '';
+        // Countersignature, confirmer side. ENFORCED from v2.147.0 (gate a; observe mode
+        // since v2.100.0, Oct 5): the proposer's signature over the act hash must be present
+        // and verify against the key bound to their fingerprint, and their act hash must equal
+        // ours, or nothing is recorded and the confirmation is never sent.
+        var confirmActSig = '', csFail = '';
         try {
-          if (sessionProposal) {
+          if (!sessionProposal) csFail = 'no proposal';
+          else {
             sessionActHash = await HCP.computeActHash({ proposerFp: sessionPartner ? sessionPartner.fingerprint : '', confirmerFp: state.fingerprint, value: sessionProposal.value, direction: sessionProposal.direction, description: sessionProposal.description, category: sessionProposal.category || '', duration: sessionProposal.duration || 0, proposalTs: sessionProposal.device_ts });
-            if (sessionProposal.act_hash && sessionProposal.act_hash !== sessionActHash) console.warn('[countersig] act hash mismatch: theirs ' + sessionProposal.act_hash.slice(0, 12) + ' mine ' + sessionActHash.slice(0, 12));
-            if (sessionProposal.proposer_act_sig && sessionPartner && sessionPartner.public_key) {
-              var okSig = await HCP.verifyActSig(sessionActHash, sessionProposal.proposer_act_sig, sessionPartner.public_key);
-              console.log('[countersig] proposer signature ' + (okSig ? 'verified' : 'FAILED (passthrough)'));
-              sessionCpActSig = sessionProposal.proposer_act_sig;
-            }
-            confirmActSig = await HCP.signActHash(sessionActHash, state.privateKey);
+            if (sessionProposal.act_hash && sessionProposal.act_hash !== sessionActHash) csFail = 'act hash mismatch';
+            else if (!sessionProposal.proposer_act_sig || !sessionPartner || !sessionPartner.public_key) csFail = 'no proposer signature';
+            else if (!(await HCP.verifyActSig(sessionActHash, sessionProposal.proposer_act_sig, sessionPartner.public_key))) csFail = 'proposer signature failed';
+            else { sessionCpActSig = sessionProposal.proposer_act_sig; confirmActSig = await HCP.signActHash(sessionActHash, state.privateKey); }
           }
-        } catch(csErr) { console.log('[countersig] confirmer failed:', csErr.message); }
+        } catch(csErr) { csFail = 'check failed: ' + csErr.message; }
+        if (csFail) {
+          console.log('[countersig] REFUSED (confirmer): ' + csFail + '; nothing recorded');
+          _sessionWritten = false; sessionActHash = null; sessionCpActSig = null;
+          try { exNotifyCancel(); } catch (_) {}
+          exShowEnded('unsigned');
+          return;
+        }
+        console.log('[countersig] proposer signature verified');
         const resp = await serverFetch(url + '/session/' + sessionCode + '/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5403,18 +5411,29 @@ const PAIR_CODE_LENGTH = 4;
     // Countersignature: the other person's signature over the shared act hash.
     // Proposer reads the confirmer's signature from the session; the confirmer
     // kept the proposer's at confirm time. Verified in passthrough, logged only.
-    var cpActSig;
+    // ENFORCED from v2.147.0 (gate a): the proposer writes nothing unless the confirmer's
+    // signature over the act hash is present and verifies against the confirmer's bound key.
+    // The confirmer already checked ours before confirming (sessionConfirm).
+    var cpActSig, cpFail = '';
     try {
       if (role === 'proposer') {
         cpActSig = (data.proposal && data.proposal.confirmer_act_sig) || (data.confirmer && data.confirmer.act_sig) || undefined;
-        if (cpActSig && sessionActHash && counterpartyKey) {
-          var okCp = await HCP.verifyActSig(sessionActHash, cpActSig, counterpartyKey);
-          console.log('[countersig] confirmer signature ' + (okCp ? 'verified' : 'FAILED (passthrough)'));
-        }
+        if (!sessionActHash) cpFail = 'no act hash on this side';
+        else if (!cpActSig) cpFail = 'no confirmer signature';
+        else if (!counterpartyKey) cpFail = 'no confirmer key';
+        else if (!(await HCP.verifyActSig(sessionActHash, cpActSig, counterpartyKey))) cpFail = 'confirmer signature failed';
       } else {
         cpActSig = sessionCpActSig || undefined;
+        if (!cpActSig || !sessionActHash) cpFail = 'proposer signature not held';
       }
-    } catch(cpErr) { console.log('[countersig] read failed:', cpErr.message); }
+    } catch(cpErr) { cpFail = 'check failed: ' + cpErr.message; }
+    if (cpFail) {
+      console.log('[countersig] REFUSED (' + role + '): ' + cpFail + '; nothing recorded');
+      _sessionWritten = false;
+      exShowEnded('unsigned');
+      return;
+    }
+    console.log('[countersig] ' + (role === 'proposer' ? 'confirmer' : 'proposer') + ' signature verified; writing');
 
     const record = HCP.createRecord({
       type: 'exchange',
@@ -5678,6 +5697,7 @@ const PAIR_CODE_LENGTH = 4;
     var line;
     var sub = 'Nothing was recorded.';
     if (_exEndedBy === 'self') { line = 'This is your own chain'; sub = 'A chain cannot exchange with itself, even from another device. Nothing was recorded.'; }
+    else if (_exEndedBy === 'unsigned') { line = 'The signatures did not check'; sub = 'The other phone\u2019s signature on these terms was missing or did not match, so nothing was recorded on this phone. Try again, or try again on a different server.'; }
     else if (_exEndedByMe) line = 'You cancelled the exchange';
     else line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
     var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
