@@ -9511,7 +9511,8 @@ const PAIR_CODE_LENGTH = 4;
       } catch(e) { console.log('[invite] Could not parse invite cargo:', e.message); }
     }
     // Clean URL without reload
-    if (ref || hs || cf || cv || st || hw || pi) {
+    // v2.145.2: hs, cf and st were removed with the retired links; this line still read them and threw at every load.
+    if (ref || cv || hw || pi || params.get('hs') || params.get('cf') || params.get('st') || params.get('o1') || params.get('o2') || params.get('o3')) {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }
