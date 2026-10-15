@@ -9467,32 +9467,20 @@ const PAIR_CODE_LENGTH = 4;
     if (ref && ref.length === 16) {
       state.referrer = ref;
     }
-    // Check for incoming handshake proposal
-    const hs = params.get('hs');
-    if (hs) {
-      try {
-        state.pendingIncoming = { type: 'proposal', payload: b64Decode(hs) };
-      } catch(e) {}
-    }
-    // Check for incoming confirmation
-    const cf = params.get('cf');
-    if (cf) {
-      try {
-        state.pendingIncoming = { type: 'confirmation', payload: b64Decode(cf) };
-      } catch(e) {}
+    // v2.145.0 (Michael, Oct 15): the QR and offline exchange links (hs, cf, st) are
+    // retired until the path is rebuilt to the session standard (registry, Component 1:
+    // signatures checked, key bound to fingerprint, act hash and both signatures carried,
+    // one-shot). The old handlers never checked a signature or a key binding, and no
+    // screen in the app reaches them any more; a crafted link was the only way in.
+    // The chain view link (cv) is unrelated and stays.
+    if (params.get('hs') || params.get('cf') || params.get('st')) {
+      console.log('[offline] exchange link ignored: the QR path is retired until it is rebuilt');
     }
     // Check for incoming chain view
     const cv = params.get('cv');
     if (cv) {
       try {
         state.pendingIncoming = { type: 'chainview', payload: b64Decode(cv) };
-      } catch(e) {}
-    }
-    // Check for incoming settlement
-    const st = params.get('st');
-    if (st) {
-      try {
-        state.pendingIncoming = { type: 'settlement', payload: b64Decode(st) };
       } catch(e) {}
     }
     // Check for witness suggestions (slice 6). Silently verifies each
