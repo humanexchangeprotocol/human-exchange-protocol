@@ -10131,6 +10131,7 @@ function init() {
     // to confirm the witness is reachable. Fire-and-forget; the
     // function swallows its own errors.
     setTimeout(function() { retryPendingAttestations(); }, 7000);
+    setTimeout(function() { carriersRefresh(false); }, 12000); // v2.143.0: keep the saved carrier list fresh (at most every 6 h)
   }
   
   // After setup completes, check for guided intro
@@ -10276,7 +10277,13 @@ function init() {
       return serverFetch(w.url + '/status', { signal: AbortSignal.timeout(3000) }).then(function(r) { return r.ok ? w : null; }).catch(function() { return null; });
     });
     var live = (await Promise.all(probes)).filter(Boolean);
-    if (live.length === 0) { console.log('[street] no witness answered; using the configured one'); return null; }
+    if (live.length === 0) {
+      // v2.143.0: no trusted witness answered; start on a saved carrier (it carries, never signs).
+      var cs = carriersPick().slice(0, 16), proved = await Promise.all(cs.map(carrierProves));
+      var c = null; for (var ci = 0; ci < cs.length; ci++) { if (proved[ci]) { c = cs[ci]; break; } }
+      if (c) { c.street = await witnessStreet(c.pubkey); console.log('[street] no trusted witness answered; starting on saved carrier ' + c.url + ' (street ' + c.street + ')'); return c; }
+      console.log('[street] no witness answered; using the configured one'); return null;
+    }
     var pick = live[crypto.getRandomValues(new Uint8Array(1))[0] % live.length];
     pick.street = await witnessStreet(pick.pubkey);
     console.log('[street] ' + live.length + ' live of ' + cands.length + '; starting on ' + pick.url + ' (street ' + pick.street + ')');
@@ -10290,7 +10297,21 @@ function init() {
       var st = await witnessStreet(cands[i].pubkey, Math.max(street.length, EX_STREET_LEN));
       if (st.indexOf(street) === 0 || street.indexOf(st) === 0) out.push(cands[i].url);
     }
+    if (out.length === 0) out = await carrierStreetBundle(street);
     if (out.length === 0) out = await gossipStreetBundle(street);
+    return out;
+  }
+  // v2.143.0: a typed street that no trusted witness matches is checked against the saved
+  // carriers next; a match must prove its key at /status before the phone joins through it.
+  async function carrierStreetBundle(street) {
+    var cs = carriersPick(), m = [];
+    for (var i = 0; i < cs.length; i++) {
+      var st = await witnessStreet(cs[i].pubkey, Math.max(street.length, EX_STREET_LEN));
+      if (st.indexOf(street) === 0 || street.indexOf(st) === 0) m.push(cs[i]);
+    }
+    var ok = await Promise.all(m.map(carrierProves));
+    var out = m.filter(function(c, k) { return ok[k]; }).map(function(c) { return c.url; });
+    if (m.length) console.log('[carriers] street ' + street + ': ' + m.length + ' saved match(es), ' + out.length + ' proved their key');
     return out;
   }
 
@@ -10319,31 +10340,148 @@ function init() {
     if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/.test(h) || /^[0-9.]+$/.test(h)) return null;
     return 'https://' + h;
   }
-  async function gossipLearn() {
-    if (_gossipPeers && Date.now() - _gossipAt < GOSSIP_TTL_MS) return _gossipPeers;
-    var sources = exWitnessCandidates(), rep = getServerReputation(), known = {};
+  async function gossipLearn(srcOverride) {
+    if (!srcOverride && _gossipPeers && Date.now() - _gossipAt < GOSSIP_TTL_MS) return _gossipPeers;
+    var sources = srcOverride || exWitnessCandidates(), rep = getServerReputation(), known = {};
     getEffectiveTrustSet().forEach(function(w) { if (w.pubkey) known[String(w.pubkey).toLowerCase()] = true; });
+    // null = the source did not answer or failed its signature; [] = it answered with no peers.
     var lists = await Promise.all(sources.map(function(w) {
       return serverFetch(w.url + '/peers?signed=1', { signal: AbortSignal.timeout(4000) })
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(async function(d) {
-          if (!d || typeof d.signature !== 'string' || !Array.isArray(d.peers)) return [];
-          if (String(d.server_pubkey || '').toLowerCase() !== String(w.pubkey).toLowerCase()) return [];
-          if (!(await HCP.verifyWitnessPayload(d, w.pubkey))) { console.warn('[gossip] signature failed on the peer list from ' + w.url); return []; }
+          if (!d || typeof d.signature !== 'string' || !Array.isArray(d.peers)) return null;
+          if (String(d.server_pubkey || '').toLowerCase() !== String(w.pubkey).toLowerCase()) return null;
+          if (!(await HCP.verifyWitnessPayload(d, w.pubkey))) { console.warn('[gossip] signature failed on the peer list from ' + w.url); return null; }
           return d.peers;
-        }).catch(function() { return []; });
+        }).catch(function() { return null; });
     }));
+    // v2.143.0: no trusted witness answered, so ask the saved carriers for their lists instead.
+    if (!srcOverride && lists.every(function(l) { return l === null; })) {
+      var cs = carriersPick().slice(0, CARRIER_PER_SOURCE);
+      if (cs.length) { console.log('[carriers] no trusted witness answered; asking ' + cs.length + ' saved carrier(s) for peers'); return gossipLearn(cs); }
+    }
     var out = [], seen = {};
-    lists.forEach(function(peers) { peers.forEach(function(p) {
-      var pk = (p && typeof p.pubkey === 'string') ? p.pubkey.toLowerCase() : '';
-      if (!/^[0-9a-f]{64}$/.test(pk) || known[pk] || seen[pk]) return;
-      var u = gossipPeerUrl(p.endpoint);
-      if (!u || (rep[u] && rep[u].integrity)) return;
-      seen[pk] = true; out.push({ url: u, pubkey: pk });
-    }); });
-    console.log('[gossip] ' + out.length + ' usable peer(s) learned from ' + sources.length + ' trusted witness(es)');
-    _gossipPeers = out; _gossipAt = Date.now();
+    lists.forEach(function(peers, k) {
+      var mine = [];
+      (peers || []).forEach(function(p) {
+        var pk = (p && typeof p.pubkey === 'string') ? p.pubkey.toLowerCase() : '';
+        if (!/^[0-9a-f]{64}$/.test(pk) || known[pk]) return;
+        var u = gossipPeerUrl(p.endpoint);
+        if (!u || (rep[u] && rep[u].integrity)) return;
+        mine.push({ url: u, pubkey: pk });
+        if (!seen[pk]) { seen[pk] = true; out.push({ url: u, pubkey: pk }); }
+      });
+      if (mine.length) carriersAdd(sources[k].url, mine);
+    });
+    console.log('[gossip] ' + out.length + ' usable peer(s) learned from ' + sources.length + ' ' + (srcOverride ? 'saved carrier(s)' : 'trusted witness(es)'));
+    if (!srcOverride) { _gossipPeers = out; _gossipAt = Date.now(); }
     return out;
+  }
+
+  // === THE SAVED CARRIER LIST (v2.143.0; shape ruled Oct 14, flood defenses ruled Oct 15) ===
+  // Witnesses learned from the signed peer lists are saved on this phone as CARRIERS: they
+  // can pair two phones and relay sealed packets, and they never sign. Attestation stays with
+  // the trusted set (seeds and hand-added): submitWitnessOnce uses the configured witness and
+  // retryPendingAttestations walks only getEffectiveTrustSet(). Carriers are used only when no
+  // trusted witness answers. Flood defenses (fixed numbers, so instance count stops mattering):
+  // at most CARRIER_PER_SOURCE from any one source; grouped by owner (registrable domain), at
+  // most CARRIER_PER_GROUP per group, a free name service counts as one owner with
+  // CARRIER_PER_FREE; two tiers, heard-of and worked (completed a verified handshake), and
+  // heard-of never evicts worked; a fixed table; a newcomer replaces a random heard-of entry of
+  // its own group (or, when the table is full, of the largest group); picking is random across
+  // groups, worked first, then older; never newest first. Limit: a web page cannot see a
+  // server's IP, so grouping is by name. Invisible to the person; Settings shows one count.
+  // Security tenet gate: all of this lives on the phone; /peers and /status carry no body.
+  var CARRIERS_KEY = 'hep_carriers' + ((typeof location !== 'undefined' && /\/dev\//.test(location.pathname)) ? '_dev' : '');
+  var CARRIERS_REFRESH_KEY = CARRIERS_KEY + '_at';
+  var CARRIER_MAX = 64, CARRIER_PER_SOURCE = 8, CARRIER_PER_GROUP = 2, CARRIER_PER_FREE = 4;
+  var CARRIER_STALE_MS = 14 * 24 * 3600 * 1000, CARRIER_REFRESH_MS = 6 * 3600 * 1000;
+  var CARRIER_FREE_NAMES = ['duckdns.org', 'ddns.net', 'no-ip.org', 'no-ip.com', 'noip.me', 'hopto.org', 'zapto.org', 'sytes.net', 'servebeer.com', 'afraid.org', 'mooo.com', 'dynu.net', 'dynv6.net', 'freeddns.org', 'nip.io', 'sslip.io', 'ngrok.io', 'ngrok-free.app', 'ngrok.app', 'trycloudflare.com', 'loca.lt', 'serveo.net', 'github.io', 'netlify.app', 'vercel.app', 'pages.dev', 'workers.dev', 'herokuapp.com', 'onrender.com', 'fly.dev', 'glitch.me', 'repl.co', 'replit.dev', 'deno.dev', 'tailscale.net', 'ts.net'];
+  var CARRIER_TWO_LEVEL = ['co.uk', 'org.uk', 'ac.uk', 'me.uk', 'com.au', 'net.au', 'org.au', 'co.in', 'net.in', 'org.in', 'firm.in', 'co.jp', 'ne.jp', 'or.jp', 'com.br', 'co.nz', 'co.za', 'com.mx', 'com.ar', 'com.cn', 'com.tw', 'co.kr', 'com.sg', 'com.tr', 'com.hk', 'co.id', 'com.my', 'com.ph', 'com.ng', 'co.ke', 'com.pk', 'com.bd', 'com.np', 'com.co', 'com.pe', 'com.ve', 'com.ua', 'com.eg', 'co.il', 'co.th', 'com.vn'];
+  function carrierGroup(url) {
+    var host = ''; try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return { g: 'bad:' + url, cap: 1 }; }
+    for (var i = 0; i < CARRIER_FREE_NAMES.length; i++) {
+      var f = CARRIER_FREE_NAMES[i];
+      if (host === f || host.slice(-(f.length + 1)) === '.' + f) return { g: 'free:' + f, cap: CARRIER_PER_FREE };
+    }
+    var lab = host.split('.'), two = lab.slice(-2).join('.');
+    var owner = (lab.length >= 3 && CARRIER_TWO_LEVEL.indexOf(two) >= 0) ? lab.slice(-3).join('.') : two;
+    return { g: owner, cap: CARRIER_PER_GROUP };
+  }
+  function carriersLoad() {
+    try { var a = JSON.parse(localStorage.getItem(CARRIERS_KEY) || '[]'); return Array.isArray(a) ? a.filter(function(c) { return c && c.url && c.pubkey; }) : []; } catch (e) { return []; }
+  }
+  function carriersSave(list) { try { localStorage.setItem(CARRIERS_KEY, JSON.stringify(list)); } catch (e) {} }
+  function carrierRand(n) { return n > 0 ? crypto.getRandomValues(new Uint32Array(1))[0] % n : 0; }
+  function carrierShuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = carrierRand(i + 1), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function carriersAdd(sourceUrl, peers) {
+    var now = Date.now(), list = carriersLoad(), trusted = {}, added = 0, swapped = 0;
+    getEffectiveTrustSet().forEach(function(w) { if (w.pubkey) trusted[String(w.pubkey).toLowerCase()] = true; });
+    // Heard-of entries nobody has repeated for two weeks age out; worked entries stay.
+    list = list.filter(function(c) { return c.worked || now - (c.heard || c.seen || 0) < CARRIER_STALE_MS; });
+    var src = ''; try { src = new URL(sourceUrl).host; } catch (e) { src = String(sourceUrl); }
+    // The source controls the order of its own list, so shuffle before taking any.
+    carrierShuffle(peers.slice()).forEach(function(p) {
+      if (trusted[p.pubkey]) return;
+      var have = null;
+      for (var i = 0; i < list.length; i++) { if (list[i].pubkey === p.pubkey) { have = list[i]; break; } }
+      if (have) { have.heard = now; return; } // repeated by someone: still alive; first URL kept
+      if (list.filter(function(c) { return c.src === src; }).length >= CARRIER_PER_SOURCE) return;
+      var grp = carrierGroup(p.url), inGroup = list.filter(function(c) { return c.g === grp.g; });
+      var entry = { url: p.url, pubkey: p.pubkey, src: src, g: grp.g, seen: now, heard: now, worked: 0 };
+      if (inGroup.length >= grp.cap || list.length >= CARRIER_MAX) {
+        var pool = inGroup.length >= grp.cap ? inGroup : null;
+        if (!pool) { // table full: take from the largest group
+          var counts = {}, big = null;
+          list.forEach(function(c) { counts[c.g] = (counts[c.g] || 0) + 1; });
+          Object.keys(counts).forEach(function(g) { if (!big || counts[g] > counts[big]) big = g; });
+          pool = list.filter(function(c) { return c.g === big; });
+        }
+        var heardOnly = pool.filter(function(c) { return !c.worked; });
+        if (!heardOnly.length) return; // heard-of never evicts worked
+        var out = heardOnly[carrierRand(heardOnly.length)];
+        list.splice(list.indexOf(out), 1); swapped++;
+      } else added++;
+      list.push(entry);
+    });
+    carriersSave(list);
+    if (added || swapped) console.log('[carriers] from ' + src + ': ' + added + ' new, ' + swapped + ' swapped within a full group; ' + list.length + ' carrier(s) on this phone');
+  }
+  // One per group, groups in random order with worked groups first; within a group worked
+  // first, then the oldest. Quarantined servers are skipped.
+  function carriersPick() {
+    var rep = getServerReputation(), groups = {};
+    carriersLoad().forEach(function(c) { if (!(rep[c.url] && rep[c.url].integrity)) (groups[c.g] = groups[c.g] || []).push(c); });
+    var picks = Object.keys(groups).map(function(g) {
+      return groups[g].sort(function(a, b) { return (b.worked ? 1 : 0) - (a.worked ? 1 : 0) || (a.seen || 0) - (b.seen || 0); })[0];
+    });
+    var worked = carrierShuffle(picks.filter(function(c) { return c.worked; }));
+    var heard = carrierShuffle(picks.filter(function(c) { return !c.worked; }));
+    return worked.concat(heard).map(function(c) { return { url: c.url, pubkey: c.pubkey }; });
+  }
+  async function carrierProves(c) {
+    try {
+      var r = await serverFetch(c.url + '/status', { signal: AbortSignal.timeout(3000) });
+      if (!r.ok) return false;
+      var d = await r.json();
+      return !!(d && typeof d.server_pubkey === 'string' && d.server_pubkey.trim().toLowerCase() === c.pubkey);
+    } catch (e) { return false; }
+  }
+  function carrierMarkWorked(url) {
+    if (!url) return;
+    var list = carriersLoad(), hit = false, now = Date.now();
+    list.forEach(function(c) { if (c.url === url) { c.worked = now; c.heard = now; hit = true; } });
+    if (hit) { carriersSave(list); console.log('[carriers] ' + url + ' paired an exchange; kept as worked'); }
+  }
+  function carriersCount() { return carriersLoad().length; }
+  async function carriersRefresh(force) {
+    try {
+      var last = +(localStorage.getItem(CARRIERS_REFRESH_KEY) || 0);
+      if (!force && Date.now() - last < CARRIER_REFRESH_MS) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      localStorage.setItem(CARRIERS_REFRESH_KEY, String(Date.now()));
+      _gossipPeers = null; await gossipLearn();
+    } catch (e) { console.log('[carriers] refresh failed:', e.message); }
   }
   async function gossipStreetBundle(street) {
     var learned = await gossipLearn(), matches = [];
@@ -10712,6 +10850,7 @@ function init() {
         sessionSharedKey = est.key; sessionSid = est.sid; sessionPartner._verified = est.verified;
       } catch(ek) { console.log('[ex-flow] session key failed:', ek.message); sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
     }
+    try { carrierMarkWorked(sessionWitnessUrl); } catch (_) {} // v2.143.0: a carrier that carried a verified handshake is kept
 
     // Build our snapshot extras once; it is sent only once the partner's key is verified.
     if (!sessionPartner._extras && sessionSharedKey) {
@@ -15629,10 +15768,12 @@ function init() {
     try {
       var resp = await serverFetch(url + '/status', { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) throw new Error();
-      el.textContent = 'Connected';
+      var ncar = carriersCount();
+      el.textContent = 'Connected' + (ncar ? '. ' + ncar + ' more saved for connecting' : '');
       el.style.color = 'var(--green)';
     } catch(e) {
-      el.textContent = 'Not connected';
+      var ncar2 = carriersCount();
+      el.textContent = 'Not connected' + (ncar2 ? '. ' + ncar2 + ' more saved for connecting' : '');
       el.style.color = 'var(--red)';
     }
   }
