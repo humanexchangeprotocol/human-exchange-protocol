@@ -3065,7 +3065,7 @@ const PAIR_CODE_LENGTH = 4;
       'If you lose every device, open HEP on a new one, choose Restore from a backup file, and enter your PIN. Your record comes back exactly as it was.'
     ] },
     pwa: { title: 'Why HEP is a web app', paras: [
-      'HEP is built so that anyone with a smartphone can use it, with or without an internet connection.',
+      'HEP is built so that anyone with a smartphone can use it. Opening the app and reading your record need no connection; an exchange needs a brief one to a witness server.',
       'It is a web app, not something you get from an app store. No company has to approve it, list it, or keep it available. It can be shared from one phone to another, kept on a thumb drive, and passed along without anyone\u2019s permission.',
       'For you, this means your record lives on your own device, not on someone else\u2019s server. That is what keeps it yours. It is also why backing it up is up to you.'
     ] }
@@ -7725,6 +7725,7 @@ const PAIR_CODE_LENGTH = 4;
     try {
       const resp = await serverFetch(url + '/witness', {
         method: 'POST',
+        signal: AbortSignal.timeout(8000), // v2.144.0: a dead witness hands over to the next, not a hang
         headers: { 'Content-Type': 'application/json' },
         // v2.135.0: only the hash, the time and the act hash; the keys and chain signature
         // were never needed to attest a hash, and witness v2.10.0 drops them.
@@ -7854,8 +7855,36 @@ const PAIR_CODE_LENGTH = 4;
   // witness, on either phone's timeline independently. Multi-witness
   // attestation later in the roadmap composes naturally: each pending
   // entry collects signatures from multiple witnesses over time.
+  //
+  // v2.144.0 (May 12 pin, carried): attestation no longer goes to the configured
+  // witness first. The trusted, unquarantined witnesses are tried in a fresh random
+  // order each time, so no single server sees all first-attempt traffic and a
+  // quarantined one is never asked. The two phones in one exchange may attest on
+  // different witnesses; that is fine, each record carries its own attestation.
+  // The configured witness is only the fallback when the trust set is empty.
+  function attestWitnessOrder() {
+    var rep = getServerReputation(), out = [];
+    var set = getEffectiveTrustSet();
+    for (var i = 0; i < set.length; i++) {
+      var w = set[i];
+      if (!w || !w.url || !w.pubkey) continue;
+      if (rep[w.url] && rep[w.url].integrity) continue;           // quarantined (v2.138.0)
+      if (getServerTrust(w.url) < SERVER_TRUST_THRESHOLD) continue; // below the trust floor
+      out.push(w.url);
+    }
+    for (var j = out.length - 1; j > 0; j--) {                    // Fisher-Yates, crypto random
+      var k = crypto.getRandomValues(new Uint32Array(1))[0] % (j + 1);
+      var t = out[j]; out[j] = out[k]; out[k] = t;
+    }
+    if (out.length === 0 && getWitnessUrl()) out.push(getWitnessUrl());
+    return out;
+  }
+
   async function submitWitness(record, counterpartyPub) {
-    const ok = await submitWitnessOnce(record, counterpartyPub);
+    var order = attestWitnessOrder(), ok = false;
+    for (var i = 0; i < order.length && !ok; i++) {
+      ok = await submitWitnessOnce(record, counterpartyPub, order[i]);
+    }
     if (!ok) {
       enqueuePendingAttestation(record, counterpartyPub);
     }
@@ -7940,20 +7969,9 @@ const PAIR_CODE_LENGTH = 4;
 
     // Build the candidate witness list: every entry in the effective
     // trust set (HEP_SEEDS + user-added) that has a bootstrap URL and
-    // isn't below the trust threshold. Order is deterministic across
-    // phones running the same build for the HEP_SEEDS portion; user
-    // additions follow in insertion order.
-    var candidates = [];
-    var trustSet = getEffectiveTrustSet();
-    for (var s = 0; s < trustSet.length; s++) {
-      var entry = trustSet[s];
-      if (!entry || !entry.url || !entry.pubkey) continue;
-      var trust = getServerTrust(entry.url);
-      if (trust < SERVER_TRUST_THRESHOLD) {
-        continue; // quarantined locally
-      }
-      candidates.push({ url: entry.url, pubkey: entry.pubkey });
-    }
+    // is neither quarantined nor below the trust threshold.
+    // v2.144.0: same random order as the live path (trusted, unquarantined, shuffled).
+    var candidates = attestWitnessOrder().map(function(u) { return { url: u }; });
     if (candidates.length === 0) {
       console.log('[attest-retry] no candidate witnesses available; skipping');
       return;
@@ -9449,32 +9467,20 @@ const PAIR_CODE_LENGTH = 4;
     if (ref && ref.length === 16) {
       state.referrer = ref;
     }
-    // Check for incoming handshake proposal
-    const hs = params.get('hs');
-    if (hs) {
-      try {
-        state.pendingIncoming = { type: 'proposal', payload: b64Decode(hs) };
-      } catch(e) {}
-    }
-    // Check for incoming confirmation
-    const cf = params.get('cf');
-    if (cf) {
-      try {
-        state.pendingIncoming = { type: 'confirmation', payload: b64Decode(cf) };
-      } catch(e) {}
+    // v2.145.0 (Michael, Oct 15): the QR and offline exchange links (hs, cf, st) are
+    // retired until the path is rebuilt to the session standard (registry, Component 1:
+    // signatures checked, key bound to fingerprint, act hash and both signatures carried,
+    // one-shot). The old handlers never checked a signature or a key binding, and no
+    // screen in the app reaches them any more; a crafted link was the only way in.
+    // The chain view link (cv) is unrelated and stays.
+    if (params.get('hs') || params.get('cf') || params.get('st')) {
+      console.log('[offline] exchange link ignored: the QR path is retired until it is rebuilt');
     }
     // Check for incoming chain view
     const cv = params.get('cv');
     if (cv) {
       try {
         state.pendingIncoming = { type: 'chainview', payload: b64Decode(cv) };
-      } catch(e) {}
-    }
-    // Check for incoming settlement
-    const st = params.get('st');
-    if (st) {
-      try {
-        state.pendingIncoming = { type: 'settlement', payload: b64Decode(st) };
       } catch(e) {}
     }
     // Check for witness suggestions (slice 6). Silently verifies each
@@ -10321,7 +10327,7 @@ function init() {
   // against that witness's own key, and looks for the street among the peers. A matching
   // peer must then answer /status with the key it was announced under. A learned witness
   // carries this one join only: it is never added to the trust set, never stored, never
-  // attests (attestation goes to the configured witness), and faces every handshake check
+  // attests (attestation goes to a trusted witness), and faces every handshake check
   // (signed session keys, the mark, signed sealed snapshots, quarantine on failure).
   // Usable peers: a name on port 443 (https). Loopback only when the app itself runs on
   // loopback (the headless harness), so a hostile peer list cannot make a real phone probe

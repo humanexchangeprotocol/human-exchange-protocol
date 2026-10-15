@@ -3065,7 +3065,7 @@ const PAIR_CODE_LENGTH = 4;
       'If you lose every device, open HEP on a new one, choose Restore from a backup file, and enter your PIN. Your record comes back exactly as it was.'
     ] },
     pwa: { title: 'Why HEP is a web app', paras: [
-      'HEP is built so that anyone with a smartphone can use it, with or without an internet connection.',
+      'HEP is built so that anyone with a smartphone can use it. Opening the app and reading your record need no connection; an exchange needs a brief one to a witness server.',
       'It is a web app, not something you get from an app store. No company has to approve it, list it, or keep it available. It can be shared from one phone to another, kept on a thumb drive, and passed along without anyone\u2019s permission.',
       'For you, this means your record lives on your own device, not on someone else\u2019s server. That is what keeps it yours. It is also why backing it up is up to you.'
     ] }
