@@ -1755,7 +1755,7 @@ const PAIR_CODE_LENGTH = 4;
     var c = copyInfo()[r.originalHash]; return c ? Object.assign({}, r, c) : r;
   }
   function mcActs() {
-    var ex = HCP.acts(state.chain).map(withCopyInfo).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
+    var ex = HCP.countedActs(state.chain).map(withCopyInfo).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; }); // Waiting counts for nothing (Oct 16)
     if (!ex.length) return { list: [], span: 1 };
     var t0 = new Date(ex[0].timestamp).getTime();
     var list = ex.map(function(r) {
@@ -2168,7 +2168,7 @@ const PAIR_CODE_LENGTH = 4;
     _mcFromHome = false;
     _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
     document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
-    var ex = state.chain.filter(HCP.isAct);
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }); // Waiting counts for nothing (Oct 16)
     var cur = 0, cos = 0, nP = 0, nR = 0, wit = 0, cp = {};
     ex.forEach(function(r) {
       if (r.energyState === 'provided') { cur += r.value; nP++; }
@@ -2887,6 +2887,40 @@ const PAIR_CODE_LENGTH = 4;
     renderBrowserStorageBanner();
   }
 
+  // v2.151.0 (Michael, Oct 16 walk): a record that is Waiting (agreed and signed on both phones, but this
+  // phone never heard back that theirs holds it) says so on Home, and names who to finish it with. The
+  // phone cannot know why the close stopped (app closed, tunnel, dropped hop); it knows only that the
+  // record is not final. No pill: there is no action yet (the one-scan wrap-up is a later build); the
+  // line opens the record (one) or the history (several). Dim text, never red (rule 8: red never touches
+  // a record or a person).
+  function waitingActs() { return exActs().filter(function(x) { return x.r.type !== HCP.RECORD_TYPE_REPAIR && !HCP.isFinal(x.r); }); }
+  function renderHomeWaitingLine() {
+    var existing = document.getElementById('home-waiting-line');
+    if (existing) existing.remove();
+    var W = waitingActs();
+    if (!W.length) return;
+    var hero = document.querySelector('#tab-home-content .home-hero');
+    if (!hero) return;
+    var b = document.createElement('div');
+    b.id = 'home-waiting-line'; b.className = 'home-backup';
+    var h;
+    if (W.length === 1) {
+      var name = state.settings.hideNames ? '' : (W[0].r.counterpartyName || '');
+      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Finish it with them when you' + BS + 'u2019re together.</div>' +
+          '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exDetailOpen(' + W[0].i + ');return false">See the record</a></p>';
+    } else {
+      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Finish them with the other person when you' + BS + 'u2019re together.</div>' +
+          '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exListOpen();return false">See the records</a></p>';
+    }
+    b.innerHTML = h;
+    hero.appendChild(b);
+  }
+  function renderHomeCloseTrace() {
+    var existing = document.getElementById('home-close-trace'); if (existing) existing.remove();
+    var hero = document.querySelector('#tab-home-content .home-hero'); if (!hero) return;
+    var h = closeTraceHTML(); if (h) hero.insertAdjacentHTML('beforeend', h);
+  }
+
   // iOS-only: in a Safari tab (not installed) the chain lives only in this
   // browser's storage. v2.92.0 (Michael, Oct 3): the reminder shows only
   // when there are exchanges on the chain that no backup has captured,
@@ -3390,7 +3424,7 @@ const PAIR_CODE_LENGTH = 4;
     // we leave them where they were.
     if (wasDone) {
       try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
-      toast('Exchange complete');
+      if (!(_ldr && _ldr.stalled)) toast('Exchange complete');
     }
     // Hooks the completion screen owed (see writeSessionRecord).
     if (typeof _exRV !== 'undefined' && _exRV.finish) {
@@ -3518,6 +3552,9 @@ const PAIR_CODE_LENGTH = 4;
       category: document.getElementById('ex-category').value.trim() || undefined,
       duration: totalMins > 0 ? totalMins : undefined,
     };
+
+    // v2.146.0: exchange by scanning (no server). The beats composed the terms; scan 1 carries them.
+    if (exOffActive && !sessionPartner) { await exOffOffer(details); return; }
 
     // Store proposal context (NOT writing to chain yet)
     state.pendingProposal = {
@@ -4081,6 +4118,7 @@ const PAIR_CODE_LENGTH = 4;
   // === LAYER 3: Nonce-Bound Integrity Hash ===
   // Random nonce bound to proposal payload, retained on device, verified on return.
   let sessionProposalNonce = null; // hex string of random nonce sent with proposal
+  let sessionMyBackups = null; // hop close rendezvous: the backup witnesses this phone named (sealed)
   let sessionProposalIntegrityHash = null; // hash(nonce + payload fields)
 
   function sessionSetState(newState) {
@@ -4172,7 +4210,7 @@ const PAIR_CODE_LENGTH = 4;
       try {
         var fbDensity = 0;
         try { fbDensity = +HCP.chainDensity(state.chain).toFixed(1); } catch(de) {}
-        var fbEx = state.chain.filter(HCP.isAct);
+        var fbEx = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }); // Waiting counts for nothing (Oct 16)
         threadSnap = {
           n: fbEx.length,
           g: fbEx.filter(function(r){ return r.energyState === 'provided'; }).length,
@@ -4871,6 +4909,10 @@ const PAIR_CODE_LENGTH = 4;
       var nonceHex = Array.from(nonceBytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
       exchangeContent._nonce = nonceHex;
       sessionProposalNonce = nonceHex;
+      // Hop close rendezvous (Oct 16): where to finish if this witness stalls, named here inside
+      // the sealed content so the witness never sees it. Both phones keep the named order.
+      sessionMyBackups = closeBackupList();
+      exchangeContent.backups = sessionMyBackups;
       // Compute integrity hash: nonce + canonical payload fields
       var integrityInput = nonceHex + '|' + exchangeContent.value + '|' + exchangeContent.direction + '|' + (exchangeContent.description || '') + '|' + (exchangeContent.category || '') + '|' + (exchangeContent.duration || 0);
       var integrityBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(integrityInput));
@@ -5025,6 +5067,8 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.proposer_photo = dec.photo;
             sessionProposal.breakdown = dec.breakdown || null;
             sessionProposal.breakdownSig = dec.breakdownSig || null;
+            sessionProposal._nonce = dec._nonce || ''; // hop close: the per-exchange nonce, sealed in hop 1
+            sessionProposal._backups = Array.isArray(dec.backups) ? dec.backups.slice(0, 3) : []; // rendezvous: the proposer's backup witnesses
             // v2.134.0: the proposer's device fields arrive inside the envelope only.
             sessionProposal.sensor_hash = (dec.xd && dec.xd.sensorHash) || '';
             sessionProposal.platform = (dec.xd && dec.xd.platform) || '';
@@ -5215,22 +5259,31 @@ const PAIR_CODE_LENGTH = 4;
         // v2.134.0 (security tenet gate): this phone's device fields reach the proposer inside
         // the sealed snapshot, refreshed here before confirming; nothing readable goes to the witness.
         if (!sessionSharedKey) { toast('Could not set up a secure connection. Nothing was recorded.'); _sessionWritten = false; if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; } return; }
-        await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' } });
-        // Countersignature, confirmer side. Passthrough (observe before enforce):
-        // a mismatch or a bad proposer signature is logged, never blocks.
-        var confirmActSig = '';
+        sessionMyBackups = closeBackupList();
+        await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' }, _backups: sessionMyBackups });
+        // Countersignature, confirmer side. ENFORCED from v2.147.0 (gate a; observe mode
+        // since v2.100.0, Oct 5): the proposer's signature over the act hash must be present
+        // and verify against the key bound to their fingerprint, and their act hash must equal
+        // ours, or nothing is recorded and the confirmation is never sent.
+        var confirmActSig = '', csFail = '';
         try {
-          if (sessionProposal) {
+          if (!sessionProposal) csFail = 'no proposal';
+          else {
             sessionActHash = await HCP.computeActHash({ proposerFp: sessionPartner ? sessionPartner.fingerprint : '', confirmerFp: state.fingerprint, value: sessionProposal.value, direction: sessionProposal.direction, description: sessionProposal.description, category: sessionProposal.category || '', duration: sessionProposal.duration || 0, proposalTs: sessionProposal.device_ts });
-            if (sessionProposal.act_hash && sessionProposal.act_hash !== sessionActHash) console.warn('[countersig] act hash mismatch: theirs ' + sessionProposal.act_hash.slice(0, 12) + ' mine ' + sessionActHash.slice(0, 12));
-            if (sessionProposal.proposer_act_sig && sessionPartner && sessionPartner.public_key) {
-              var okSig = await HCP.verifyActSig(sessionActHash, sessionProposal.proposer_act_sig, sessionPartner.public_key);
-              console.log('[countersig] proposer signature ' + (okSig ? 'verified' : 'FAILED (passthrough)'));
-              sessionCpActSig = sessionProposal.proposer_act_sig;
-            }
-            confirmActSig = await HCP.signActHash(sessionActHash, state.privateKey);
+            if (sessionProposal.act_hash && sessionProposal.act_hash !== sessionActHash) csFail = 'act hash mismatch';
+            else if (!sessionProposal.proposer_act_sig || !sessionPartner || !sessionPartner.public_key) csFail = 'no proposer signature';
+            else if (!(await HCP.verifyActSig(sessionActHash, sessionProposal.proposer_act_sig, sessionPartner.public_key))) csFail = 'proposer signature failed';
+            else { sessionCpActSig = sessionProposal.proposer_act_sig; confirmActSig = await HCP.signActHash(sessionActHash, state.privateKey); }
           }
-        } catch(csErr) { console.log('[countersig] confirmer failed:', csErr.message); }
+        } catch(csErr) { csFail = 'check failed: ' + csErr.message; }
+        if (csFail) {
+          console.log('[countersig] REFUSED (confirmer): ' + csFail + '; nothing recorded');
+          _sessionWritten = false; sessionActHash = null; sessionCpActSig = null;
+          try { exNotifyCancel(); } catch (_) {}
+          exShowEnded('unsigned');
+          return;
+        }
+        console.log('[countersig] proposer signature verified');
         const resp = await serverFetch(url + '/session/' + sessionCode + '/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5337,6 +5390,7 @@ const PAIR_CODE_LENGTH = 4;
       if (data.partner && data.partner.encrypted_snapshot && sessionSharedKey) {
         var cpSnap = await HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey);
         if (cpSnap && cpSnap._xd) data._cpXd = cpSnap._xd;
+        data._cpBackups = (cpSnap && Array.isArray(cpSnap._backups)) ? cpSnap._backups.slice(0, 3) : [];
       }
     } catch(xdErr) { console.log('[session] confirmer device fields unavailable:', xdErr.message); }
     sessionSetState('done');
@@ -5400,18 +5454,29 @@ const PAIR_CODE_LENGTH = 4;
     // Countersignature: the other person's signature over the shared act hash.
     // Proposer reads the confirmer's signature from the session; the confirmer
     // kept the proposer's at confirm time. Verified in passthrough, logged only.
-    var cpActSig;
+    // ENFORCED from v2.147.0 (gate a): the proposer writes nothing unless the confirmer's
+    // signature over the act hash is present and verifies against the confirmer's bound key.
+    // The confirmer already checked ours before confirming (sessionConfirm).
+    var cpActSig, cpFail = '';
     try {
       if (role === 'proposer') {
         cpActSig = (data.proposal && data.proposal.confirmer_act_sig) || (data.confirmer && data.confirmer.act_sig) || undefined;
-        if (cpActSig && sessionActHash && counterpartyKey) {
-          var okCp = await HCP.verifyActSig(sessionActHash, cpActSig, counterpartyKey);
-          console.log('[countersig] confirmer signature ' + (okCp ? 'verified' : 'FAILED (passthrough)'));
-        }
+        if (!sessionActHash) cpFail = 'no act hash on this side';
+        else if (!cpActSig) cpFail = 'no confirmer signature';
+        else if (!counterpartyKey) cpFail = 'no confirmer key';
+        else if (!(await HCP.verifyActSig(sessionActHash, cpActSig, counterpartyKey))) cpFail = 'confirmer signature failed';
       } else {
         cpActSig = sessionCpActSig || undefined;
+        if (!cpActSig || !sessionActHash) cpFail = 'proposer signature not held';
       }
-    } catch(cpErr) { console.log('[countersig] read failed:', cpErr.message); }
+    } catch(cpErr) { cpFail = 'check failed: ' + cpErr.message; }
+    if (cpFail) {
+      console.log('[countersig] REFUSED (' + role + '): ' + cpFail + '; nothing recorded');
+      _sessionWritten = false;
+      exShowEnded('unsigned');
+      return;
+    }
+    console.log('[countersig] ' + (role === 'proposer' ? 'confirmer' : 'proposer') + ' signature verified; writing');
 
     const record = HCP.createRecord({
       type: 'exchange',
@@ -5523,6 +5588,30 @@ const PAIR_CODE_LENGTH = 4;
         if (rc.sig) { var rcAh2 = sessionActHash; receiptCheck(rcAh2, rc).then(function(ok) { rc.checked = ok ? 'ok' : 'changed'; save(); }); }
       }
     } catch (rcErr) { console.log('[receipt] keep failed:', rcErr.message); }
+    // Hop close (Oct 16 2026, registry Component 1): write, then sign, then send. Both phones
+    // write WAITING here. Ruled Oct 16 (Michael): neither phone carries anything forward until
+    // the walk of the hops is done. The confirmer goes FINAL on the proposer's receipt (hop 3),
+    // the proposer on the confirmer's receipt (hop 4). A Waiting record counts for nothing.
+    // Needs the sealed nonce from hop 1; a partner app without it leaves the record as before.
+    var closeCtx = null;
+    closeTraceReset(role); // v2.153.1: the trace starts before the gate, so a phone that never builds a context says why on screen
+    try {
+      var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
+      if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
+        HCP.setClose(record, HCP.CLOSE_WAITING, 2);
+        var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
+        var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
+        closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is WAITING' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
+        closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2,
+          servers: closeServerOrder(getSessionWitnessUrl(), pList, cList), alts: [], pendingHop: 0 };
+      } else {
+        var missing = [];
+        if (!sessionActHash) missing.push('act hash'); if (!closeNonce) missing.push('nonce'); if (!sessionSharedKey) missing.push('shared key'); if (!sessionSid) missing.push('session id');
+        if (!(sessionPartner && sessionPartner.public_key)) missing.push('partner key'); if (!sessionCode) missing.push('session code');
+        console.log('[close] no close context (missing: ' + missing.join(', ') + '); record kept as before');
+        closeTrace('NO CLOSE: missing ' + missing.join(', ') + '; record kept as before (not Waiting, not Final)');
+      }
+    } catch (ce) { console.log('[close] setup failed:', ce.message); closeTrace('close setup FAILED: ' + ce.message); }
     save();
 
     // Witness attestation
@@ -5573,8 +5662,16 @@ const PAIR_CODE_LENGTH = 4;
     // the sentence stay until Done. Plays only if the layout is on
     // screen; closeExchange then runs the invite pipeline hooks
     // (_exRV.finish). Otherwise finish here as before.
+    // v2.155.0 (Michael, Oct 16): with the hop close, the ladder screen shows the steps as they really
+    // happen and the wave plays only once this phone's record is Final. Without it (an older partner app),
+    // the wave plays as before.
     var played = false;
-    try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    if (closeCtx) {
+      if (exRVIsShowing()) { try { ldrStart(role); played = true; _exRV.finish = true; } catch(le) { console.log('[ladder] failed:', le.message); } }
+      closeRun(closeCtx);
+    } else {
+      try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    }
     if (!played) {
       closeExchange();
       // Invite pipeline room sweep: return the inviter to the queue.
@@ -5595,6 +5692,173 @@ const PAIR_CODE_LENGTH = 4;
       try { if (typeof refreshHome === 'function') refreshHome(); } catch(_) {}
     }, 4100);
   }
+
+  // ===== The hop close (dev v2.149.0, Oct 16 2026; registry Component 1) =====
+  // After both records are written, hops 3 and 4 are signed receipts carried as sealed
+  // thread messages (t: 'close') over the witness that relayed the exchange. The witness
+  // row changes by nothing: the hop number, nonce and act hash travel inside the sealed
+  // content. Proposer: sends hop 3, waits for hop 4 (close confirmed). Confirmer: waits
+  // for hop 3 (record goes final), sends hop 4. A hop that does not arrive within
+  // CLOSE_TIMEOUT_MS is a stall: the record stays as it is (the rendezvous to another
+  // server is the next build step) and the stall is logged.
+  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000, CLOSE_MOVE_MS = 15000, CLOSE_MAX_SERVERS = 5;
+  var _closeTimer = null;
+  // The backup witnesses this phone names: trusted, unquarantined, not the session witness, three at most.
+  function closeBackupList(exclude) {
+    var cur = exclude || getSessionWitnessUrl();
+    try { return attestWitnessOrder().filter(function(u) { return u && u !== cur; }).slice(0, 3); } catch (e) { return []; }
+  }
+  // The agreed order both phones walk on a stall: the proposer's named list, then the confirmer's,
+  // then the built-in seeds, never the witness that stalled, five at most. Deterministic on both phones.
+  function closeServerOrder(cur, pList, cList) {
+    var out = [], seen = {}; seen[cur] = true;
+    function add(u) { if (u && typeof u === 'string' && /^https?:\/\//.test(u) && !seen[u] && out.length < CLOSE_MAX_SERVERS) { seen[u] = true; out.push(u); } }
+    (pList || []).forEach(add); (cList || []).forEach(add);
+    try { var set = getEffectiveTrustSet(); for (var i = 0; i < set.length; i++) if (set[i] && set[i].url) add(set[i].url); } catch (e) {}
+    return out;
+  }
+  // Box codes: derived from the sealed nonce (which no witness ever sees) and the act hash, one per
+  // direction, so both phones find the same slots on any server and a witness cannot guess them.
+  async function closeBoxCode(ctx, role) {
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hep-box1|' + ctx.nonce + '|' + ctx.actHash + '|' + role));
+    return HCP.bufToHex(buf).slice(0, 32);
+  }
+  function closeRun(ctx) {
+    if (ctx.role === 'proposer') {
+      var delay3 = 0; // v2.156.0: the test switch that held hop 3 for 5 s is removed (Michael, Oct 16, after the airplane walk)
+      new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
+        if (sentOk) ldrDone(3);
+        closeWait(ctx, 4, function() {
+          try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 4); } catch (e) { console.log('[close] final failed:', e.message); return; }
+          ldrDone(4);
+          ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: record final, close confirmed on both'); closeTrace('hop 4 received: my record is FINAL, close confirmed on both'); closeRefresh();
+        });
+      });
+    } else {
+      closeWait(ctx, 3, function() {
+        try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
+        save(); console.log('[close] hop 3 received: record final'); closeTrace('my record is FINAL'); closeRefresh();
+        ldrDone(4);
+        closeSendHop(ctx, 4);
+      });
+    }
+  }
+  async function closeSealHop(ctx, hop) {
+    var h = await HCP.signHop(hop, ctx.nonce, ctx.actHash, state.privateKey);
+    var o = await HCP.signSealed({ t: 'close', h: h }, state.fingerprint, ctx.partner.fingerprint, ctx.sid, state.privateKeyJwk);
+    return await HCP.encryptRelayPayload(o, ctx.key);
+  }
+  // Post the hop to the session witness's thread and, if this phone has moved, to the box on
+  // every backup tried so far. Posting is idempotent: the same signed bits under the same nonce.
+  async function closeSendHop(ctx, hop) {
+    ctx.pendingHop = hop;
+    try {
+      if (!ctx.sealed || ctx.sealed.hop !== hop) ctx.sealed = { hop: hop, enc: await closeSealHop(ctx, hop) };
+      var resp = await serverFetch(ctx.url + '/session/' + ctx.code + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: ctx.sealed.enc }) });
+      console.log('[close] hop ' + hop + ' sent' + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
+      closeTrace('hop ' + hop + ' sent to ' + closeHost(ctx.url) + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
+      var took = resp.ok;
+    } catch (e) { console.log('[close] hop ' + hop + ' send failed:', e.message); closeTrace('hop ' + hop + ' send FAILED (' + e.message + ')'); }
+    for (var i = 0; i < ctx.alts.length; i++) closePostBox(ctx, ctx.alts[i]);
+    return !!took;
+  }
+  async function closePostBox(ctx, alt) {
+    if (!ctx.pendingHop) return;
+    try {
+      if (!ctx.sealed || ctx.sealed.hop !== ctx.pendingHop) ctx.sealed = { hop: ctx.pendingHop, enc: await closeSealHop(ctx, ctx.pendingHop) };
+      if (!ctx.boxOut) ctx.boxOut = await closeBoxCode(ctx, ctx.role);
+      var r = await serverFetch(alt + '/box/' + ctx.boxOut, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sealed: ctx.sealed.enc }) });
+      console.log('[close] hop ' + ctx.pendingHop + ' left at ' + alt + (r.ok ? '' : ' (server said ' + r.status + ')'));
+    } catch (e) { console.log('[close] box post failed at ' + alt + ': ' + e.message); }
+  }
+  // Open and check one sealed packet; true when it is the hop this phone is waiting for.
+  async function closeOpen(ctx, hop, blob, from) {
+    var o;
+    try { o = await HCP.decryptRelayPayload(blob, ctx.key); } catch (de) { console.log('[close] packet from ' + from + ' would not open'); return false; }
+    if (!o || o.t !== 'close') return false; // the partner's earlier snapshot; not a hop
+    var vs = await HCP.verifySealed(o, ctx.partner.fingerprint, state.fingerprint, ctx.sid, ctx.partner.public_key);
+    if (!vs.ok) { console.log('[close] sealed hop from ' + from + ' refused: ' + vs.error); return false; }
+    var vh = await HCP.verifyHop(o.h, { hop: hop, nonce: ctx.nonce, actHash: ctx.actHash, seen: ctx.seen }, ctx.partner.public_key);
+    if (!vh.ok) { console.log('[close] hop from ' + from + ' refused: ' + vh.error); return false; }
+    return true;
+  }
+  // Wait for a hop. Polls the session witness's thread; after CLOSE_TIMEOUT_MS with nothing, moves
+  // to the next agreed backup (and keeps every server tried in the poll, so the two phones cannot
+  // drift apart along the list), every CLOSE_MOVE_MS. Blame (Michael, Oct 16): when the hop lands
+  // on a backup while the session witness kept answering, the session witness dropped it and is
+  // marked down; when it reaches no server, nobody is blamed. Out of servers: a stall, the record
+  // stays as written, and the close resumes only while both phones are still in this session.
+  function closeWait(ctx, hop, onHop) {
+    closeStop();
+    var seenBlob = null, seenBox = {}, started = Date.now(), lastMove = started, busy = false, done = false;
+    ctx.oldAnswering = false;
+    function arrived(from) {
+      if (done) return; done = true; ctx.seen = hop; closeStop();
+      closeTrace('hop ' + hop + ' received by ' + closeHost(from) + (from !== ctx.url ? (ctx.oldAnswering ? ' (' + closeHost(ctx.url) + ' dropped it)' : ' (' + closeHost(ctx.url) + ' was not answering)') : ''));
+      if (from !== ctx.url) {
+        if (ctx.oldAnswering) { console.log('[close] hop ' + hop + ' came by ' + from + ' while ' + ctx.url + ' kept answering: it dropped the hop'); recordServerFailure(ctx.url, 'dropped hop ' + hop); }
+        else console.log('[close] hop ' + hop + ' came by ' + from + '; ' + ctx.url + ' was not answering, no blame');
+      }
+      onHop();
+    }
+    async function tick() {
+      if (busy || done) return; busy = true;
+      try {
+        var now = Date.now();
+        var waited = now - lastMove, limit = ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS;
+        if (!ctx.alts.length && now - started > LDR_SLOW_MS && !ctx.slowShown) { ctx.slowShown = true; ldrSub('Weak connection. Still trying.'); }
+        if (waited > limit) {
+          if (ctx.alts.length < ctx.servers.length) {
+            var alt = ctx.servers[ctx.alts.length]; ctx.alts.push(alt); lastMove = now;
+            console.log('[close] hop ' + hop + ' not here after ' + Math.round(waited / 1000) + ' s; trying ' + alt + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
+            closeTrace('hop ' + hop + ' not here after ' + Math.round(waited / 1000) + 's, trying ' + closeHost(alt) + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
+            ldrSub('Trying another server');
+            closeRefresh();
+            await closePostBox(ctx, alt);
+          } else {
+            closeStop(); ctx.stalled = hop;
+            console.log('[close] STALL: hop ' + hop + ' reached no server (' + (1 + ctx.servers.length) + ' tried) in ' + Math.round((now - started) / 1000) + ' s');
+            closeTrace('STALL: hop ' + hop + ' never arrived, ' + (1 + ctx.servers.length) + ' servers tried; record stays as it is');
+            ldrStall();
+            closeRefresh(); return;
+          }
+        }
+        // the session witness's thread
+        try {
+          var r = await serverFetch(ctx.url + '/session/' + ctx.code);
+          if (r.ok) {
+            ctx.oldAnswering = true;
+            var data = await r.json(); var blob = data && data.partner && data.partner.encrypted_snapshot;
+            if (blob && blob !== seenBlob) { seenBlob = blob; if (await closeOpen(ctx, hop, blob, ctx.url)) { arrived(ctx.url); return; } }
+          }
+        } catch (e) { ctx.oldAnswering = false; }
+        // every backup tried so far
+        if (!ctx.boxIn) ctx.boxIn = await closeBoxCode(ctx, ctx.role === 'proposer' ? 'confirmer' : 'proposer');
+        for (var i = 0; i < ctx.alts.length && !done; i++) {
+          var alt = ctx.alts[i];
+          try {
+            var rb = await serverFetch(alt + '/box/' + ctx.boxIn);
+            if (!rb.ok) continue;
+            var db = await rb.json(); if (!db || !db.found || !db.sealed || db.sealed === seenBox[alt]) continue;
+            seenBox[alt] = db.sealed;
+            if (await closeOpen(ctx, hop, db.sealed, alt)) { arrived(alt); return; }
+          } catch (e) {}
+        }
+      } catch (e) { console.log('[close] poll error:', e.message); }
+      finally { busy = false; }
+    }
+    _closeTimer = setInterval(tick, CLOSE_POLL_MS);
+    setTimeout(tick, 300);
+  }
+  function closeStop() { if (_closeTimer) { clearInterval(_closeTimer); _closeTimer = null; } }
+  // v2.156.0 (Michael, Oct 16): the dev hop trace on Home is gone; the ladder is the real screen. closeTrace
+  // stays as a no-op so the close keeps its call sites; the [close] console lines carry the same story.
+  try { sessionStorage.removeItem('hep_dev_trace'); } catch (_) {}
+  function closeTrace(line) {}
+  function closeTraceReset(role) {}
+  function closeTraceHTML() { return ''; }
+  function closeHost(u) { try { return new URL(u).host.replace(/\.humanexchangeprotocol\.org$|\.thesitefit\.com$/, ''); } catch (_) { return String(u); } }
+  function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
 
   // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
   // A light heartbeat runs from connection to the end of the session,
@@ -5675,6 +5939,7 @@ const PAIR_CODE_LENGTH = 4;
     var line;
     var sub = 'Nothing was recorded.';
     if (_exEndedBy === 'self') { line = 'This is your own chain'; sub = 'A chain cannot exchange with itself, even from another device. Nothing was recorded.'; }
+    else if (_exEndedBy === 'unsigned') { line = 'The signatures did not check'; sub = 'The other phone\u2019s signature on these terms was missing or did not match, so nothing was recorded on this phone. Try again, or try again on a different server.'; }
     else if (_exEndedByMe) line = 'You cancelled the exchange';
     else line = _exEndedBy === 'disconnected' ? n + ' disconnected from the exchange' : n + ' cancelled the exchange';
     var h = '<div class="exs-settle exs-ended" style="align-items:center; text-align:center">';
@@ -5696,7 +5961,7 @@ const PAIR_CODE_LENGTH = 4;
     var rv = document.getElementById('ex-step-rv');
     var onRV = rv && rv.classList.contains('active');
     var st = _exRV.state;
-    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || (st === 'wait' && _exPresenceLive));
+    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || st === 'ladder' || st === 'notconfirmed' || (st === 'wait' && _exPresenceLive));
     xb.style.visibility = hide ? 'hidden' : '';
   }
 
@@ -5720,6 +5985,7 @@ const PAIR_CODE_LENGTH = 4;
     sessionSASHash = null;
     sessionExpectedState = null;
     sessionProposalNonce = null;
+    sessionMyBackups = null;
     sessionProposalIntegrityHash = null;
     sessionActiveTab = 'texture';
     _sessionWritten = false;
@@ -7043,7 +7309,7 @@ const PAIR_CODE_LENGTH = 4;
 
       // Summary
       var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
-      state.chain.filter(HCP.isAct).forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
+      state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }).forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
       var summaryHtml = '<div style="padding:12px 14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px;">';
       summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label); margin-bottom:4px;"><span style="color:var(--text-dim);">Provided</span><span style="color:var(--green); font-weight:500;">' + actsP + ' acts · +' + totalP + '</span></div>';
       summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label);"><span style="color:var(--text-dim);">Received</span><span style="color:var(--blue); font-weight:500;">' + actsR + ' acts · \u2212' + totalR + '</span></div>';
@@ -7923,7 +8189,9 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   function enqueuePendingAttestation(record, counterpartyPub) {
-    if (!record || typeof record.timestamp !== 'number' || !counterpartyPub) return;
+    // v2.146.0: records carry ISO-string timestamps (hep-core now()), and this guard asked for a
+    // number, so nothing was ever queued on any path. Found by the offline harness (queue 0).
+    if (!record || record.timestamp == null || !counterpartyPub) return;
     var list = getPendingAttestations();
     // De-duplicate: a record only needs one queue entry, even if it
     // failed multiple times during the live flow.
@@ -8446,6 +8714,12 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Settings ---
+  function toggleTestDelayReceipt() {
+    state.settings.testDelayReceipt = !state.settings.testDelayReceipt;
+    var el = document.getElementById('switch-test-delay-receipt');
+    if (el) el.classList.toggle('on', !!state.settings.testDelayReceipt);
+    save();
+  }
   function togglePrivacy(key) {
     if (!key) key = 'hideNames'; // default for tab toggle
     state.settings[key] = !state.settings[key];
@@ -9474,8 +9748,13 @@ const PAIR_CODE_LENGTH = 4;
     // screen in the app reaches them any more; a crafted link was the only way in.
     // The chain view link (cv) is unrelated and stays.
     if (params.get('hs') || params.get('cf') || params.get('st')) {
-      console.log('[offline] exchange link ignored: the QR path is retired until it is rebuilt');
+      console.log('[offline] old exchange link ignored (hs/cf/st were retired in v2.145.0)');
     }
+    // v2.146.0: the rebuilt path. Three scans: o1 offer, o2 answer, o3 seal. Handled after unlock.
+    ['o1', 'o2', 'o3'].forEach(function(k) {
+      var v = params.get(k);
+      if (v) { try { state.pendingIncoming = { type: k, payload: b64Decode(v) }; console.log('[offline] scan ' + k + ' link received'); } catch (e) { console.log('[offline] bad ' + k + ' link'); } }
+    });
     // Check for incoming chain view
     const cv = params.get('cv');
     if (cv) {
@@ -9521,6 +9800,7 @@ const PAIR_CODE_LENGTH = 4;
     if (!state.pendingIncoming || !state.initialized) return;
     const inc = state.pendingIncoming;
     state.pendingIncoming = null;
+    if (inc.type === 'o1' || inc.type === 'o2' || inc.type === 'o3') console.log('[offline] handling scan ' + inc.type);
 
     setTimeout(() => {
       try {
@@ -9554,6 +9834,12 @@ const PAIR_CODE_LENGTH = 4;
           showIncomingChainView(data);
         } else if (inc.type === 'settlement') {
           processSettlement(inc.payload);
+        } else if (inc.type === 'o1') {
+          exOffReceive1(inc.payload).catch(function(e) { toast('Could not read that code: ' + e.message); });
+        } else if (inc.type === 'o2') {
+          exOffReceive2(inc.payload).catch(function(e) { console.log('[offline] scan 2 failed: ' + e.message + ' ' + (e.stack || '').split('\n')[1]); toast('Could not read that code: ' + e.message); });
+        } else if (inc.type === 'o3') {
+          exOffReceive3(inc.payload).catch(function(e) { toast('Could not read that code: ' + e.message); });
         }
       } catch(e) {
         toast('Could not read the exchange data');
@@ -10231,6 +10517,246 @@ function init() {
     else if (navigator.clipboard) { navigator.clipboard.writeText(open.inviteUrl).then(function() { toast('Invite link copied'); }).catch(function() {}); }
   }
 
+  // === OFFLINE CODES: THREE SCANS, COUNTERSIGNED (v2.146.0, Michael Oct 15, registry Component 1) ===
+  // No server reachable: the two phones show each other screens. Scan 1 carries the offer
+  // (key, fingerprint, name, terms, a compact chain read, nonce); scan 2 the confirmer's
+  // answer (key, fingerprint, nonce, act hash, signature over it); scan 3 the proposer's seal
+  // (its signature over the same act hash). The other phone's camera opens the link; the
+  // service worker opens the app without a network. Every signature is checked on receipt
+  // (hep-core verifyOffer / verifyAnswer / verifySeal), each step is tied to the offer's nonce,
+  // and both records carry actHash and counterpartySig exactly as the session path writes them.
+  // The witness timestamp comes later through the attestation queue. Nothing here reaches a
+  // witness in clear: the code is read by the person across the table (security tenet gate).
+  // Honest limits: one phone each, HEP installed on both; an added device is refused until its
+  // certificate rides in scan 1; whoever can see a screen can read the terms on it.
+  var OFF_KEY = 'hep_offline_pending';
+  var exOffActive = false;
+  function exOffLoad() { try { return JSON.parse(localStorage.getItem(OFF_KEY) || 'null'); } catch (_) { return null; } }
+  function exOffSave(o) { try { if (o) localStorage.setItem(OFF_KEY, JSON.stringify(o)); else localStorage.removeItem(OFF_KEY); } catch (_) {} }
+  function exOffUrl(param, payload) { return getAppBase() + '?' + param + '=' + b64Encode(payload); }
+  function exOffMyName() { return (state.declarations && state.declarations.name) || ''; }
+  function exOffRefuseDevice() {
+    if (!state.devicePublicKeyJwk) return false;
+    toast('Scan codes work from your first phone for now. On an added device use a server.');
+    return true;
+  }
+  function exOffOpenModal() {
+    exFlowActive = true; exOffActive = true;
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'Exchange by scanning';
+    showExStep('rv');
+  }
+  function exOffHost(html) { var h = document.getElementById('ex-rv'); if (h) h.innerHTML = html; }
+  function exOffQR(id, url) { try { var c = document.getElementById(id); if (c) QR.generate(url, c, 260); } catch (e) { console.error('QR gen failed', e); } }
+  function exOffQRHTML(id) {
+    return '<div class="hs-qr" style="text-align:center"><canvas id="' + id + '-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR(\'' + id + '\')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>';
+  }
+  function exOffTerms(ex, iProvide, other) {
+    var kd = exKindDur(ex.category, ex.duration ? formatDuration(ex.duration) : '');
+    var h = '<div class="exs-cap">' + (iProvide ? 'You are providing to ' + esc(other || 'them') : esc(other || 'They') + (other ? ' is' : ' are') + ' providing to you') + '</div>';
+    h += '<div class="exs-t" style="margin-top:2px">' + esc(ex.description || 'Exchange') + '</div>';
+    if (kd) h += '<div class="exs-lab" style="margin-top:4px">' + esc(kd) + '</div>';
+    h += '<div style="height:16px"></div>';
+    h += '<div class="exs-lab">' + (iProvide ? esc(other || 'They') + (other ? ' gives' : ' give') : 'You give') + '</div>';
+    h += '<div class="exs-disp">' + (Number(ex.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
+    return h;
+  }
+  function exOffReadLine(r, name) {
+    if (!r || !r.n) return '<div class="exs-f">' + esc(name || 'This chain') + ' has no exchanges yet. A new chain reads as new.</div>';
+    var since = r.t0 ? new Date(r.t0).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '';
+    return '<div class="exs-f">' + esc(name || 'Their chain') + ': ' + r.n + (r.n === 1 ? ' exchange' : ' exchanges') + (since ? ' since ' + esc(since) : '') + ', ' + (r.g || 0) + ' provided, ' + (r.r || 0) + ' received' + (r.p ? ', ' + r.p + ' heartbeats' : '') + '. Not checked by a server; this is what the code says.</div>';
+  }
+  // The Start door (no trusted witness, no carrier answered).
+  function exOffDoorHTML() {
+    var h = '<div class="exs-grow"></div>';
+    h += '<div class="exs-h" style="text-align:center">No server reached</div>';
+    h += '<div class="exs-m" style="text-align:center">You can still exchange. The two of you scan each other\u2019s screens with the phone camera. The record is kept on both phones and a server stamps it the next time either phone is online.</div>';
+    h += '<div style="height:24px"></div>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffStart()">Exchange by scanning</button>';
+    h += '<button class="exs-quiet" onclick="App.exOffRetry()">Try the servers again</button>';
+    h += '<div class="exs-grow"></div>';
+    return h;
+  }
+  function exOffRetry() { closeExchange(); setTimeout(function() { exBeginStart(); }, 120); }
+  // Proposer: compose the terms with the ordinary beats, then show scan 1.
+  function exOffStart() {
+    if (exOffRefuseDevice()) return;
+    var held = exOffLoad();
+    if (held) { exOffResume(); return; }
+    exFlowActive = true; exOffActive = true;
+    exConnectMode = null; sessionRole = 'proposer';
+    try { cleanupSession(); } catch (_) {}
+    showModal('exchange');
+    document.getElementById('exchange-header').textContent = 'Exchange by scanning';
+    showExStep('form');
+    exBeatsOpen();
+  }
+  async function exOffOffer(details) {
+    var ex = { type: 'exchange', value: details.value, energyState: details.energyState, description: details.description, category: details.category || '', duration: details.duration || 0 };
+    var payload = await HCP.offlineOffer(state.publicKeyJwk, state.chain, ex, exOffMyName(), state.privateKey);
+    var parsed = await HCP.verifyOffer(payload); // our own code, checked the way the other phone will
+    exOffSave({ role: 'proposer', stage: 'offered', nonce: parsed.nonce, o1: payload, ex: ex, at: Date.now() });
+    state.pendingProposal = null; try { localStorage.removeItem('hcp_dev_pending_proposal'); } catch (_) {}
+    exOffShowOffer();
+  }
+  function exOffShowOffer() {
+    var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'offered') return;
+    exOffOpenModal();
+    var h = '<div class="exs-cap">Scan 1 of 3</div>';
+    h += '<div class="exs-t">They scan this with their phone camera</div>';
+    h += '<div style="height:12px"></div>' + exOffQRHTML('off1');
+    h += '<div style="height:12px"></div>';
+    h += exOffTerms(held.ex, held.ex.energyState === 'provided', '');
+    h += '<div style="height:16px"></div>';
+    h += '<div class="exs-f">When they confirm, their phone shows a code. Scan it with your camera and this app opens again.</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<button class="btn btn-secondary" style="width:100%" onclick="App.exOffClose()">Done for now</button>';
+    h += '<button class="exs-quiet" onclick="App.exOffCancel()">Cancel this exchange</button>';
+    exOffHost(h);
+    exOffQR('off1-qr', exOffUrl('o1', held.o1));
+  }
+  // Confirmer: scan 1 arrived.
+  async function exOffReceive1(payload) {
+    if (exOffRefuseDevice()) return;
+    var p;
+    try { p = await HCP.verifyOffer(payload); } catch (e) { console.log('[offline] offer refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
+    if (HCP.sameOwner({ fp: state.fingerprint }, { fp: p.fp })) { toast('That code is from this same chain.'); return; }
+    var held = exOffLoad();
+    if (held && held.role === 'confirmer' && held.nonce === p.nonce) { exOffShowAnswer(); return; } // the same offer scanned twice: show the answer again
+    exOffSave({ role: 'confirmer', stage: 'reviewing', nonce: p.nonce, proposerPub: p.pub, proposerFp: p.fp, proposerName: p.name, ex: p.exchange, read: p.read, ts: p.ts, at: Date.now() });
+    exOffShowReview();
+  }
+  function exOffShowReview() {
+    var held = exOffLoad(); if (!held || held.role !== 'confirmer' || held.stage !== 'reviewing') return;
+    exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(3, 'confirmer');
+    var other = held.proposerName || 'The other person', iProvide = held.ex.energyState === 'received';
+    var h = '<div class="exs-cap">Scan 1 of 3 received</div>';
+    h += exOffTerms(held.ex, iProvide, other);
+    h += '<div style="height:12px"></div>' + exOffReadLine(held.read, held.proposerName ? held.proposerName + '\u2019s chain' : 'Their chain');
+    h += '<div style="height:24px"></div>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffConfirm()">Confirm</button>';
+    h += '<button class="exs-quiet" onclick="App.exOffCancel()">This doesn\u2019t look right</button>';
+    h += '<div class="exs-grow"></div>';
+    exOffHost(h);
+  }
+  async function exOffConfirm() {
+    var held = exOffLoad(); if (!held || held.role !== 'confirmer' || held.stage !== 'reviewing') return;
+    var o1 = { fp: held.proposerFp, nonce: held.nonce, ts: held.ts, exchange: held.ex };
+    var a;
+    try { a = await HCP.offlineAnswer(state.publicKeyJwk, state.chain, o1, exOffMyName(), state.privateKey); } catch (e) { toast('Could not sign: ' + e.message); return; }
+    held.stage = 'answered'; held.o2 = a.payload; held.actHash = a.actHash; held.myFp = state.fingerprint;
+    exOffSave(held);
+    exOffShowAnswer();
+  }
+  function exOffShowAnswer() {
+    var held = exOffLoad(); if (!held || held.role !== 'confirmer' || held.stage !== 'answered') return;
+    exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(3, 'confirmer');
+    var h = '<div class="exs-cap">Scan 2 of 3</div>';
+    h += '<div class="exs-t">They scan this with their phone camera</div>';
+    h += '<div style="height:12px"></div>' + exOffQRHTML('off2');
+    h += '<div style="height:12px"></div>';
+    h += '<div class="exs-f">Their phone records the exchange and shows one last code. Scan it with your camera and this app records it on your phone.</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<button class="btn btn-secondary" style="width:100%" onclick="App.exOffClose()">Done for now</button>';
+    h += '<button class="exs-quiet" onclick="App.exOffCancel()">Cancel this exchange</button>';
+    exOffHost(h);
+    exOffQR('off2-qr', exOffUrl('o2', held.o2));
+  }
+  // Proposer: scan 2 arrived. Check it, write the record, show the seal.
+  async function exOffReceive2(payload) {
+    var held = exOffLoad();
+    if (held && held.role === 'proposer' && held.stage === 'sealed') { exOffShowSeal(); return; } // the answer scanned again after the record was written: show the seal again, write nothing
+    if (!held || held.role !== 'proposer' || held.stage !== 'offered') { toast('Nothing is waiting for this code. Start the exchange again.'); return; }
+    var o1 = await HCP.verifyOffer(held.o1);
+    var p;
+    try { p = await HCP.verifyAnswer(payload, o1, state.fingerprint); } catch (e) { console.log('[offline] answer refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
+    if (HCP.sameOwner({ fp: state.fingerprint }, { fp: p.fp })) { toast('That code is from this same chain.'); return; }
+    var record = await exOffWriteRecord(held.ex, held.ex.energyState, p.fp, p.name, p.actHash, p.actSig, p.pub);
+    var o3 = await HCP.offlineSeal(state.publicKeyJwk, p, state.privateKey);
+    exOffSave({ role: 'proposer', stage: 'sealed', nonce: held.nonce, o3: o3, ex: held.ex, other: p.name, recordTs: record.timestamp, at: Date.now() });
+    exOffShowSeal();
+  }
+  function exOffShowSeal() {
+    var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'sealed') return;
+    exOffOpenModal(); sessionRole = 'proposer'; renderIndicator(4, 'proposer');
+    var h = '<div class="exs-cap">Scan 3 of 3</div>';
+    h += '<div class="exs-t">Recorded on your phone. They scan this to record it on theirs</div>';
+    h += '<div style="height:12px"></div>' + exOffQRHTML('off3');
+    h += '<div style="height:12px"></div>';
+    h += exOffTerms(held.ex, held.ex.energyState === 'provided', held.other || '');
+    h += '<div class="exs-grow"></div>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffFinish()">Done</button>';
+    exOffHost(h);
+    exOffQR('off3-qr', exOffUrl('o3', held.o3));
+  }
+  // Confirmer: scan 3 arrived. Check it, write the record.
+  async function exOffReceive3(payload) {
+    var held = exOffLoad();
+    if (!held || held.role !== 'confirmer' || held.stage !== 'answered') { toast('Nothing is waiting for this code.'); return; }
+    var p;
+    try { p = await HCP.verifySeal(payload, { nonce: held.nonce, proposerFp: held.proposerFp, proposerPub: held.proposerPub, myFp: state.fingerprint, actHash: held.actHash }); } catch (e) { console.log('[offline] seal refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
+    var myDir = held.ex.energyState === 'provided' ? 'received' : 'provided';
+    await exOffWriteRecord(held.ex, myDir, held.proposerFp, held.proposerName, p.actHash, p.actSig, held.proposerPub);
+    exOffSave(null);
+    exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(4, 'confirmer');
+    _sessionWritten = true;
+    exOffHost(exOffDoneHTML());
+  }
+  function exOffDoneHTML() {
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="56" height="56"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+    h += '<div class="exs-settle-t1">Transaction</div>';
+    h += '<div class="exs-settle-t2">Recorded</div>';
+    h += '<div class="exs-settle-t3">Signed by both of you, on both phones. A server will stamp it when a phone is next online.</div>';
+    h += '<div class="exs-grow" style="flex:1.2"></div>';
+    h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exOffFinish()">Done</button></div>';
+    h += '</div>';
+    return h;
+  }
+  // One record, the same fields the session path writes, exchangePath qr.
+  async function exOffWriteRecord(ex, myDir, cpFp, cpName, actHash, cpSig, cpPub) {
+    var record = HCP.createRecord({
+      type: 'exchange', value: ex.value, energyState: myDir, counterparty: cpFp, counterpartyName: cpName || undefined,
+      description: ex.description, category: ex.category || undefined, duration: ex.duration || undefined,
+      actHash: actHash, counterpartySig: cpSig,
+    });
+    try {
+      var snap = await captureSensor();
+      if (snap.geo) record.geo = snap.geo;
+      if (snap.device) record.device = snap.device;
+      if (snap.sensorHash) record.sensorHash = snap.sensorHash;
+      record.pohSnapshot = { signalHash: snap.signalHash, networkHash: snap.networkHash, webglHash: snap.webglHash, canvasHash: snap.canvasHash, batteryState: snap.batteryState, capabilityMask: snap.capabilityMask, capturedAt: snap.timestamp };
+    } catch (e) { console.log('[sensor] Capture failed:', e.message); }
+    record.exchangePath = HCP.EXCHANGE_PATHS.QR;
+    record.connectivityAvailable = navigator.onLine;
+    try { var ep = await HCP.chainEntropyPrev(state.chain); if (ep) record.entropyPrev = ep; } catch (_) {}
+    try { var mr = await HCP.chainMerkleRoot(state.chain); if (mr) record.chainMerkleRoot = mr; } catch (_) {}
+    await appendRecord(record);
+    save();
+    console.log('[offline] record written: ' + myDir + ' ' + ex.value + ' with ' + cpFp + ', countersigned, path qr');
+    try { submitWitness(record, cpPub); } catch (e) { console.log('[offline] attestation deferred: ' + e.message); }
+    try { refreshHome(); } catch (_) {}
+    return record;
+  }
+  function exOffFinish() { exOffSave(null); exOffActive = false; _sessionWritten = true; closeExchange(); _sessionWritten = false; }
+  function exOffClose() { exOffActive = false; closeModal('exchange'); exFlowActive = false; }
+  function exOffCancel() { exOffSave(null); exOffActive = false; closeExchange(); toast('Exchange cancelled'); }
+  // The Exchange doors show a waiting scan exchange so it can be reshown or dropped.
+  function exOffResume() {
+    var held = exOffLoad(); if (!held) return;
+    if (held.role === 'proposer' && held.stage === 'offered') exOffShowOffer();
+    else if (held.role === 'proposer' && held.stage === 'sealed') exOffShowSeal();
+    else if (held.role === 'confirmer' && held.stage === 'reviewing') exOffShowReview();
+    else if (held.role === 'confirmer' && held.stage === 'answered') exOffShowAnswer();
+    else exOffSave(null);
+  }
+  function exOffWaitingHTML() {
+    var held = exOffLoad(); if (!held) return '';
+    var what = held.role === 'proposer' ? (held.stage === 'sealed' ? 'Scan 3 is waiting for them' : 'Scan 1 is waiting for them') : (held.stage === 'answered' ? 'Scan 2 is waiting for them' : 'An offer is waiting for you');
+    return '<p class="exs-cap" style="text-align:center;margin:18px 0 0">' + esc(what) + ': <button class="exs-quiet" style="display:inline;padding:0;margin:0" onclick="App.rsClose();App.exOffResume()">show it</button></p>';
+  }
+
   // v2.124.0 (Michael, Oct 6, twenty-fifth session): one Exchange tab in the bar. Tapping it asks the one
   // question Start and Join used to answer with two buttons: are you starting, or joining with a code?
   // A moment screen (rule 7): centred, two primary-sized choices with a one-line caption each, X back.
@@ -10241,6 +10767,7 @@ function init() {
     h += '<p class="exs-cap" style="text-align:center;margin:0 0 14px">You will get a code to share with the other person.</p>';
     h += '<button class="btn btn-primary" style="width:100%;margin:0" onclick="App.rsClose();App.exJoinExchange()">Join</button>';
     h += '<p class="exs-cap" style="text-align:center;margin:0">You have a code from the other person.</p>';
+    h += exOffWaitingHTML();
     if (state.initialized && !state.devicePublicKeyJwk && !state.chain.some(function(r) { return r.type === HCP.RECORD_TYPE_DEVICE; })) h += '<button class="exs-quiet" style="margin-top:24px;font-size:var(--fs-caption)" onclick="App.rsClose();App.attachOldStart()">Use HEP on another device too</button>';
     h += '</div>';
     rsShow(h, 'exdoors');
@@ -10538,6 +11065,9 @@ function init() {
     var picked = null;
     try { picked = await exPickStartWitness(); } catch (e) { console.log('[street] pick failed:', e.message); }
     if (!exFlowActive || exConnectMode !== 'start') return; // left while probing
+    // v2.146.0 (Michael, Oct 15): no trusted witness and no carrier answered. Offer the codes
+    // instead of starting on a server nobody reached (the old fallback posted anyway and waited).
+    if (!picked) { showExStep('rv'); document.getElementById('exchange-header').textContent = 'New exchange'; exOffHost(exOffDoorHTML()); return; }
     sessionWitnessUrl = picked ? picked.url : null;
     sessionStreet = picked ? picked.street : '';
 
@@ -12142,6 +12672,7 @@ function init() {
   }
 
   function exBackToTexture() {
+    if (exOffActive && !sessionPartner) { exOffCancel(); return; } // v2.146.0: no chain read before the beats on the scan path
     showExStep('texture');
     exRenderChainRead();
   }
@@ -12261,6 +12792,8 @@ function init() {
     // Processing and Settled (ruled Oct 2, eleventh session) have their
     // own layout: no description header, nothing but the moment.
     exFrameXRefresh();
+    if (st === 'ladder') { host.innerHTML = exLadderHTML(p); ldrPaint(); return; }
+    if (st === 'notconfirmed') { host.innerHTML = exNotConfirmedHTML(p); return; }
     if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
     if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
     // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
@@ -12453,11 +12986,20 @@ function init() {
     g += '<text x="' + cx + '" y="126" text-anchor="middle" font-size="13" fill="var(--text-dim)">' + esc(isYou ? 'You' : name) + '</text></g>';
     return g;
   }
+  // v2.155.1: the faces on the wave and the ladder read photos the way Account does. Mine: the current
+  // photo, else the one anchored in my chain's first record (an added device may hold only that). Theirs:
+  // their current photo from the sealed snapshot, else their anchored one.
+  function exMyPhoto() {
+    var ph = (state.declarations && state.declarations.photo) || '';
+    if (!ph) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) ph = g.photoData; }
+    return ph;
+  }
+  function exOtherPhoto(ts) { return (ts && (ts._photo || ts._genesisPhoto)) || ''; }
   function exSettleFlowHTML(p) {
     var other = _exRV.other || exPartnerName();
     var ts = exRVTs();
-    var otherPhoto = (ts && ts._genesisPhoto) || '';
-    var myPhoto = (state.declarations && state.declarations.photo) || '';
+    var otherPhoto = exOtherPhoto(ts);
+    var myPhoto = exMyPhoto();
     var myName = (state.declarations && state.declarations.name) || 'You';
     var iProvide = p.myDirection === 'provided';
     var left = iProvide ? exSettleCircle(52, other, otherPhoto, false, 'exs-gl') : exSettleCircle(52, myName, myPhoto, true, 'exs-gl');
@@ -12499,13 +13041,132 @@ function init() {
     return h;
   }
   function exRVWallet() { closeExchange(); setTimeout(function() { try { openWallet(); } catch(_) {} }, 340); }
+  // ===== The ladder (v2.155.0; Michael, Oct 16; mockup NrRTZNFurvvFmhViAF3UdS) =====
+  // Four lines, the same words on both phones. Each turns green only when it is true on this phone:
+  // 1 both signatures held, 2 this phone wrote the record, 3 this phone's hop left (confirmer: hop 2,
+  // proposer: hop 3), 4 this phone's record is Final (confirmer: hop 3 arrived, proposer: hop 4 arrived).
+  // A line holds at least LDR_MIN_MS so a person can read it; the wave plays only after line 4.
+  // Stall: "Transaction not confirmed", no hop detail (Michael: the person does not need the hops).
+  var LDR_MIN_MS = 600, LDR_SLOW_MS = 4000, _ldr = null;
+  function ldrStart(role) {
+    if (_ldr && _ldr.timer) clearInterval(_ldr.timer);
+    _ldr = { role: role, real: [true, true, role === 'confirmer', false], shown: 0, sub: '', stalled: false, last: Date.now() - (LDR_MIN_MS - 250), completing: false, timer: null, painted: [] };
+    exRenderRV('ladder');
+    _ldr.timer = setInterval(ldrStep, 100);
+  }
+  function ldrStep() {
+    if (!_ldr || _ldr.stalled) return;
+    var now = Date.now();
+    if (_ldr.shown < 4 && _ldr.real[_ldr.shown] && now - _ldr.last >= LDR_MIN_MS) { _ldr.shown++; _ldr.last = now; _ldr.sub = ''; ldrPaint(); }
+    if (_ldr.shown === 4 && !_ldr.completing && now - _ldr.last >= 500) {
+      _ldr.completing = true; clearInterval(_ldr.timer); _ldr.timer = null;
+      try { exPlayCompletion(); } catch (e) { console.log('[ladder] completion failed:', e.message); }
+    }
+  }
+  function ldrDone(n) { if (!_ldr) return; for (var i = 0; i < n && i < 4; i++) _ldr.real[i] = true; }
+  function ldrSub(t) { if (!_ldr || _ldr.stalled || _ldr.completing) return; _ldr.sub = t; ldrPaint(); }
+  function ldrStall() {
+    if (!_ldr || _ldr.completing) return;
+    _ldr.stalled = true; if (_ldr.timer) { clearInterval(_ldr.timer); _ldr.timer = null; }
+    if (exRVIsShowing()) exRenderRV('notconfirmed');
+  }
+  function ldrLines() {
+    var o = String(_exRV.other || exPartnerName()).trim().split(/\s+/)[0] || 'them'; // first name keeps each line on one row
+    return ['Both of you signed', 'Saved on your phone', 'Sent to ' + o, 'Saved on ' + o + '\u2019s phone'];
+  }
+  function ldrLineHTML(text, st, sub) {
+    var ic = st === 'done' ? '<span class="ok"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+      : st === 'wait' ? '<span class="dot"></span>' : '<span class="hollow"></span>';
+    return '<li class="' + (st === 'done' ? '' : st === 'wait' ? 'open' : 'todo') + '"><span class="ldr-ic">' + ic + '</span><div><div class="exs-body">' + esc(text) + '</div>'
+      + (sub ? '<div class="exs-cap">' + esc(sub) + '</div>' : '') + '</div></li>';
+  }
+  function ldrPaint() {
+    if (!_ldr) return;
+    var ul = document.getElementById('ldr-card'); if (!ul) return;
+    // Only a line whose state or caption changed is redrawn, so a check pops once and then stays put.
+    var L = ldrLines();
+    if (!ul.children.length) { var h0 = ''; for (var k = 0; k < 4; k++) h0 += '<li></li>'; ul.innerHTML = h0; _ldr.painted = []; }
+    for (var i = 0; i < 4; i++) {
+      var st = i < _ldr.shown ? 'done' : i === _ldr.shown ? 'wait' : 'todo', sub = i === _ldr.shown ? _ldr.sub : '';
+      var key = st + '|' + sub;
+      if (_ldr.painted[i] !== key) { _ldr.painted[i] = key; ul.children[i].outerHTML = ldrLineHTML(L[i], st, sub); }
+    }
+    var me = document.getElementById('ldr-ring-me'), them = document.getElementById('ldr-ring-them');
+    function ring(el, ok) { if (!el) return; el.setAttribute('class', 'ldr-ring' + (ok ? ' ok' : '')); el.setAttribute('stroke', ok ? 'var(--green)' : 'var(--accent)'); el.setAttribute('stroke-width', ok ? '3' : '2'); if (ok) el.removeAttribute('stroke-dasharray'); else el.setAttribute('stroke-dasharray', '4 5'); }
+    ring(me, _ldr.shown >= 2); ring(them, _ldr.shown >= 4);
+  }
+  // The faces as on the Processing wave (receiver left, provider right), already shown, each in a waiting ring.
+  function ldrFacesSVG(p, stall) {
+    var other = _exRV.other || exPartnerName();
+    var ts = exRVTs();
+    var otherPhoto = exOtherPhoto(ts);
+    var myPhoto = exMyPhoto();
+    var myName = (state.declarations && state.declarations.name) || 'You';
+    var iProvide = p.myDirection === 'provided';
+    var meX = iProvide ? 252 : 52, themX = iProvide ? 52 : 252;
+    var left = iProvide ? exSettleCircle(52, other, otherPhoto, false, 'exs-gl') : exSettleCircle(52, myName, myPhoto, true, 'exs-gl');
+    var right = iProvide ? exSettleCircle(252, myName, myPhoto, true, 'exs-gr') : exSettleCircle(252, other, otherPhoto, false, 'exs-gr');
+    left = left.replace('opacity="0"', 'opacity="1"'); right = right.replace('opacity="0"', 'opacity="1"');
+    var h = '<svg width="304" height="' + (stall ? 136 : 176) + '" viewBox="0 0 304 ' + (stall ? 136 : 176) + '" style="margin:8px auto 0; display:block; max-width:100%">';
+    if (stall) {
+      h += left + right;
+      h += '<circle cx="52" cy="70" r="40" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="4 5"/><circle cx="252" cy="70" r="40" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="4 5"/>';
+      h += '<path d="M96 70 L206 70" fill="none" stroke="var(--border)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 8"/>';
+      h += '<text x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-faint)">' + (Number(p.value) || 0).toLocaleString() + '</text></svg>';
+      return h;
+    }
+    h += '<circle id="exs-ring" cx="252" cy="70" r="34" fill="none" stroke="var(--accent)" stroke-width="3" opacity="0"/>';
+    h += left + right;
+    h += '<g id="ldr-rings"><circle id="ldr-ring-me" class="ldr-ring" cx="' + meX + '" cy="70" r="40" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 5"/>'
+      + '<circle id="ldr-ring-them" class="ldr-ring" cx="' + themX + '" cy="70" r="40" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 5"/></g>';
+    h += '<path id="ldr-dots" class="ldr-flow" d="M96 70 L206 70" fill="none" stroke="var(--text-faint)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 8"/>';
+    h += '<path id="exs-wave" d="" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" opacity="0"/>';
+    h += '<path id="exs-head" d="M202 61 L212 70 L202 79" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>';
+    h += '<text id="exs-amt" x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text)" opacity="1">' + (Number(p.value) || 0).toLocaleString() + '</text>';
+    h += '<g id="exs-tots" opacity="1">'
+      + '<text x="52" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Cosmic share</text>'
+      + '<text id="exs-nl" x="52" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--amber)">+0</text>'
+      + '<text x="252" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Currency</text>'
+      + '<text id="exs-nr" x="252" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--accent)">+0</text></g>';
+    return h + '</svg>';
+  }
+  function exLadderHTML(p) {
+    var h = '<div class="exs-settle" style="align-items:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h" id="exs-st" style="text-align:center">Saving on both phones</div>';
+    h += ldrFacesSVG(p, false);
+    h += '<ul class="ldr-card" id="ldr-card"></ul>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-cap" id="ldr-keep" style="text-align:center">Keep HEP open until this finishes.</div>';
+    h += '<div style="height:20px"></div></div>';
+    return h;
+  }
+  function exNotConfirmedHTML(p) {
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h">Transaction not confirmed</div>';
+    h += ldrFacesSVG(p, true);
+    h += '<div class="exs-body" style="color:var(--text-dim); margin-top:22px">The connection dropped before both phones confirmed it.</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-btns" style="animation:none"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button></div>';
+    h += '</div>';
+    return h;
+  }
   function exPlayCompletion() {
     if (!exRVIsShowing()) return false;
     var p = _exRV.p || exRVProposalLive();
     if (!p) return false;
     _exRV.finish = true;
     _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
-    exRenderRV('flow');
+    // v2.155.0: from the ladder the faces are already on screen; the wave runs in place above the
+    // finished lines (the pop-in is skipped by starting the clock where the wave begins).
+    var fromLadder = _exRV.state === 'ladder' && !!document.getElementById('exs-wave');
+    if (fromLadder) {
+      var rg = document.getElementById('ldr-rings'); if (rg) { rg.style.transition = 'opacity .6s'; rg.style.opacity = '0'; }
+      var dl = document.getElementById('ldr-dots'); if (dl) dl.style.display = 'none';
+      var st0 = document.getElementById('exs-st'); if (st0) st0.textContent = 'Completing transaction';
+      var kp = document.getElementById('ldr-keep'); if (kp) kp.style.visibility = 'hidden';
+    } else exRenderRV('flow');
     var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
     var $ = function(id) { return document.getElementById(id); };
     var V = Number(p.value) || 0;
@@ -12537,7 +13198,7 @@ function init() {
       finish();
       return true;
     }
-    var t0 = performance.now(), ended = false;
+    var t0 = performance.now() - (fromLadder ? 1800 : 0), ended = false;
     function frame(now) {
       if (!$('exs-wave')) return; // layout replaced (Done tapped or sheet closed)
       var t = (now - t0) / 1000;
@@ -12551,7 +13212,7 @@ function init() {
       var amt = $('exs-amt');
       if (t > 1.8) amt.setAttribute('opacity', t < 5.4 ? 1 : Math.max(0, 1 - (t - 5.4) / 0.4));
       amt.textContent = Math.round(V * (1 - e)).toLocaleString();
-      amt.setAttribute('x', (100 + 104 * e).toFixed(1));
+      amt.setAttribute('x', (fromLadder ? 152 + 52 * e : 100 + 104 * e).toFixed(1)); // from the ladder the number starts centred
       if (t > 2.0) {
         $('exs-tots').setAttribute('opacity', 1);
         var added = '+' + Math.round(V * e).toLocaleString();
@@ -12789,7 +13450,7 @@ function init() {
       html += '<div class="exs-disp">' + (Number(_exBeat.value) || 0).toLocaleString() + exMarkSVG(16) + '</div>';
       html += '<input type="hidden" id="ex-desc" value="' + esc(_exBeat.task) + '"><input type="hidden" id="ex-value" value="' + esc(String(Number(_exBeat.value) || 0)) + '">';
       html += '<div style="height:28px"></div>';
-      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
+      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">' + (exOffActive ? 'Make the code' : 'Send proposal') + '</button>';
       html += '<button class="exs-quiet" onclick="App.exBeatEdit()">Edit</button>';
       html += exCancelHTML();
     } else {
@@ -12810,7 +13471,7 @@ function init() {
       if (EX_DECL_ROW) html += '<button class="exs-row"><div class="exs-rowmain"><div class="exs-body">From your declaration</div></div><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
       html += '<div style="min-height:40px"><button class="exs-save" id="ex-beat-save" style="display:' + (exBeatChanged() ? 'inline-flex' : 'none') + '" onclick="App.exBeatSaveService()" aria-label="Save change to your service"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Save change to your service</button></div>';
       html += '<div style="height:8px"></div>';
-      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">Send proposal</button>';
+      html += '<button class="btn btn-primary" id="ex-beat-send" style="width:100%;" onclick="App.exBeatSend()">' + (exOffActive ? 'Make the code' : 'Send proposal') + '</button>';
       html += exCancelHTML();
     }
     host.innerHTML = html;
@@ -12935,8 +13596,8 @@ function init() {
     var du = document.getElementById('ex-duration'); if (du) du.value = (_exBeat.dur || '').trim();
     var ve = document.getElementById('ex-value'); if (ve && String(ve.value).trim() === '') ve.value = '0';
     setDirection(_exBeat.dir);
-    var btn = document.getElementById('ex-beat-send'); if (btn) { btn.disabled = true; btn.textContent = 'Sending'; }
-    generateProposal().catch(function(e) { toast('Could not send: ' + e.message); }).finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Send proposal'; } });
+    var btn = document.getElementById('ex-beat-send'); if (btn) { btn.disabled = true; btn.textContent = exOffActive ? 'Making the code' : 'Sending'; }
+    generateProposal().catch(function(e) { toast('Could not send: ' + e.message); }).finally(function() { if (btn) { btn.disabled = false; btn.textContent = exOffActive ? 'Make the code' : 'Send proposal'; } });
   }
   function exBeatSaveService() {
     if (!_exBeat.task) { toast('Describe the service first'); return; }
@@ -13647,7 +14308,7 @@ function init() {
   var _wave = { mode: 'a', iv: null, panel: false };
   function waveMedian(a) { var s = a.slice().sort(function(x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
   function waveData() {
-    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && r.timestamp && (r.energyState === 'provided' || r.energyState === 'received'); })
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r) && r.timestamp && (r.energyState === 'provided' || r.energyState === 'received'); })
       .map(function(r) { return { t: new Date(r.timestamp).getTime(), v: r.energyState === 'provided' ? +r.value : -r.value }; })
       .filter(function(q) { return !isNaN(q.t); })
       .sort(function(a, b) { return a.t - b.t; });
@@ -13769,7 +14430,7 @@ function init() {
     var el = document.getElementById('tab-home-content');
     if (!el) return;
 
-    var ex = state.chain.filter(HCP.isAct);
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }); // Waiting counts for nothing (Oct 16)
     var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
     ex.forEach(function(r) {
       if (r.energyState === 'provided') { totalP += r.value; actsP++; }
@@ -13912,7 +14573,10 @@ function init() {
         // straight to 'Recorded' and the moment of confirmation got
         // lost in the transition.
         var rAttested = !!r.witnessAttestation;
-        var rPill = rAttested
+        var rWaiting = !HCP.isFinal(r); // hop close: agreed, both signatures held, delivery not yet confirmed
+        var rPill = rWaiting
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(0,0,0,0.08); color:var(--text-dim); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Waiting</span>'
+          : rAttested
           ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--green); color:#fff; margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Recorded</span>'
           : '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(43,140,62,0.14); color:var(--green); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Approved</span>';
         var rStatus = rAttested
@@ -13945,6 +14609,9 @@ function init() {
     el.innerHTML = html;
     // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
     try { renderBrowserStorageBanner(); } catch (e) {}
+    // v2.153.2 (Michael, Oct 16 walk): same bug as v2.110.1 for the Waiting line and the dev hop trace. Switching
+    // to the Home tab rebuilt the hero without them, so they flashed on refreshHome and vanished a moment later.
+    try { renderHomeWaitingLine(); } catch (e) {}
   }
 
   // Home-tab filter — matches the History-tab pattern but scoped to
@@ -15446,6 +16113,7 @@ function init() {
       var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
       var ds = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), ts = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       var cap = (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + (r.duration ? ' \u00b7 ' + formatDuration(r.duration) : '');
+      if (!HCP.isFinal(r)) cap += ' \u00b7 <span style="color:var(--text-faint)">Not final yet</span>'; // v2.151.0: hop close
       var col = r.energyState === 'provided' ? 'var(--accent)' : 'var(--amber)';
       h += '<button class="exs-row" onclick="App.exDetailOpen(' + x.i + ')"><div class="exs-rowmain"><div class="exs-body" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(desc) + '</div><div class="exs-cap">' + cap + '</div></div>';
       h += '<span class="exs-rowval" style="color:' + col + '">' + mcFmt(r.value) + exMarkSVG(14) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
@@ -15496,7 +16164,11 @@ function init() {
     if (r.duration) h += field('Duration', formatDuration(r.duration));
     h += '<div class="exs-cap mc-group">The record</div>';
     var chk = '<svg class="icon icon-md" style="vertical-align:-3px"><use href="#icon-check"/></svg> ';
-    h += field('Checks', (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '<div style="color:var(--text-faint)">No witness on this one. A witness is optional.</div>') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
+    // v2.151.0: the close state reads with the other checks. Waiting means both signed and this phone wrote
+    // the record, but it never received the receipt saying theirs holds it; both phones must be together
+    // to finish (the receipt cannot travel later: the session key does not outlive the app).
+    var closeLine = HCP.isFinal(r) ? '' : '<div style="color:var(--text-dim)">Not final yet. You both signed it, but this phone never heard that theirs has it. Finish it with them when you\u2019re together.</div>';
+    h += field('Checks', closeLine + (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '<div style="color:var(--text-faint)">No witness on this one. A witness is optional.</div>') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
     h += field('Sequence', '#' + r.seq);
     if (r.counterparty) h += field('Their fingerprint', esc(String(r.counterparty).substring(0, 16)), true);
     if (r.type === HCP.RECORD_TYPE_REPAIR) h += '<p class="exs-cap" style="margin:8px 0 0">Copied from your other device.</p>';
@@ -15754,6 +16426,12 @@ function init() {
     h += '<div class="exs-cap mc-group">This app</div>';
     h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
     h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
+    // v2.152.0 (Michael, Oct 16 walk): a test aid, dev only. A real close finishes in a few seconds, too fast
+    // to flip airplane mode on the other phone by hand. With this on, the proposer waits ten seconds before
+    // sending its receipt (hop 3), so the person can cut the confirmer off and walk the Waiting state and
+    // the resume for real. Delays one send; changes nothing about what is sent.
+    if (/\/dev\//.test(location.pathname)) {
+    }
     // Delete, last and alone (rule 8a: red tonally, no filled block)
     h += '<div class="exs-cap mc-group">Delete</div>';
     h += stRow('Delete chain', 'Permanently deletes your chain and keys from this device. Back up first.', 'App.deleteChain()', 'st-danger');
@@ -15900,7 +16578,7 @@ function init() {
 
   return {
     init, setupStep, completeSetup: completeSetupWrapped, goToInstallOrPin,
-    switchTab, histFilter, rsClose, exDoorsOpen, exListOpen, exFilterOpen, exFilterSet, exDetailOpen, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
+    switchTab, histFilter, rsClose, exDoorsOpen, exOffStart, exOffRetry, exOffConfirm, exOffFinish, exOffClose, exOffCancel, exOffResume, exListOpen, exFilterOpen, exFilterSet, exDetailOpen, shareApp, toggleFab, fabAction, fabNew, fabUse, fabUseSelect,
     capturePhoto, uploadPhoto, handlePhotoFile, submitDeclarations, skipDeclarations, rangeUpdate, submitRange, skipRange, rangeNav, toggleValTag,
     setupToggleLocation, setupToggleMotion, submitSensors,
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
@@ -15930,7 +16608,7 @@ function init() {
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, exQtyInput, exQtyDone, pkEdit, pkFromList, pkAddItem, pkLine, pkLineTot, pkLineSave, pkLineRemove, pkSave, pkRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
-    togglePrivacy, toggleMotionTab, toggleLocationTab,
+    togglePrivacy, toggleMotionTab, toggleLocationTab, toggleTestDelayReceipt,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
     checkWitnessStatus,

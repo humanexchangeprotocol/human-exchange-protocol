@@ -846,6 +846,23 @@ button.exs-stack.single { cursor: pointer; }
 @keyframes exsRipple { from { transform: scale(1); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .exs-settle-check, .exs-settle-check .ring, .exs-settle-check path, .exs-settle-t1, .exs-settle-t2, .exs-settle-t3, .exs-settle-btns { animation: none; stroke-dashoffset: 0; } .exs-settle-check .ring { display: none; } }
 @keyframes exsAppear { from { opacity: 0; } to { opacity: 1; } }
+/* v2.155.0 the ladder (Michael, Oct 16, mockup NrRTZNFurvvFmhViAF3UdS): the four lines in a centred card under the faces;
+   the faces wait in pulsing dashed rings, each ring solid green once that phone has the record. */
+.ldr-card { list-style: none; width: fit-content; max-width: 100%; margin: 6px auto 0; padding: 6px 24px 6px 18px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); }
+.ldr-card li { display: flex; gap: 14px; align-items: flex-start; padding: 10px 0; }
+.ldr-ic { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; margin-top: -1px; }
+.ldr-ic .hollow { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); }
+.ldr-ic .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+.ldr-ic .ok { width: 26px; height: 26px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; animation: ldrPop .3s cubic-bezier(.2,1.4,.4,1) both; }
+.ldr-ic .ok path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: exsDraw .25s ease-out .1s forwards; }
+.ldr-card li.todo .exs-body { color: var(--text-faint); }
+.ldr-card li.open .exs-body { color: var(--text-dim); }
+.ldr-ring { animation: pulse 1.5s infinite; }
+.ldr-ring.ok { animation: none; }
+.ldr-flow { animation: ldrFlow 1s linear infinite; }
+@keyframes ldrFlow { to { stroke-dashoffset: -10; } }
+@keyframes ldrPop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ldr-ic .ok, .ldr-ic .ok path, .ldr-ring, .ldr-flow, .ldr-ic .dot { animation: none; stroke-dashoffset: 0; } }
 @keyframes exsRide { 0% { opacity: 0; transform: translateY(-26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(26px); } }
 @keyframes exsRideUp { 0% { opacity: 0; transform: translateY(26px); } 20% { opacity: 1; } 100% { opacity: 1; transform: translateY(-26px); } }
 @keyframes exsLand { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
