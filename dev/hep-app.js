@@ -13003,11 +13003,20 @@ function init() {
     g += '<text x="' + cx + '" y="126" text-anchor="middle" font-size="13" fill="var(--text-dim)">' + esc(isYou ? 'You' : name) + '</text></g>';
     return g;
   }
+  // v2.155.1: the faces on the wave and the ladder read photos the way Account does. Mine: the current
+  // photo, else the one anchored in my chain's first record (an added device may hold only that). Theirs:
+  // their current photo from the sealed snapshot, else their anchored one.
+  function exMyPhoto() {
+    var ph = (state.declarations && state.declarations.photo) || '';
+    if (!ph) { var g = state.chain.find(function(r) { return r.type === HCP.RECORD_TYPE_GENESIS && r.photoData; }); if (g) ph = g.photoData; }
+    return ph;
+  }
+  function exOtherPhoto(ts) { return (ts && (ts._photo || ts._genesisPhoto)) || ''; }
   function exSettleFlowHTML(p) {
     var other = _exRV.other || exPartnerName();
     var ts = exRVTs();
-    var otherPhoto = (ts && ts._genesisPhoto) || '';
-    var myPhoto = (state.declarations && state.declarations.photo) || '';
+    var otherPhoto = exOtherPhoto(ts);
+    var myPhoto = exMyPhoto();
     var myName = (state.declarations && state.declarations.name) || 'You';
     var iProvide = p.myDirection === 'provided';
     var left = iProvide ? exSettleCircle(52, other, otherPhoto, false, 'exs-gl') : exSettleCircle(52, myName, myPhoto, true, 'exs-gl');
@@ -13107,8 +13116,8 @@ function init() {
   function ldrFacesSVG(p, stall) {
     var other = _exRV.other || exPartnerName();
     var ts = exRVTs();
-    var otherPhoto = (ts && ts._genesisPhoto) || '';
-    var myPhoto = (state.declarations && state.declarations.photo) || '';
+    var otherPhoto = exOtherPhoto(ts);
+    var myPhoto = exMyPhoto();
     var myName = (state.declarations && state.declarations.name) || 'You';
     var iProvide = p.myDirection === 'provided';
     var meX = iProvide ? 252 : 52, themX = iProvide ? 52 : 252;
