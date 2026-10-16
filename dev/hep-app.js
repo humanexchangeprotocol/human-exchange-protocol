@@ -2885,8 +2885,6 @@ const PAIR_CODE_LENGTH = 4;
     renderHomeTab();
     renderStandingTab();
     renderBrowserStorageBanner();
-    renderHomeWaitingLine();
-    renderHomeCloseTrace();
   }
 
   // v2.151.0 (Michael, Oct 16 walk): a record that is Waiting (agreed and signed on both phones, but this
@@ -14470,6 +14468,9 @@ function init() {
     el.innerHTML = html;
     // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
     try { renderBrowserStorageBanner(); } catch (e) {}
+    // v2.153.2 (Michael, Oct 16 walk): same bug as v2.110.1 for the Waiting line and the dev hop trace. Switching
+    // to the Home tab rebuilt the hero without them, so they flashed on refreshHome and vanished a moment later.
+    try { renderHomeWaitingLine(); renderHomeCloseTrace(); } catch (e) {}
   }
 
   // Home-tab filter — matches the History-tab pattern but scoped to
