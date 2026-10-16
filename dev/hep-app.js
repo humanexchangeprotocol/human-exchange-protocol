@@ -3424,7 +3424,7 @@ const PAIR_CODE_LENGTH = 4;
     // we leave them where they were.
     if (wasDone) {
       try { if (typeof switchTab === 'function' && activeTab !== 'home') switchTab('home'); } catch(_) {}
-      toast('Exchange complete');
+      if (!(_ldr && _ldr.stalled)) toast('Exchange complete');
     }
     // Hooks the completion screen owed (see writeSessionRecord).
     if (typeof _exRV !== 'undefined' && _exRV.finish) {
@@ -5662,10 +5662,16 @@ const PAIR_CODE_LENGTH = 4;
     // the sentence stay until Done. Plays only if the layout is on
     // screen; closeExchange then runs the invite pipeline hooks
     // (_exRV.finish). Otherwise finish here as before.
-    if (closeCtx) closeRun(closeCtx);
-
+    // v2.155.0 (Michael, Oct 16): with the hop close, the ladder screen shows the steps as they really
+    // happen and the wave plays only once this phone's record is Final. Without it (an older partner app),
+    // the wave plays as before.
     var played = false;
-    try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    if (closeCtx) {
+      if (exRVIsShowing()) { try { ldrStart(role); played = true; _exRV.finish = true; } catch(le) { console.log('[ladder] failed:', le.message); } }
+      closeRun(closeCtx);
+    } else {
+      try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
+    }
     if (!played) {
       closeExchange();
       // Invite pipeline room sweep: return the inviter to the queue.
@@ -5721,9 +5727,11 @@ const PAIR_CODE_LENGTH = 4;
     if (ctx.role === 'proposer') {
       var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 5000 : 0; // v2.152.0 test aid; 5 s from v2.152.3: time to flip airplane mode after Recorded (the first move is at CLOSE_TIMEOUT_MS, the stall only after the list is used up)
       if (delay3) { console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s'); closeTrace('test switch: holding hop 3 for ' + (delay3 / 1000) + 's'); }
-      new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function() {
+      new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
+        if (sentOk) ldrDone(3);
         closeWait(ctx, 4, function() {
           try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 4); } catch (e) { console.log('[close] final failed:', e.message); return; }
+          ldrDone(4);
           ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: record final, close confirmed on both'); closeTrace('hop 4 received: my record is FINAL, close confirmed on both'); closeRefresh();
         });
       });
@@ -5731,6 +5739,7 @@ const PAIR_CODE_LENGTH = 4;
       closeWait(ctx, 3, function() {
         try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
         save(); console.log('[close] hop 3 received: record final'); closeTrace('my record is FINAL'); closeRefresh();
+        ldrDone(4);
         closeSendHop(ctx, 4);
       });
     }
@@ -5749,8 +5758,10 @@ const PAIR_CODE_LENGTH = 4;
       var resp = await serverFetch(ctx.url + '/session/' + ctx.code + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: ctx.sealed.enc }) });
       console.log('[close] hop ' + hop + ' sent' + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
       closeTrace('hop ' + hop + ' sent to ' + closeHost(ctx.url) + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
+      var took = resp.ok;
     } catch (e) { console.log('[close] hop ' + hop + ' send failed:', e.message); closeTrace('hop ' + hop + ' send FAILED (' + e.message + ')'); }
     for (var i = 0; i < ctx.alts.length; i++) closePostBox(ctx, ctx.alts[i]);
+    return !!took;
   }
   async function closePostBox(ctx, alt) {
     if (!ctx.pendingHop) return;
@@ -5796,17 +5807,20 @@ const PAIR_CODE_LENGTH = 4;
       try {
         var now = Date.now();
         var waited = now - lastMove, limit = ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS;
+        if (!ctx.alts.length && now - started > LDR_SLOW_MS && !ctx.slowShown) { ctx.slowShown = true; ldrSub('Weak connection. Still trying.'); }
         if (waited > limit) {
           if (ctx.alts.length < ctx.servers.length) {
             var alt = ctx.servers[ctx.alts.length]; ctx.alts.push(alt); lastMove = now;
             console.log('[close] hop ' + hop + ' not here after ' + Math.round(waited / 1000) + ' s; trying ' + alt + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
             closeTrace('hop ' + hop + ' not here after ' + Math.round(waited / 1000) + 's, trying ' + closeHost(alt) + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
+            ldrSub('Trying another server');
             closeRefresh();
             await closePostBox(ctx, alt);
           } else {
             closeStop(); ctx.stalled = hop;
             console.log('[close] STALL: hop ' + hop + ' reached no server (' + (1 + ctx.servers.length) + ' tried) in ' + Math.round((now - started) / 1000) + ' s');
             closeTrace('STALL: hop ' + hop + ' never arrived, ' + (1 + ctx.servers.length) + ' servers tried; record stays as it is');
+            ldrStall();
             closeRefresh(); return;
           }
         }
@@ -5964,7 +5978,7 @@ const PAIR_CODE_LENGTH = 4;
     var rv = document.getElementById('ex-step-rv');
     var onRV = rv && rv.classList.contains('active');
     var st = _exRV.state;
-    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || (st === 'wait' && _exPresenceLive));
+    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || st === 'ladder' || st === 'notconfirmed' || (st === 'wait' && _exPresenceLive));
     xb.style.visibility = hide ? 'hidden' : '';
   }
 
@@ -12795,6 +12809,8 @@ function init() {
     // Processing and Settled (ruled Oct 2, eleventh session) have their
     // own layout: no description header, nothing but the moment.
     exFrameXRefresh();
+    if (st === 'ladder') { host.innerHTML = exLadderHTML(p); ldrPaint(); return; }
+    if (st === 'notconfirmed') { host.innerHTML = exNotConfirmedHTML(p); return; }
     if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
     if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
     // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
@@ -13033,13 +13049,132 @@ function init() {
     return h;
   }
   function exRVWallet() { closeExchange(); setTimeout(function() { try { openWallet(); } catch(_) {} }, 340); }
+  // ===== The ladder (v2.155.0; Michael, Oct 16; mockup NrRTZNFurvvFmhViAF3UdS) =====
+  // Four lines, the same words on both phones. Each turns green only when it is true on this phone:
+  // 1 both signatures held, 2 this phone wrote the record, 3 this phone's hop left (confirmer: hop 2,
+  // proposer: hop 3), 4 this phone's record is Final (confirmer: hop 3 arrived, proposer: hop 4 arrived).
+  // A line holds at least LDR_MIN_MS so a person can read it; the wave plays only after line 4.
+  // Stall: "Transaction not confirmed", no hop detail (Michael: the person does not need the hops).
+  var LDR_MIN_MS = 600, LDR_SLOW_MS = 4000, _ldr = null;
+  function ldrStart(role) {
+    if (_ldr && _ldr.timer) clearInterval(_ldr.timer);
+    _ldr = { role: role, real: [true, true, role === 'confirmer', false], shown: 0, sub: '', stalled: false, last: Date.now() - (LDR_MIN_MS - 250), completing: false, timer: null, painted: [] };
+    exRenderRV('ladder');
+    _ldr.timer = setInterval(ldrStep, 100);
+  }
+  function ldrStep() {
+    if (!_ldr || _ldr.stalled) return;
+    var now = Date.now();
+    if (_ldr.shown < 4 && _ldr.real[_ldr.shown] && now - _ldr.last >= LDR_MIN_MS) { _ldr.shown++; _ldr.last = now; _ldr.sub = ''; ldrPaint(); }
+    if (_ldr.shown === 4 && !_ldr.completing && now - _ldr.last >= 500) {
+      _ldr.completing = true; clearInterval(_ldr.timer); _ldr.timer = null;
+      try { exPlayCompletion(); } catch (e) { console.log('[ladder] completion failed:', e.message); }
+    }
+  }
+  function ldrDone(n) { if (!_ldr) return; for (var i = 0; i < n && i < 4; i++) _ldr.real[i] = true; }
+  function ldrSub(t) { if (!_ldr || _ldr.stalled || _ldr.completing) return; _ldr.sub = t; ldrPaint(); }
+  function ldrStall() {
+    if (!_ldr || _ldr.completing) return;
+    _ldr.stalled = true; if (_ldr.timer) { clearInterval(_ldr.timer); _ldr.timer = null; }
+    if (exRVIsShowing()) exRenderRV('notconfirmed');
+  }
+  function ldrLines() {
+    var o = String(_exRV.other || exPartnerName()).trim().split(/\s+/)[0] || 'them'; // first name keeps each line on one row
+    return ['Both of you signed', 'Saved on your phone', 'Sent to ' + o, 'Saved on ' + o + '\u2019s phone'];
+  }
+  function ldrLineHTML(text, st, sub) {
+    var ic = st === 'done' ? '<span class="ok"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+      : st === 'wait' ? '<span class="dot"></span>' : '<span class="hollow"></span>';
+    return '<li class="' + (st === 'done' ? '' : st === 'wait' ? 'open' : 'todo') + '"><span class="ldr-ic">' + ic + '</span><div><div class="exs-body">' + esc(text) + '</div>'
+      + (sub ? '<div class="exs-cap">' + esc(sub) + '</div>' : '') + '</div></li>';
+  }
+  function ldrPaint() {
+    if (!_ldr) return;
+    var ul = document.getElementById('ldr-card'); if (!ul) return;
+    // Only a line whose state or caption changed is redrawn, so a check pops once and then stays put.
+    var L = ldrLines();
+    if (!ul.children.length) { var h0 = ''; for (var k = 0; k < 4; k++) h0 += '<li></li>'; ul.innerHTML = h0; _ldr.painted = []; }
+    for (var i = 0; i < 4; i++) {
+      var st = i < _ldr.shown ? 'done' : i === _ldr.shown ? 'wait' : 'todo', sub = i === _ldr.shown ? _ldr.sub : '';
+      var key = st + '|' + sub;
+      if (_ldr.painted[i] !== key) { _ldr.painted[i] = key; ul.children[i].outerHTML = ldrLineHTML(L[i], st, sub); }
+    }
+    var me = document.getElementById('ldr-ring-me'), them = document.getElementById('ldr-ring-them');
+    function ring(el, ok) { if (!el) return; el.setAttribute('class', 'ldr-ring' + (ok ? ' ok' : '')); el.setAttribute('stroke', ok ? 'var(--green)' : 'var(--accent)'); el.setAttribute('stroke-width', ok ? '3' : '2'); if (ok) el.removeAttribute('stroke-dasharray'); else el.setAttribute('stroke-dasharray', '4 5'); }
+    ring(me, _ldr.shown >= 2); ring(them, _ldr.shown >= 4);
+  }
+  // The faces as on the Processing wave (receiver left, provider right), already shown, each in a waiting ring.
+  function ldrFacesSVG(p, stall) {
+    var other = _exRV.other || exPartnerName();
+    var ts = exRVTs();
+    var otherPhoto = (ts && ts._genesisPhoto) || '';
+    var myPhoto = (state.declarations && state.declarations.photo) || '';
+    var myName = (state.declarations && state.declarations.name) || 'You';
+    var iProvide = p.myDirection === 'provided';
+    var meX = iProvide ? 252 : 52, themX = iProvide ? 52 : 252;
+    var left = iProvide ? exSettleCircle(52, other, otherPhoto, false, 'exs-gl') : exSettleCircle(52, myName, myPhoto, true, 'exs-gl');
+    var right = iProvide ? exSettleCircle(252, myName, myPhoto, true, 'exs-gr') : exSettleCircle(252, other, otherPhoto, false, 'exs-gr');
+    left = left.replace('opacity="0"', 'opacity="1"'); right = right.replace('opacity="0"', 'opacity="1"');
+    var h = '<svg width="304" height="' + (stall ? 136 : 176) + '" viewBox="0 0 304 ' + (stall ? 136 : 176) + '" style="margin:8px auto 0; display:block; max-width:100%">';
+    if (stall) {
+      h += left + right;
+      h += '<circle cx="52" cy="70" r="40" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="4 5"/><circle cx="252" cy="70" r="40" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="4 5"/>';
+      h += '<path d="M96 70 L206 70" fill="none" stroke="var(--border)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 8"/>';
+      h += '<text x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-faint)">' + (Number(p.value) || 0).toLocaleString() + '</text></svg>';
+      return h;
+    }
+    h += '<circle id="exs-ring" cx="252" cy="70" r="34" fill="none" stroke="var(--accent)" stroke-width="3" opacity="0"/>';
+    h += left + right;
+    h += '<g id="ldr-rings"><circle id="ldr-ring-me" class="ldr-ring" cx="' + meX + '" cy="70" r="40" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 5"/>'
+      + '<circle id="ldr-ring-them" class="ldr-ring" cx="' + themX + '" cy="70" r="40" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 5"/></g>';
+    h += '<path id="ldr-dots" class="ldr-flow" d="M96 70 L206 70" fill="none" stroke="var(--text-faint)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 8"/>';
+    h += '<path id="exs-wave" d="" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" opacity="0"/>';
+    h += '<path id="exs-head" d="M202 61 L212 70 L202 79" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>';
+    h += '<text id="exs-amt" x="152" y="40" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text)" opacity="1">' + (Number(p.value) || 0).toLocaleString() + '</text>';
+    h += '<g id="exs-tots" opacity="1">'
+      + '<text x="52" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Cosmic share</text>'
+      + '<text id="exs-nl" x="52" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--amber)">+0</text>'
+      + '<text x="252" y="152" text-anchor="middle" font-size="12" fill="var(--text-dim)">Currency</text>'
+      + '<text id="exs-nr" x="252" y="172" text-anchor="middle" font-size="18" font-weight="600" fill="var(--accent)">+0</text></g>';
+    return h + '</svg>';
+  }
+  function exLadderHTML(p) {
+    var h = '<div class="exs-settle" style="align-items:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h" id="exs-st" style="text-align:center">Saving on both phones</div>';
+    h += ldrFacesSVG(p, false);
+    h += '<ul class="ldr-card" id="ldr-card"></ul>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-cap" id="ldr-keep" style="text-align:center">Keep HEP open until this finishes.</div>';
+    h += '<div style="height:20px"></div></div>';
+    return h;
+  }
+  function exNotConfirmedHTML(p) {
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h">Transaction not confirmed</div>';
+    h += ldrFacesSVG(p, true);
+    h += '<div class="exs-body" style="color:var(--text-dim); margin-top:22px">The connection dropped before both phones confirmed it.</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-btns" style="animation:none"><button class="btn btn-primary" style="width:100%;" onclick="App.exRVDone()">Done</button></div>';
+    h += '</div>';
+    return h;
+  }
   function exPlayCompletion() {
     if (!exRVIsShowing()) return false;
     var p = _exRV.p || exRVProposalLive();
     if (!p) return false;
     _exRV.finish = true;
     _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
-    exRenderRV('flow');
+    // v2.155.0: from the ladder the faces are already on screen; the wave runs in place above the
+    // finished lines (the pop-in is skipped by starting the clock where the wave begins).
+    var fromLadder = _exRV.state === 'ladder' && !!document.getElementById('exs-wave');
+    if (fromLadder) {
+      var rg = document.getElementById('ldr-rings'); if (rg) { rg.style.transition = 'opacity .6s'; rg.style.opacity = '0'; }
+      var dl = document.getElementById('ldr-dots'); if (dl) dl.style.display = 'none';
+      var st0 = document.getElementById('exs-st'); if (st0) st0.textContent = 'Completing transaction';
+      var kp = document.getElementById('ldr-keep'); if (kp) kp.style.visibility = 'hidden';
+    } else exRenderRV('flow');
     var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(_) {}
     var $ = function(id) { return document.getElementById(id); };
     var V = Number(p.value) || 0;
@@ -13071,7 +13206,7 @@ function init() {
       finish();
       return true;
     }
-    var t0 = performance.now(), ended = false;
+    var t0 = performance.now() - (fromLadder ? 1800 : 0), ended = false;
     function frame(now) {
       if (!$('exs-wave')) return; // layout replaced (Done tapped or sheet closed)
       var t = (now - t0) / 1000;
@@ -13085,7 +13220,7 @@ function init() {
       var amt = $('exs-amt');
       if (t > 1.8) amt.setAttribute('opacity', t < 5.4 ? 1 : Math.max(0, 1 - (t - 5.4) / 0.4));
       amt.textContent = Math.round(V * (1 - e)).toLocaleString();
-      amt.setAttribute('x', (100 + 104 * e).toFixed(1));
+      amt.setAttribute('x', (fromLadder ? 152 + 52 * e : 100 + 104 * e).toFixed(1)); // from the ladder the number starts centred
       if (t > 2.0) {
         $('exs-tots').setAttribute('opacity', 1);
         var added = '+' + Math.round(V * e).toLocaleString();
