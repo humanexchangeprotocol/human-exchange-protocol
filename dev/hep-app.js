@@ -5706,7 +5706,9 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
-      closeSendHop(ctx, 3).then(function() {
+      var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 10000 : 0; // v2.152.0 test aid
+      if (delay3) console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s');
+      new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function() {
         closeWait(ctx, 4, function() { ctx.record.closeHop = 4; ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: close confirmed on both'); closeRefresh(); });
       });
     } else {
@@ -8672,6 +8674,12 @@ const PAIR_CODE_LENGTH = 4;
   }
 
   // --- Settings ---
+  function toggleTestDelayReceipt() {
+    state.settings.testDelayReceipt = !state.settings.testDelayReceipt;
+    var el = document.getElementById('switch-test-delay-receipt');
+    if (el) el.classList.toggle('on', !!state.settings.testDelayReceipt);
+    save();
+  }
   function togglePrivacy(key) {
     if (!key) key = 'hideNames'; // default for tab toggle
     state.settings[key] = !state.settings[key];
@@ -16245,6 +16253,13 @@ function init() {
     h += '<div class="exs-cap mc-group">This app</div>';
     h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
     h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
+    // v2.152.0 (Michael, Oct 16 walk): a test aid, dev only. A real close finishes in a few seconds, too fast
+    // to flip airplane mode on the other phone by hand. With this on, the proposer waits ten seconds before
+    // sending its receipt (hop 3), so the person can cut the confirmer off and walk the Waiting state and
+    // the resume for real. Delays one send; changes nothing about what is sent.
+    if (/\/dev\//.test(location.pathname)) {
+      h += stSwitchRow('Test: delay the receipt', 'Dev only. When this phone proposes, wait 10 seconds before sending the receipt, so the other phone can be cut off.', state.settings.testDelayReceipt, 'switch-test-delay-receipt', 'App.toggleTestDelayReceipt()');
+    }
     // Delete, last and alone (rule 8a: red tonally, no filled block)
     h += '<div class="exs-cap mc-group">Delete</div>';
     h += stRow('Delete chain', 'Permanently deletes your chain and keys from this device. Back up first.', 'App.deleteChain()', 'st-danger');
@@ -16421,7 +16436,7 @@ function init() {
     openLessonTile, lessonClose, lessonNext, lessonPrev,
     openDeclarationsEdit, closeDeclarationsEdit, openLearnFromAccount, openStanding, stOpen, acPreview, acPList, secOpen, ofOpen, ofEdit, ofPrice, ofTimeUnit, ofUnitField, ofSave, ofRemove, ofPick, ofPickSet, ofPickDecl, exQtyInput, exQtyDone, pkEdit, pkFromList, pkAddItem, pkLine, pkLineTot, pkLineSave, pkLineRemove, pkSave, pkRemove, secSignals, sigAll, sigOne, sigTech, lrOpenModule, lrOpenLesson, lrNext, lrBack, lrContinue, dcOpenCV, dcCloseCV, dcOpenPreview, dcOpenPList, dcCloseSheet, editCapturePhoto, editUploadPhoto, handleEditPhotoFile, saveDeclarationsEdit,
     openDeclareRange, declareRangeUpdate, submitDeclareRange, dismissRangePrompt,
-    togglePrivacy, toggleMotionTab, toggleLocationTab,
+    togglePrivacy, toggleMotionTab, toggleLocationTab, toggleTestDelayReceipt,
     togglePOHSignals, togglePOHSignalDetail, openPOHTechnical,
     setPricingFilter, homeFilter,
     checkWitnessStatus,
