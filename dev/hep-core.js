@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.147.0';
+const APP_VERSION='2.148.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -602,6 +602,8 @@ function crep(o,origHash,origFp){
   for(const k of['counterpartyName','duration','description','category','actHash','counterpartySig','street','city','state','geo'])if(o[k]!==undefined&&o[k]!=='')r[k]=o[k];
   // v2.113.1: the witness attestation sits outside ser (unsigned, attests the original's mint hash); carried so a copy does not read as unwitnessed.
   if(o.witnessAttestation)r.witnessAttestation=JSON.parse(JSON.stringify(o.witnessAttestation));
+  // Hop close (Oct 16): the close state rides with a copy the same way (outside ser).
+  if(o.closeState)r.closeState=o.closeState;if(o.closeHop)r.closeHop=o.closeHop;
   return r;
 }
 // The sync step, one direction: given my chain and the other device's chain
@@ -791,6 +793,25 @@ async function vah(ah,sig,pubJwk){try{const pk=await ipk(pubJwk);return await cr
 async function chi(iPub,cPub,ts){return await cmh(iPub,cPub,ts)}
 function psp(j){const d=JSON.parse(j);if(d.a!=='st')throw new Error('Not a settlement');if(!d.f||!d.o)throw new Error('Missing fingerprints');return{fp:d.f,confirmFp:d.o,ts:d.z}}
 
+// --- The hop close (Oct 16 2026, registry Component 1): write, then sign, then send ---
+// Hops: 1 the proposal (proposer), 2 the confirmation (confirmer), 3 the proposer's
+// receipt, 4 the confirmer's receipt. The proposer closes at 2, the confirmer at 3,
+// hop 4 tells the proposer the confirmer closed; nothing after. Hops 1 and 2 are told
+// apart by their place in the protocol; hops 3 and 4 travel sealed and carry their
+// number, the exchange nonce and the act hash, signed, so a missing hop is named
+// exactly and a replayed, misaddressed or forged hop is discarded. The close state
+// ('waiting': agreed, both signatures held, delivery not yet confirmed; 'final') sits
+// beside the record, outside ser, so a written record never changes.
+const CLOSE_WAITING='waiting',CLOSE_FINAL='final';
+function hopmsg(hop,nonce,ah){return 'hep-hop1|'+hop+'|'+nonce+'|'+ah}
+async function hopsign(hop,nonce,ah,privKey){if(hop!==3&&hop!==4)throw new Error('only hops 3 and 4 are signed receipts');if(!nonce||!ah)throw new Error('hop needs the nonce and the act hash');return{hop:hop,nonce:nonce,actHash:ah,sig:btb(await crypto.subtle.sign(SALG,privKey,u8.encode(hopmsg(hop,nonce,ah))))}}
+// exp: {hop: the number this phone is waiting for, nonce, actHash, seen: highest hop already accepted}
+async function hopverify(h,exp,pubJwk){try{if(!h||typeof h.hop!=='number'||!h.sig)return{ok:false,error:'not a hop'};
+  if(h.hop!==exp.hop)return{ok:false,error:h.hop<=(exp.seen||0)?'replayed hop '+h.hop:'wrong hop '+h.hop+', expected '+exp.hop};
+  if(h.nonce!==exp.nonce)return{ok:false,error:'another exchange'};if(h.actHash!==exp.actHash)return{ok:false,error:'another act'};
+  const pk=await ipk(pubJwk);return await crypto.subtle.verify(SALG,pk,btf(h.sig),u8.encode(hopmsg(h.hop,h.nonce,h.actHash)))?{ok:true}:{ok:false,error:'bad signature'}}catch(e){return{ok:false,error:e.message}}}
+function isfinal(r){return !r||!r.closeState||r.closeState===CLOSE_FINAL}
+function setclose(r,s,hop){if(s!==CLOSE_WAITING&&s!==CLOSE_FINAL)throw new Error('bad close state');if(r.closeState===CLOSE_FINAL&&s===CLOSE_WAITING)throw new Error('a final record cannot go back to waiting');r.closeState=s;if(hop)r.closeHop=hop;return r}
 // --- Offline codes: three scans, countersigned (Oct 15 2026 rebuild, registry Component 1) ---
 // No witness, no relay: the two phones show each other screens. Each payload is signed
 // by the key it carries, every fingerprint is checked against its key, every step is
@@ -1019,7 +1040,7 @@ async function vpa(r,chainFp){
   const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
   return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
 }
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah,CLOSE_WAITING:CLOSE_WAITING,CLOSE_FINAL:CLOSE_FINAL,signHop:hopsign,verifyHop:hopverify,isFinal:isfinal,setClose:setclose}
 })();
 
 // ============================================================
