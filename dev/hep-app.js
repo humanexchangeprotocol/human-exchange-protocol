@@ -4084,6 +4084,7 @@ const PAIR_CODE_LENGTH = 4;
   // === LAYER 3: Nonce-Bound Integrity Hash ===
   // Random nonce bound to proposal payload, retained on device, verified on return.
   let sessionProposalNonce = null; // hex string of random nonce sent with proposal
+  let sessionMyBackups = null; // hop close rendezvous: the backup witnesses this phone named (sealed)
   let sessionProposalIntegrityHash = null; // hash(nonce + payload fields)
 
   function sessionSetState(newState) {
@@ -4874,6 +4875,10 @@ const PAIR_CODE_LENGTH = 4;
       var nonceHex = Array.from(nonceBytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
       exchangeContent._nonce = nonceHex;
       sessionProposalNonce = nonceHex;
+      // Hop close rendezvous (Oct 16): where to finish if this witness stalls, named here inside
+      // the sealed content so the witness never sees it. Both phones keep the named order.
+      sessionMyBackups = closeBackupList();
+      exchangeContent.backups = sessionMyBackups;
       // Compute integrity hash: nonce + canonical payload fields
       var integrityInput = nonceHex + '|' + exchangeContent.value + '|' + exchangeContent.direction + '|' + (exchangeContent.description || '') + '|' + (exchangeContent.category || '') + '|' + (exchangeContent.duration || 0);
       var integrityBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(integrityInput));
@@ -5029,6 +5034,7 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.breakdown = dec.breakdown || null;
             sessionProposal.breakdownSig = dec.breakdownSig || null;
             sessionProposal._nonce = dec._nonce || ''; // hop close: the per-exchange nonce, sealed in hop 1
+            sessionProposal._backups = Array.isArray(dec.backups) ? dec.backups.slice(0, 3) : []; // rendezvous: the proposer's backup witnesses
             // v2.134.0: the proposer's device fields arrive inside the envelope only.
             sessionProposal.sensor_hash = (dec.xd && dec.xd.sensorHash) || '';
             sessionProposal.platform = (dec.xd && dec.xd.platform) || '';
@@ -5219,7 +5225,8 @@ const PAIR_CODE_LENGTH = 4;
         // v2.134.0 (security tenet gate): this phone's device fields reach the proposer inside
         // the sealed snapshot, refreshed here before confirming; nothing readable goes to the witness.
         if (!sessionSharedKey) { toast('Could not set up a secure connection. Nothing was recorded.'); _sessionWritten = false; if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Confirm exchange'; acceptBtn.style.opacity = '1'; } return; }
-        await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' } });
+        sessionMyBackups = closeBackupList();
+        await sendEncryptedSnapshot({ _xd: { sensorHash: _cachedDeviceHash || '', platform: navigator.platform || '', geo: _cachedGeo || null, deviceHash: _cachedDeviceHash || '' }, _backups: sessionMyBackups });
         // Countersignature, confirmer side. ENFORCED from v2.147.0 (gate a; observe mode
         // since v2.100.0, Oct 5): the proposer's signature over the act hash must be present
         // and verify against the key bound to their fingerprint, and their act hash must equal
@@ -5349,6 +5356,7 @@ const PAIR_CODE_LENGTH = 4;
       if (data.partner && data.partner.encrypted_snapshot && sessionSharedKey) {
         var cpSnap = await HCP.decryptRelayPayload(data.partner.encrypted_snapshot, sessionSharedKey);
         if (cpSnap && cpSnap._xd) data._cpXd = cpSnap._xd;
+        data._cpBackups = (cpSnap && Array.isArray(cpSnap._backups)) ? cpSnap._backups.slice(0, 3) : [];
       }
     } catch(xdErr) { console.log('[session] confirmer device fields unavailable:', xdErr.message); }
     sessionSetState('done');
@@ -5555,7 +5563,10 @@ const PAIR_CODE_LENGTH = 4;
       var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
       if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
         HCP.setClose(record, role === 'confirmer' ? HCP.CLOSE_WAITING : HCP.CLOSE_FINAL, 2);
-        closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2 };
+        var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
+        var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
+        closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2,
+          servers: closeServerOrder(getSessionWitnessUrl(), pList, cList), alts: [], pendingHop: 0 };
       } else console.log('[close] no close context (nonce=' + !!closeNonce + ' key=' + !!sessionSharedKey + ' sid=' + !!sessionSid + '); record kept as before');
     } catch (ce) { console.log('[close] setup failed:', ce.message); }
     save();
@@ -5641,8 +5652,28 @@ const PAIR_CODE_LENGTH = 4;
   // for hop 3 (record goes final), sends hop 4. A hop that does not arrive within
   // CLOSE_TIMEOUT_MS is a stall: the record stays as it is (the rendezvous to another
   // server is the next build step) and the stall is logged.
-  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000;
+  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000, CLOSE_MOVE_MS = 15000, CLOSE_MAX_SERVERS = 5;
   var _closeTimer = null;
+  // The backup witnesses this phone names: trusted, unquarantined, not the session witness, three at most.
+  function closeBackupList(exclude) {
+    var cur = exclude || getSessionWitnessUrl();
+    try { return attestWitnessOrder().filter(function(u) { return u && u !== cur; }).slice(0, 3); } catch (e) { return []; }
+  }
+  // The agreed order both phones walk on a stall: the proposer's named list, then the confirmer's,
+  // then the built-in seeds, never the witness that stalled, five at most. Deterministic on both phones.
+  function closeServerOrder(cur, pList, cList) {
+    var out = [], seen = {}; seen[cur] = true;
+    function add(u) { if (u && typeof u === 'string' && /^https?:\/\//.test(u) && !seen[u] && out.length < CLOSE_MAX_SERVERS) { seen[u] = true; out.push(u); } }
+    (pList || []).forEach(add); (cList || []).forEach(add);
+    try { var set = getEffectiveTrustSet(); for (var i = 0; i < set.length; i++) if (set[i] && set[i].url) add(set[i].url); } catch (e) {}
+    return out;
+  }
+  // Box codes: derived from the sealed nonce (which no witness ever sees) and the act hash, one per
+  // direction, so both phones find the same slots on any server and a witness cannot guess them.
+  async function closeBoxCode(ctx, role) {
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hep-box1|' + ctx.nonce + '|' + ctx.actHash + '|' + role));
+    return HCP.bufToHex(buf).slice(0, 32);
+  }
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
       closeSendHop(ctx, 3).then(function() {
@@ -5656,35 +5687,100 @@ const PAIR_CODE_LENGTH = 4;
       });
     }
   }
+  async function closeSealHop(ctx, hop) {
+    var h = await HCP.signHop(hop, ctx.nonce, ctx.actHash, state.privateKey);
+    var o = await HCP.signSealed({ t: 'close', h: h }, state.fingerprint, ctx.partner.fingerprint, ctx.sid, state.privateKeyJwk);
+    return await HCP.encryptRelayPayload(o, ctx.key);
+  }
+  // Post the hop to the session witness's thread and, if this phone has moved, to the box on
+  // every backup tried so far. Posting is idempotent: the same signed bits under the same nonce.
   async function closeSendHop(ctx, hop) {
+    ctx.pendingHop = hop;
     try {
-      var h = await HCP.signHop(hop, ctx.nonce, ctx.actHash, state.privateKey);
-      var o = await HCP.signSealed({ t: 'close', h: h }, state.fingerprint, ctx.partner.fingerprint, ctx.sid, state.privateKeyJwk);
-      var enc = await HCP.encryptRelayPayload(o, ctx.key);
-      var resp = await serverFetch(ctx.url + '/session/' + ctx.code + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: enc }) });
+      if (!ctx.sealed || ctx.sealed.hop !== hop) ctx.sealed = { hop: hop, enc: await closeSealHop(ctx, hop) };
+      var resp = await serverFetch(ctx.url + '/session/' + ctx.code + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: ctx.sealed.enc }) });
       console.log('[close] hop ' + hop + ' sent' + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
     } catch (e) { console.log('[close] hop ' + hop + ' send failed:', e.message); }
+    for (var i = 0; i < ctx.alts.length; i++) closePostBox(ctx, ctx.alts[i]);
   }
+  async function closePostBox(ctx, alt) {
+    if (!ctx.pendingHop) return;
+    try {
+      if (!ctx.sealed || ctx.sealed.hop !== ctx.pendingHop) ctx.sealed = { hop: ctx.pendingHop, enc: await closeSealHop(ctx, ctx.pendingHop) };
+      if (!ctx.boxOut) ctx.boxOut = await closeBoxCode(ctx, ctx.role);
+      var r = await serverFetch(alt + '/box/' + ctx.boxOut, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sealed: ctx.sealed.enc }) });
+      console.log('[close] hop ' + ctx.pendingHop + ' left at ' + alt + (r.ok ? '' : ' (server said ' + r.status + ')'));
+    } catch (e) { console.log('[close] box post failed at ' + alt + ': ' + e.message); }
+  }
+  // Open and check one sealed packet; true when it is the hop this phone is waiting for.
+  async function closeOpen(ctx, hop, blob, from) {
+    var o;
+    try { o = await HCP.decryptRelayPayload(blob, ctx.key); } catch (de) { console.log('[close] packet from ' + from + ' would not open'); return false; }
+    if (!o || o.t !== 'close') return false; // the partner's earlier snapshot; not a hop
+    var vs = await HCP.verifySealed(o, ctx.partner.fingerprint, state.fingerprint, ctx.sid, ctx.partner.public_key);
+    if (!vs.ok) { console.log('[close] sealed hop from ' + from + ' refused: ' + vs.error); return false; }
+    var vh = await HCP.verifyHop(o.h, { hop: hop, nonce: ctx.nonce, actHash: ctx.actHash, seen: ctx.seen }, ctx.partner.public_key);
+    if (!vh.ok) { console.log('[close] hop from ' + from + ' refused: ' + vh.error); return false; }
+    return true;
+  }
+  // Wait for a hop. Polls the session witness's thread; after CLOSE_TIMEOUT_MS with nothing, moves
+  // to the next agreed backup (and keeps every server tried in the poll, so the two phones cannot
+  // drift apart along the list), every CLOSE_MOVE_MS. Blame (Michael, Oct 16): when the hop lands
+  // on a backup while the session witness kept answering, the session witness dropped it and is
+  // marked down; when it reaches no server, nobody is blamed. Out of servers: a stall, the record
+  // stays as written, and the close resumes only while both phones are still in this session.
   function closeWait(ctx, hop, onHop) {
     closeStop();
-    var seenBlob = null, started = Date.now(), busy = false;
-    function tick() {
-      if (busy) return;
-      if (Date.now() - started > CLOSE_TIMEOUT_MS) { closeStop(); ctx.stalled = hop; console.log('[close] STALL: hop ' + hop + ' did not arrive in ' + CLOSE_TIMEOUT_MS + ' ms'); closeRefresh(); return; }
-      busy = true;
-      serverFetch(ctx.url + '/session/' + ctx.code).then(function(r) { return r.ok ? r.json() : null; }).then(async function(data) {
-        var blob = data && data.partner && data.partner.encrypted_snapshot;
-        if (!blob || blob === seenBlob) return;
-        seenBlob = blob;
-        var o;
-        try { o = await HCP.decryptRelayPayload(blob, ctx.key); } catch (de) { console.log('[close] packet would not open'); return; }
-        if (!o || o.t !== 'close') return; // the partner's earlier snapshot; not a hop
-        var vs = await HCP.verifySealed(o, ctx.partner.fingerprint, state.fingerprint, ctx.sid, ctx.partner.public_key);
-        if (!vs.ok) { console.log('[close] sealed hop refused: ' + vs.error); return; }
-        var vh = await HCP.verifyHop(o.h, { hop: hop, nonce: ctx.nonce, actHash: ctx.actHash, seen: ctx.seen }, ctx.partner.public_key);
-        if (!vh.ok) { console.log('[close] hop refused: ' + vh.error); return; }
-        ctx.seen = hop; closeStop(); onHop();
-      }).catch(function(e) { console.log('[close] poll error:', e.message); }).finally(function() { busy = false; });
+    var seenBlob = null, seenBox = {}, started = Date.now(), lastMove = started, busy = false, done = false;
+    ctx.oldAnswering = false;
+    function arrived(from) {
+      if (done) return; done = true; ctx.seen = hop; closeStop();
+      if (from !== ctx.url) {
+        if (ctx.oldAnswering) { console.log('[close] hop ' + hop + ' came by ' + from + ' while ' + ctx.url + ' kept answering: it dropped the hop'); recordServerFailure(ctx.url, 'dropped hop ' + hop); }
+        else console.log('[close] hop ' + hop + ' came by ' + from + '; ' + ctx.url + ' was not answering, no blame');
+      }
+      onHop();
+    }
+    async function tick() {
+      if (busy || done) return; busy = true;
+      try {
+        var now = Date.now();
+        var waited = now - lastMove, limit = ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS;
+        if (waited > limit) {
+          if (ctx.alts.length < ctx.servers.length) {
+            var alt = ctx.servers[ctx.alts.length]; ctx.alts.push(alt); lastMove = now;
+            console.log('[close] hop ' + hop + ' not here after ' + Math.round(waited / 1000) + ' s; trying ' + alt + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
+            closeRefresh();
+            await closePostBox(ctx, alt);
+          } else {
+            closeStop(); ctx.stalled = hop;
+            console.log('[close] STALL: hop ' + hop + ' reached no server (' + (1 + ctx.servers.length) + ' tried) in ' + Math.round((now - started) / 1000) + ' s');
+            closeRefresh(); return;
+          }
+        }
+        // the session witness's thread
+        try {
+          var r = await serverFetch(ctx.url + '/session/' + ctx.code);
+          if (r.ok) {
+            ctx.oldAnswering = true;
+            var data = await r.json(); var blob = data && data.partner && data.partner.encrypted_snapshot;
+            if (blob && blob !== seenBlob) { seenBlob = blob; if (await closeOpen(ctx, hop, blob, ctx.url)) { arrived(ctx.url); return; } }
+          }
+        } catch (e) { ctx.oldAnswering = false; }
+        // every backup tried so far
+        if (!ctx.boxIn) ctx.boxIn = await closeBoxCode(ctx, ctx.role === 'proposer' ? 'confirmer' : 'proposer');
+        for (var i = 0; i < ctx.alts.length && !done; i++) {
+          var alt = ctx.alts[i];
+          try {
+            var rb = await serverFetch(alt + '/box/' + ctx.boxIn);
+            if (!rb.ok) continue;
+            var db = await rb.json(); if (!db || !db.found || !db.sealed || db.sealed === seenBox[alt]) continue;
+            seenBox[alt] = db.sealed;
+            if (await closeOpen(ctx, hop, db.sealed, alt)) { arrived(alt); return; }
+          } catch (e) {}
+        }
+      } catch (e) { console.log('[close] poll error:', e.message); }
+      finally { busy = false; }
     }
     _closeTimer = setInterval(tick, CLOSE_POLL_MS);
     setTimeout(tick, 300);
@@ -5817,6 +5913,7 @@ const PAIR_CODE_LENGTH = 4;
     sessionSASHash = null;
     sessionExpectedState = null;
     sessionProposalNonce = null;
+    sessionMyBackups = null;
     sessionProposalIntegrityHash = null;
     sessionActiveTab = 'texture';
     _sessionWritten = false;
