@@ -2886,6 +2886,7 @@ const PAIR_CODE_LENGTH = 4;
     renderStandingTab();
     renderBrowserStorageBanner();
     renderHomeWaitingLine();
+    renderHomeCloseTrace();
   }
 
   // v2.151.0 (Michael, Oct 16 walk): a record that is Waiting (agreed and signed on both phones, but this
@@ -2915,6 +2916,11 @@ const PAIR_CODE_LENGTH = 4;
     }
     b.innerHTML = h;
     hero.appendChild(b);
+  }
+  function renderHomeCloseTrace() {
+    var existing = document.getElementById('home-close-trace'); if (existing) existing.remove();
+    var hero = document.querySelector('#tab-home-content .home-hero'); if (!hero) return;
+    var h = closeTraceHTML(); if (h) hero.insertAdjacentHTML('beforeend', h);
   }
 
   // iOS-only: in a Safari tab (not installed) the chain lives only in this
@@ -5595,6 +5601,8 @@ const PAIR_CODE_LENGTH = 4;
         HCP.setClose(record, role === 'confirmer' ? HCP.CLOSE_WAITING : HCP.CLOSE_FINAL, 2);
         var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
         var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
+        closeTraceReset(role);
+        closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is FINAL' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
         closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2,
           servers: closeServerOrder(getSessionWitnessUrl(), pList, cList), alts: [], pendingHop: 0 };
       } else console.log('[close] no close context (nonce=' + !!closeNonce + ' key=' + !!sessionSharedKey + ' sid=' + !!sessionSid + '); record kept as before');
@@ -5707,14 +5715,14 @@ const PAIR_CODE_LENGTH = 4;
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
       var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 5000 : 0; // v2.152.0 test aid; 5 s from v2.152.3: time to flip airplane mode after Recorded (the first move is at CLOSE_TIMEOUT_MS, the stall only after the list is used up)
-      if (delay3) console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s');
+      if (delay3) { console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s'); closeTrace('test switch: holding hop 3 for ' + (delay3 / 1000) + 's'); }
       new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function() {
-        closeWait(ctx, 4, function() { ctx.record.closeHop = 4; ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: close confirmed on both'); closeRefresh(); });
+        closeWait(ctx, 4, function() { ctx.record.closeHop = 4; ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: close confirmed on both'); closeTrace('close confirmed on both'); closeRefresh(); });
       });
     } else {
       closeWait(ctx, 3, function() {
         try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
-        save(); console.log('[close] hop 3 received: record final'); closeRefresh();
+        save(); console.log('[close] hop 3 received: record final'); closeTrace('my record is FINAL'); closeRefresh();
         closeSendHop(ctx, 4);
       });
     }
@@ -5732,7 +5740,8 @@ const PAIR_CODE_LENGTH = 4;
       if (!ctx.sealed || ctx.sealed.hop !== hop) ctx.sealed = { hop: hop, enc: await closeSealHop(ctx, hop) };
       var resp = await serverFetch(ctx.url + '/session/' + ctx.code + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: ctx.sealed.enc }) });
       console.log('[close] hop ' + hop + ' sent' + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
-    } catch (e) { console.log('[close] hop ' + hop + ' send failed:', e.message); }
+      closeTrace('hop ' + hop + ' sent to ' + closeHost(ctx.url) + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
+    } catch (e) { console.log('[close] hop ' + hop + ' send failed:', e.message); closeTrace('hop ' + hop + ' send FAILED (' + e.message + ')'); }
     for (var i = 0; i < ctx.alts.length; i++) closePostBox(ctx, ctx.alts[i]);
   }
   async function closePostBox(ctx, alt) {
@@ -5767,6 +5776,7 @@ const PAIR_CODE_LENGTH = 4;
     ctx.oldAnswering = false;
     function arrived(from) {
       if (done) return; done = true; ctx.seen = hop; closeStop();
+      closeTrace('hop ' + hop + ' received by ' + closeHost(from) + (from !== ctx.url ? (ctx.oldAnswering ? ' (' + closeHost(ctx.url) + ' dropped it)' : ' (' + closeHost(ctx.url) + ' was not answering)') : ''));
       if (from !== ctx.url) {
         if (ctx.oldAnswering) { console.log('[close] hop ' + hop + ' came by ' + from + ' while ' + ctx.url + ' kept answering: it dropped the hop'); recordServerFailure(ctx.url, 'dropped hop ' + hop); }
         else console.log('[close] hop ' + hop + ' came by ' + from + '; ' + ctx.url + ' was not answering, no blame');
@@ -5782,11 +5792,13 @@ const PAIR_CODE_LENGTH = 4;
           if (ctx.alts.length < ctx.servers.length) {
             var alt = ctx.servers[ctx.alts.length]; ctx.alts.push(alt); lastMove = now;
             console.log('[close] hop ' + hop + ' not here after ' + Math.round(waited / 1000) + ' s; trying ' + alt + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
+            closeTrace('hop ' + hop + ' not here after ' + Math.round(waited / 1000) + 's, trying ' + closeHost(alt) + ' (' + ctx.alts.length + ' of ' + ctx.servers.length + ')');
             closeRefresh();
             await closePostBox(ctx, alt);
           } else {
             closeStop(); ctx.stalled = hop;
             console.log('[close] STALL: hop ' + hop + ' reached no server (' + (1 + ctx.servers.length) + ' tried) in ' + Math.round((now - started) / 1000) + ' s');
+            closeTrace('STALL: hop ' + hop + ' never arrived, ' + (1 + ctx.servers.length) + ' servers tried; record stays as it is');
             closeRefresh(); return;
           }
         }
@@ -5818,6 +5830,19 @@ const PAIR_CODE_LENGTH = 4;
     setTimeout(tick, 300);
   }
   function closeStop() { if (_closeTimer) { clearInterval(_closeTimer); _closeTimer = null; } }
+  // v2.153.0 (Michael, Oct 16 walk): a dev-only hop trace on Home, so a person can read the close off the
+  // screen ("hop 3 did not arrive") instead of a console. Kept in memory for the last exchange only;
+  // never saved, never sent. The ladder (the real screen) replaces it.
+  var _closeTrace = [], _closeT0 = 0;
+  function closeTrace(line) {
+    if (!/\/dev\//.test(location.pathname)) return;
+    if (!_closeT0) _closeT0 = Date.now();
+    _closeTrace.push(((Date.now() - _closeT0) / 1000).toFixed(1) + 's ' + line);
+    var el = document.getElementById('home-close-trace'); if (el) el.outerHTML = closeTraceHTML();
+  }
+  function closeTraceReset(role) { _closeTrace = []; _closeT0 = Date.now(); closeTrace('close started, I am the ' + role); }
+  function closeTraceHTML() { return _closeTrace.length ? '<div class="exs-cap" style="margin-top:20px;font-family:var(--mono);font-size:11px;text-align:left;white-space:pre-wrap;color:var(--text-dim)" id="home-close-trace">Hop trace (dev)\n' + _closeTrace.map(esc).join('\n') + '</div>' : ''; }
+  function closeHost(u) { try { return new URL(u).host.replace(/\.humanexchangeprotocol\.org$|\.thesitefit\.com$/, ''); } catch (_) { return String(u); } }
   function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
 
   // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
