@@ -2885,6 +2885,36 @@ const PAIR_CODE_LENGTH = 4;
     renderHomeTab();
     renderStandingTab();
     renderBrowserStorageBanner();
+    renderHomeWaitingLine();
+  }
+
+  // v2.151.0 (Michael, Oct 16 walk): a record that is Waiting (agreed and signed on both phones, but this
+  // phone never heard back that theirs holds it) says so on Home, and names who to finish it with. The
+  // phone cannot know why the close stopped (app closed, tunnel, dropped hop); it knows only that the
+  // record is not final. No pill: there is no action yet (the one-scan wrap-up is a later build); the
+  // line opens the record (one) or the history (several). Dim text, never red (rule 8: red never touches
+  // a record or a person).
+  function waitingActs() { return exActs().filter(function(x) { return x.r.type !== HCP.RECORD_TYPE_REPAIR && !HCP.isFinal(x.r); }); }
+  function renderHomeWaitingLine() {
+    var existing = document.getElementById('home-waiting-line');
+    if (existing) existing.remove();
+    var W = waitingActs();
+    if (!W.length) return;
+    var hero = document.querySelector('#tab-home-content .home-hero');
+    if (!hero) return;
+    var b = document.createElement('div');
+    b.id = 'home-waiting-line'; b.className = 'home-backup';
+    var h;
+    if (W.length === 1) {
+      var name = state.settings.hideNames ? '' : (W[0].r.counterpartyName || '');
+      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Finish it with them when you' + BS + 'u2019re together.</div>' +
+          '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exDetailOpen(' + W[0].i + ');return false">See the record</a></p>';
+    } else {
+      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Finish them with the other person when you' + BS + 'u2019re together.</div>' +
+          '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exListOpen();return false">See the records</a></p>';
+    }
+    b.innerHTML = h;
+    hero.appendChild(b);
   }
 
   // iOS-only: in a Safari tab (not installed) the chain lives only in this
@@ -15902,6 +15932,7 @@ function init() {
       var name = state.settings.hideNames ? '' : (r.counterpartyName || '');
       var ds = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), ts = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       var cap = (name ? esc(name) + ' \u00b7 ' : '') + ds + ' \u00b7 ' + ts + (r.duration ? ' \u00b7 ' + formatDuration(r.duration) : '');
+      if (!HCP.isFinal(r)) cap += ' \u00b7 <span style="color:var(--text-faint)">Not final yet</span>'; // v2.151.0: hop close
       var col = r.energyState === 'provided' ? 'var(--accent)' : 'var(--amber)';
       h += '<button class="exs-row" onclick="App.exDetailOpen(' + x.i + ')"><div class="exs-rowmain"><div class="exs-body" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(desc) + '</div><div class="exs-cap">' + cap + '</div></div>';
       h += '<span class="exs-rowval" style="color:' + col + '">' + mcFmt(r.value) + exMarkSVG(14) + '</span><svg class="exs-chev" width="18" height="18"><use href="#icon-chevron-right"/></svg></button>';
@@ -15952,7 +15983,11 @@ function init() {
     if (r.duration) h += field('Duration', formatDuration(r.duration));
     h += '<div class="exs-cap mc-group">The record</div>';
     var chk = '<svg class="icon icon-md" style="vertical-align:-3px"><use href="#icon-check"/></svg> ';
-    h += field('Checks', (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '<div style="color:var(--text-faint)">No witness on this one. A witness is optional.</div>') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
+    // v2.151.0: the close state reads with the other checks. Waiting means both signed and this phone wrote
+    // the record, but it never received the receipt saying theirs holds it; both phones must be together
+    // to finish (the receipt cannot travel later: the session key does not outlive the app).
+    var closeLine = HCP.isFinal(r) ? '' : '<div style="color:var(--text-dim)">Not final yet. You both signed it, but this phone never heard that theirs has it. Finish it with them when you\u2019re together.</div>';
+    h += field('Checks', closeLine + (r.witnessAttestation ? '<div style="color:var(--green)">' + chk + 'Witness attested</div>' : '<div style="color:var(--text-faint)">No witness on this one. A witness is optional.</div>') + (r.counterpartySig ? '<div style="color:var(--green)">' + chk + 'Countersigned by both</div>' : '') + (!r.witnessAttestation && !r.counterpartySig ? '<span style="color:var(--text-dim)">Recorded on this phone only</span>' : ''));
     h += field('Sequence', '#' + r.seq);
     if (r.counterparty) h += field('Their fingerprint', esc(String(r.counterparty).substring(0, 16)), true);
     if (r.type === HCP.RECORD_TYPE_REPAIR) h += '<p class="exs-cap" style="margin:8px 0 0">Copied from your other device.</p>';
