@@ -5028,6 +5028,7 @@ const PAIR_CODE_LENGTH = 4;
             sessionProposal.proposer_photo = dec.photo;
             sessionProposal.breakdown = dec.breakdown || null;
             sessionProposal.breakdownSig = dec.breakdownSig || null;
+            sessionProposal._nonce = dec._nonce || ''; // hop close: the per-exchange nonce, sealed in hop 1
             // v2.134.0: the proposer's device fields arrive inside the envelope only.
             sessionProposal.sensor_hash = (dec.xd && dec.xd.sensorHash) || '';
             sessionProposal.platform = (dec.xd && dec.xd.platform) || '';
@@ -5545,6 +5546,18 @@ const PAIR_CODE_LENGTH = 4;
         if (rc.sig) { var rcAh2 = sessionActHash; receiptCheck(rcAh2, rc).then(function(ok) { rc.checked = ok ? 'ok' : 'changed'; save(); }); }
       }
     } catch (rcErr) { console.log('[receipt] keep failed:', rcErr.message); }
+    // Hop close (Oct 16 2026, registry Component 1): write, then sign, then send. The
+    // proposer closes here at hop 2 (it holds both signatures and knows the confirmer
+    // does). The confirmer writes WAITING and goes FINAL on the proposer's receipt (hop 3).
+    // Needs the sealed nonce from hop 1; a partner app without it leaves the record as before.
+    var closeCtx = null;
+    try {
+      var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
+      if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
+        HCP.setClose(record, role === 'confirmer' ? HCP.CLOSE_WAITING : HCP.CLOSE_FINAL, 2);
+        closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2 };
+      } else console.log('[close] no close context (nonce=' + !!closeNonce + ' key=' + !!sessionSharedKey + ' sid=' + !!sessionSid + '); record kept as before');
+    } catch (ce) { console.log('[close] setup failed:', ce.message); }
     save();
 
     // Witness attestation
@@ -5595,6 +5608,8 @@ const PAIR_CODE_LENGTH = 4;
     // the sentence stay until Done. Plays only if the layout is on
     // screen; closeExchange then runs the invite pipeline hooks
     // (_exRV.finish). Otherwise finish here as before.
+    if (closeCtx) closeRun(closeCtx);
+
     var played = false;
     try { played = exPlayCompletion(); } catch(pe) { console.log('[ex-flow] completion play failed:', pe.message); }
     if (!played) {
@@ -5617,6 +5632,65 @@ const PAIR_CODE_LENGTH = 4;
       try { if (typeof refreshHome === 'function') refreshHome(); } catch(_) {}
     }, 4100);
   }
+
+  // ===== The hop close (dev v2.149.0, Oct 16 2026; registry Component 1) =====
+  // After both records are written, hops 3 and 4 are signed receipts carried as sealed
+  // thread messages (t: 'close') over the witness that relayed the exchange. The witness
+  // row changes by nothing: the hop number, nonce and act hash travel inside the sealed
+  // content. Proposer: sends hop 3, waits for hop 4 (close confirmed). Confirmer: waits
+  // for hop 3 (record goes final), sends hop 4. A hop that does not arrive within
+  // CLOSE_TIMEOUT_MS is a stall: the record stays as it is (the rendezvous to another
+  // server is the next build step) and the stall is logged.
+  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000;
+  var _closeTimer = null;
+  function closeRun(ctx) {
+    if (ctx.role === 'proposer') {
+      closeSendHop(ctx, 3).then(function() {
+        closeWait(ctx, 4, function() { ctx.record.closeHop = 4; ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: close confirmed on both'); closeRefresh(); });
+      });
+    } else {
+      closeWait(ctx, 3, function() {
+        try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
+        save(); console.log('[close] hop 3 received: record final'); closeRefresh();
+        closeSendHop(ctx, 4);
+      });
+    }
+  }
+  async function closeSendHop(ctx, hop) {
+    try {
+      var h = await HCP.signHop(hop, ctx.nonce, ctx.actHash, state.privateKey);
+      var o = await HCP.signSealed({ t: 'close', h: h }, state.fingerprint, ctx.partner.fingerprint, ctx.sid, state.privateKeyJwk);
+      var enc = await HCP.encryptRelayPayload(o, ctx.key);
+      var resp = await serverFetch(ctx.url + '/session/' + ctx.code + '/thread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted_snapshot: enc }) });
+      console.log('[close] hop ' + hop + ' sent' + (resp.ok ? '' : ' (server said ' + resp.status + ')'));
+    } catch (e) { console.log('[close] hop ' + hop + ' send failed:', e.message); }
+  }
+  function closeWait(ctx, hop, onHop) {
+    closeStop();
+    var seenBlob = null, started = Date.now(), busy = false;
+    function tick() {
+      if (busy) return;
+      if (Date.now() - started > CLOSE_TIMEOUT_MS) { closeStop(); ctx.stalled = hop; console.log('[close] STALL: hop ' + hop + ' did not arrive in ' + CLOSE_TIMEOUT_MS + ' ms'); closeRefresh(); return; }
+      busy = true;
+      serverFetch(ctx.url + '/session/' + ctx.code).then(function(r) { return r.ok ? r.json() : null; }).then(async function(data) {
+        var blob = data && data.partner && data.partner.encrypted_snapshot;
+        if (!blob || blob === seenBlob) return;
+        seenBlob = blob;
+        var o;
+        try { o = await HCP.decryptRelayPayload(blob, ctx.key); } catch (de) { console.log('[close] packet would not open'); return; }
+        if (!o || o.t !== 'close') return; // the partner's earlier snapshot; not a hop
+        var vs = await HCP.verifySealed(o, ctx.partner.fingerprint, state.fingerprint, ctx.sid, ctx.partner.public_key);
+        if (!vs.ok) { console.log('[close] sealed hop refused: ' + vs.error); return; }
+        var vh = await HCP.verifyHop(o.h, { hop: hop, nonce: ctx.nonce, actHash: ctx.actHash, seen: ctx.seen }, ctx.partner.public_key);
+        if (!vh.ok) { console.log('[close] hop refused: ' + vh.error); return; }
+        ctx.seen = hop; closeStop(); onHop();
+      }).catch(function(e) { console.log('[close] poll error:', e.message); }).finally(function() { busy = false; });
+    }
+    _closeTimer = setInterval(tick, CLOSE_POLL_MS);
+    setTimeout(tick, 300);
+  }
+  function closeStop() { if (_closeTimer) { clearInterval(_closeTimer); _closeTimer = null; } }
+  function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
 
   // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
   // A light heartbeat runs from connection to the end of the session,
@@ -14194,7 +14268,10 @@ function init() {
         // straight to 'Recorded' and the moment of confirmation got
         // lost in the transition.
         var rAttested = !!r.witnessAttestation;
-        var rPill = rAttested
+        var rWaiting = !HCP.isFinal(r); // hop close: agreed, both signatures held, delivery not yet confirmed
+        var rPill = rWaiting
+          ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(0,0,0,0.08); color:var(--text-dim); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">Waiting</span>'
+          : rAttested
           ? '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:var(--green); color:#fff; margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Recorded</span>'
           : '<span class="pending-pill" style="display:inline-block; font-size:10px; font-weight:500; padding:1px 8px; border-radius:999px; background:rgba(43,140,62,0.14); color:var(--green); margin-left:6px; letter-spacing:0.4px; text-transform:uppercase; vertical-align:middle;">\u2713 Approved</span>';
         var rStatus = rAttested
