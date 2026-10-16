@@ -5595,18 +5595,24 @@ const PAIR_CODE_LENGTH = 4;
     // does). The confirmer writes WAITING and goes FINAL on the proposer's receipt (hop 3).
     // Needs the sealed nonce from hop 1; a partner app without it leaves the record as before.
     var closeCtx = null;
+    closeTraceReset(role); // v2.153.1: the trace starts before the gate, so a phone that never builds a context says why on screen
     try {
       var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
       if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
         HCP.setClose(record, role === 'confirmer' ? HCP.CLOSE_WAITING : HCP.CLOSE_FINAL, 2);
         var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
         var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
-        closeTraceReset(role);
         closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is FINAL' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
         closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2,
           servers: closeServerOrder(getSessionWitnessUrl(), pList, cList), alts: [], pendingHop: 0 };
-      } else console.log('[close] no close context (nonce=' + !!closeNonce + ' key=' + !!sessionSharedKey + ' sid=' + !!sessionSid + '); record kept as before');
-    } catch (ce) { console.log('[close] setup failed:', ce.message); }
+      } else {
+        var missing = [];
+        if (!sessionActHash) missing.push('act hash'); if (!closeNonce) missing.push('nonce'); if (!sessionSharedKey) missing.push('shared key'); if (!sessionSid) missing.push('session id');
+        if (!(sessionPartner && sessionPartner.public_key)) missing.push('partner key'); if (!sessionCode) missing.push('session code');
+        console.log('[close] no close context (missing: ' + missing.join(', ') + '); record kept as before');
+        closeTrace('NO CLOSE: missing ' + missing.join(', ') + '; record kept as before (not Waiting, not Final)');
+      }
+    } catch (ce) { console.log('[close] setup failed:', ce.message); closeTrace('close setup FAILED: ' + ce.message); }
     save();
 
     // Witness attestation
