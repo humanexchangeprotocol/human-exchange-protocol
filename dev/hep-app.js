@@ -5725,8 +5725,7 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
-      var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 5000 : 0; // v2.152.0 test aid; 5 s from v2.152.3: time to flip airplane mode after Recorded (the first move is at CLOSE_TIMEOUT_MS, the stall only after the list is used up)
-      if (delay3) { console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s'); closeTrace('test switch: holding hop 3 for ' + (delay3 / 1000) + 's'); }
+      var delay3 = 0; // v2.156.0: the test switch that held hop 3 for 5 s is removed (Michael, Oct 16, after the airplane walk)
       new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
         if (sentOk) ldrDone(3);
         closeWait(ctx, 4, function() {
@@ -5852,28 +5851,12 @@ const PAIR_CODE_LENGTH = 4;
     setTimeout(tick, 300);
   }
   function closeStop() { if (_closeTimer) { clearInterval(_closeTimer); _closeTimer = null; } }
-  // v2.153.0 (Michael, Oct 16 walk): a dev-only hop trace on Home, so a person can read the close off the
-  // screen ("hop 3 did not arrive") instead of a console. Kept in memory for the last exchange only;
-  // never saved, never sent. The ladder (the real screen) replaces it.
-  var _closeTrace = [], _closeT0 = 0, _closeTraceOld = false, _pageLoadedAt = new Date();
-  // v2.153.3 (dev only): the last trace is kept in this tab's sessionStorage so a page reload does not empty it.
-  // On this phone only, never sent; it holds hop lines, server hosts and times, nothing about a person.
-  var _traceDev = /\/dev\//.test(location.pathname);
-  try { if (_traceDev) { var _tsv = JSON.parse(sessionStorage.getItem('hep_dev_trace') || 'null'); if (_tsv && _tsv.length) { _closeTrace = _tsv; _closeTraceOld = true; } } } catch (_) {}
-  function closeTrace(line) {
-    if (!/\/dev\//.test(location.pathname)) return;
-    if (!_closeT0) _closeT0 = Date.now();
-    _closeTrace.push(((Date.now() - _closeT0) / 1000).toFixed(1) + 's ' + line);
-    try { if (_traceDev) sessionStorage.setItem('hep_dev_trace', JSON.stringify(_closeTrace)); } catch (_) {}
-    var el = document.getElementById('home-close-trace'); if (el) el.outerHTML = closeTraceHTML();
-  }
-  function closeTraceReset(role) { _closeTrace = []; _closeTraceOld = false; _closeT0 = Date.now(); closeTrace('close started, I am the ' + role); }
-  function closeTraceHTML() {
-    var t = _pageLoadedAt.toTimeString().slice(0, 8);
-    var head = 'Hop trace (dev), page loaded ' + t + (_closeTraceOld ? ', trace from before the last reload' : '');
-    var body = _closeTrace.length ? _closeTrace.map(esc).join('\n') : 'no close has run on this page yet';
-    return '<div class="exs-cap" style="margin:8px 16px 24px;font-family:var(--mono);font-size:11px;text-align:left;white-space:pre-wrap;color:var(--text-dim)" id="home-close-trace">' + head + '\n' + body + '</div>';
-  }
+  // v2.156.0 (Michael, Oct 16): the dev hop trace on Home is gone; the ladder is the real screen. closeTrace
+  // stays as a no-op so the close keeps its call sites; the [close] console lines carry the same story.
+  try { sessionStorage.removeItem('hep_dev_trace'); } catch (_) {}
+  function closeTrace(line) {}
+  function closeTraceReset(role) {}
+  function closeTraceHTML() { return ''; }
   function closeHost(u) { try { return new URL(u).host.replace(/\.humanexchangeprotocol\.org$|\.thesitefit\.com$/, ''); } catch (_) { return String(u); } }
   function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
 
@@ -14623,7 +14606,6 @@ function init() {
     // v2.123.4 added a dev-only type-size note here; removed in v2.124.1 once the phone showed the new scale (Michael).
     var isDev = /\/dev\//.test(location.pathname);
     html += '<div class="exs-cap" style="text-align:center; color:var(--text-faint); padding:28px 0 8px;">v' + APP_VERSION + (isDev ? ' dev' : '') + '</div>';
-    if (isDev) html += closeTraceHTML(); // v2.153.3: under the version line, always shown on dev
     el.innerHTML = html;
     // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
     try { renderBrowserStorageBanner(); } catch (e) {}
@@ -16449,7 +16431,6 @@ function init() {
     // sending its receipt (hop 3), so the person can cut the confirmer off and walk the Waiting state and
     // the resume for real. Delays one send; changes nothing about what is sent.
     if (/\/dev\//.test(location.pathname)) {
-      h += stSwitchRow('Test: delay the receipt', 'Dev only. When this phone proposes, wait 5 seconds before sending the receipt, so the other phone can be cut off.', state.settings.testDelayReceipt, 'switch-test-delay-receipt', 'App.toggleTestDelayReceipt()');
     }
     // Delete, last and alone (rule 8a: red tonally, no filled block)
     h += '<div class="exs-cap mc-group">Delete</div>';
