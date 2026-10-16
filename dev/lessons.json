@@ -286,8 +286,8 @@
    "caption": "The same record on both phones",
    "steps": [
     {
-     "title": "Written twice, at once",
-     "body": "The same record lands on both phones in the same moment. The provider’s currency grows by the agreed number, and so does the receiver’s cosmic share.",
+     "title": "Written twice, then confirmed",
+     "body": "Once you have both signed, each phone saves the record and sends the other a receipt. When the receipt comes back, your copy is settled. The provider’s currency grows by the agreed number, and so does the receiver’s cosmic share. Until both phones have confirmed, the exchange counts for nothing and the app says it is not final yet; finish it together next time.",
      "fig": {
       "t": "pair",
       "s": 2
