@@ -5837,15 +5837,25 @@ const PAIR_CODE_LENGTH = 4;
   // v2.153.0 (Michael, Oct 16 walk): a dev-only hop trace on Home, so a person can read the close off the
   // screen ("hop 3 did not arrive") instead of a console. Kept in memory for the last exchange only;
   // never saved, never sent. The ladder (the real screen) replaces it.
-  var _closeTrace = [], _closeT0 = 0;
+  var _closeTrace = [], _closeT0 = 0, _closeTraceOld = false, _pageLoadedAt = new Date();
+  // v2.153.3 (dev only): the last trace is kept in this tab's sessionStorage so a page reload does not empty it.
+  // On this phone only, never sent; it holds hop lines, server hosts and times, nothing about a person.
+  var _traceDev = /\/dev\//.test(location.pathname);
+  try { if (_traceDev) { var _tsv = JSON.parse(sessionStorage.getItem('hep_dev_trace') || 'null'); if (_tsv && _tsv.length) { _closeTrace = _tsv; _closeTraceOld = true; } } } catch (_) {}
   function closeTrace(line) {
     if (!/\/dev\//.test(location.pathname)) return;
     if (!_closeT0) _closeT0 = Date.now();
     _closeTrace.push(((Date.now() - _closeT0) / 1000).toFixed(1) + 's ' + line);
+    try { if (_traceDev) sessionStorage.setItem('hep_dev_trace', JSON.stringify(_closeTrace)); } catch (_) {}
     var el = document.getElementById('home-close-trace'); if (el) el.outerHTML = closeTraceHTML();
   }
-  function closeTraceReset(role) { _closeTrace = []; _closeT0 = Date.now(); closeTrace('close started, I am the ' + role); }
-  function closeTraceHTML() { return _closeTrace.length ? '<div class="exs-cap" style="margin-top:20px;font-family:var(--mono);font-size:11px;text-align:left;white-space:pre-wrap;color:var(--text-dim)" id="home-close-trace">Hop trace (dev)\n' + _closeTrace.map(esc).join('\n') + '</div>' : ''; }
+  function closeTraceReset(role) { _closeTrace = []; _closeTraceOld = false; _closeT0 = Date.now(); closeTrace('close started, I am the ' + role); }
+  function closeTraceHTML() {
+    var t = _pageLoadedAt.toTimeString().slice(0, 8);
+    var head = 'Hop trace (dev), page loaded ' + t + (_closeTraceOld ? ', trace from before the last reload' : '');
+    var body = _closeTrace.length ? _closeTrace.map(esc).join('\n') : 'no close has run on this page yet';
+    return '<div class="exs-cap" style="margin:8px 16px 24px;font-family:var(--mono);font-size:11px;text-align:left;white-space:pre-wrap;color:var(--text-dim)" id="home-close-trace">' + head + '\n' + body + '</div>';
+  }
   function closeHost(u) { try { return new URL(u).host.replace(/\.humanexchangeprotocol\.org$|\.thesitefit\.com$/, ''); } catch (_) { return String(u); } }
   function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
 
@@ -14465,12 +14475,13 @@ function init() {
     // v2.123.4 added a dev-only type-size note here; removed in v2.124.1 once the phone showed the new scale (Michael).
     var isDev = /\/dev\//.test(location.pathname);
     html += '<div class="exs-cap" style="text-align:center; color:var(--text-faint); padding:28px 0 8px;">v' + APP_VERSION + (isDev ? ' dev' : '') + '</div>';
+    if (isDev) html += closeTraceHTML(); // v2.153.3: under the version line, always shown on dev
     el.innerHTML = html;
     // v2.110.1: every Home redraw brings the Record keeping / backup line back (switching to Home used to drop it until a reload).
     try { renderBrowserStorageBanner(); } catch (e) {}
     // v2.153.2 (Michael, Oct 16 walk): same bug as v2.110.1 for the Waiting line and the dev hop trace. Switching
     // to the Home tab rebuilt the hero without them, so they flashed on refreshHome and vanished a moment later.
-    try { renderHomeWaitingLine(); renderHomeCloseTrace(); } catch (e) {}
+    try { renderHomeWaitingLine(); } catch (e) {}
   }
 
   // Home-tab filter — matches the History-tab pattern but scoped to
