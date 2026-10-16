@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.153.3';
+const APP_VERSION='2.154.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -587,9 +587,11 @@ async function vcm(c,rootPubJwk){
 // Sync never writes such a duplicate; this is the safety net (Step 4).
 function acts(c){const seen=new Set(),o=[];for(const r of c){if(!isAct(r))continue;if(r.type===RT_REPAIR&&r.originalHash){if(seen.has(r.originalHash))continue;seen.add(r.originalHash);}o.push(r);}return o}
 function cd(c){const ex=acts(c);if(!ex.length)return 0;return ex.reduce((s,r)=>s+r.value,0)/ex.length}
-function wb(c){let b=0;for(const r of acts(c)){if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
+// Hop close (Michael, Oct 16 2026): a Waiting record counts for nothing; only Final records count in any total.
+function counted(c){return acts(c).filter(isfinal)}
+function wb(c){let b=0;for(const r of counted(c)){if(r.energyState==='provided')b+=r.value;else if(r.energyState==='received')b-=r.value;}return b}
 function er(a,b){const da=cd(a),db=cd(b);if(!db||!da)return 1;return da/db}
-function grr(c){const ex=acts(c);if(!ex.length)return{provided:0,received:0,ratio:0};let p=0,r=0;for(const x of ex){if(x.energyState==='provided')p++;else if(x.energyState==='received')r++;}return{provided:p,received:r,ratio:p/(p+r||1)}}
+function grr(c){const ex=counted(c);if(!ex.length)return{provided:0,received:0,ratio:0};let p=0,r=0;for(const x of ex){if(x.energyState==='provided')p++;else if(x.energyState==='received')r++;}return{provided:p,received:r,ratio:p/(p+r||1)}}
 
 // Step 4 (v2.109.0): make an unsigned repair record from an act found on
 // another device's chain. origHash is the act's first hash (a repair passes
@@ -666,7 +668,7 @@ function as(c){const ex=c.filter(isAct);const g=grr(c),cats={};for(const r of ex
 // --- Chain snapshot ---
 function cs(c){
   if(!c.length)return{n:0,d:0,g:0,r:0,cats:{},words:{},time:{},stab:{},t0:null,t1:null,pings:0};
-  const ex=c.filter(isAct);
+  const ex=c.filter(r=>isAct(r)&&isfinal(r)); // Waiting records count for nothing (Oct 16)
   const pc=c.filter(r=>r.type===RT_PING).length;
   const gr=grr(c);
   const cats={};
@@ -1040,7 +1042,7 @@ async function vpa(r,chainFp){
   const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
   return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
 }
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah,CLOSE_WAITING:CLOSE_WAITING,CLOSE_FINAL:CLOSE_FINAL,signHop:hopsign,verifyHop:hopverify,isFinal:isfinal,setClose:setclose}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,countedActs:counted,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah,CLOSE_WAITING:CLOSE_WAITING,CLOSE_FINAL:CLOSE_FINAL,signHop:hopsign,verifyHop:hopverify,isFinal:isfinal,setClose:setclose}
 })();
 
 // ============================================================

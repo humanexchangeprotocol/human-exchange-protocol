@@ -1755,7 +1755,7 @@ const PAIR_CODE_LENGTH = 4;
     var c = copyInfo()[r.originalHash]; return c ? Object.assign({}, r, c) : r;
   }
   function mcActs() {
-    var ex = HCP.acts(state.chain).map(withCopyInfo).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; });
+    var ex = HCP.countedActs(state.chain).map(withCopyInfo).filter(function(r) { return r.energyState === 'provided' || r.energyState === 'received'; }); // Waiting counts for nothing (Oct 16)
     if (!ex.length) return { list: [], span: 1 };
     var t0 = new Date(ex[0].timestamp).getTime();
     var list = ex.map(function(r) {
@@ -2168,7 +2168,7 @@ const PAIR_CODE_LENGTH = 4;
     _mcFromHome = false;
     _mcStack.forEach(function(el) { el.hidden = true; }); _mcStack = [];
     document.querySelectorAll('.mc-sheet').forEach(function(el) { el.hidden = true; });
-    var ex = state.chain.filter(HCP.isAct);
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }); // Waiting counts for nothing (Oct 16)
     var cur = 0, cos = 0, nP = 0, nR = 0, wit = 0, cp = {};
     ex.forEach(function(r) {
       if (r.energyState === 'provided') { cur += r.value; nP++; }
@@ -4210,7 +4210,7 @@ const PAIR_CODE_LENGTH = 4;
       try {
         var fbDensity = 0;
         try { fbDensity = +HCP.chainDensity(state.chain).toFixed(1); } catch(de) {}
-        var fbEx = state.chain.filter(HCP.isAct);
+        var fbEx = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }); // Waiting counts for nothing (Oct 16)
         threadSnap = {
           n: fbEx.length,
           g: fbEx.filter(function(r){ return r.energyState === 'provided'; }).length,
@@ -5588,19 +5588,20 @@ const PAIR_CODE_LENGTH = 4;
         if (rc.sig) { var rcAh2 = sessionActHash; receiptCheck(rcAh2, rc).then(function(ok) { rc.checked = ok ? 'ok' : 'changed'; save(); }); }
       }
     } catch (rcErr) { console.log('[receipt] keep failed:', rcErr.message); }
-    // Hop close (Oct 16 2026, registry Component 1): write, then sign, then send. The
-    // proposer closes here at hop 2 (it holds both signatures and knows the confirmer
-    // does). The confirmer writes WAITING and goes FINAL on the proposer's receipt (hop 3).
+    // Hop close (Oct 16 2026, registry Component 1): write, then sign, then send. Both phones
+    // write WAITING here. Ruled Oct 16 (Michael): neither phone carries anything forward until
+    // the walk of the hops is done. The confirmer goes FINAL on the proposer's receipt (hop 3),
+    // the proposer on the confirmer's receipt (hop 4). A Waiting record counts for nothing.
     // Needs the sealed nonce from hop 1; a partner app without it leaves the record as before.
     var closeCtx = null;
     closeTraceReset(role); // v2.153.1: the trace starts before the gate, so a phone that never builds a context says why on screen
     try {
       var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
       if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
-        HCP.setClose(record, role === 'confirmer' ? HCP.CLOSE_WAITING : HCP.CLOSE_FINAL, 2);
+        HCP.setClose(record, HCP.CLOSE_WAITING, 2);
         var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
         var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
-        closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is FINAL' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
+        closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is WAITING' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
         closeCtx = { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key }, nonce: closeNonce, actHash: sessionActHash, record: record, seen: 2,
           servers: closeServerOrder(getSessionWitnessUrl(), pList, cList), alts: [], pendingHop: 0 };
       } else {
@@ -5721,7 +5722,10 @@ const PAIR_CODE_LENGTH = 4;
       var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 5000 : 0; // v2.152.0 test aid; 5 s from v2.152.3: time to flip airplane mode after Recorded (the first move is at CLOSE_TIMEOUT_MS, the stall only after the list is used up)
       if (delay3) { console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s'); closeTrace('test switch: holding hop 3 for ' + (delay3 / 1000) + 's'); }
       new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function() {
-        closeWait(ctx, 4, function() { ctx.record.closeHop = 4; ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: close confirmed on both'); closeTrace('close confirmed on both'); closeRefresh(); });
+        closeWait(ctx, 4, function() {
+          try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 4); } catch (e) { console.log('[close] final failed:', e.message); return; }
+          ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: record final, close confirmed on both'); closeTrace('hop 4 received: my record is FINAL, close confirmed on both'); closeRefresh();
+        });
       });
     } else {
       closeWait(ctx, 3, function() {
@@ -7308,7 +7312,7 @@ const PAIR_CODE_LENGTH = 4;
 
       // Summary
       var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
-      state.chain.filter(HCP.isAct).forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
+      state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }).forEach(r => { if (r.energyState === 'provided') { totalP += r.value; actsP++; } else if (r.energyState === 'received') { totalR += r.value; actsR++; } });
       var summaryHtml = '<div style="padding:12px 14px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px;">';
       summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label); margin-bottom:4px;"><span style="color:var(--text-dim);">Provided</span><span style="color:var(--green); font-weight:500;">' + actsP + ' acts · +' + totalP + '</span></div>';
       summaryHtml += '<div style="display:flex; justify-content:space-between; font-size: var(--fs-label);"><span style="color:var(--text-dim);">Received</span><span style="color:var(--blue); font-weight:500;">' + actsR + ' acts · \u2212' + totalR + '</span></div>';
@@ -14177,7 +14181,7 @@ function init() {
   var _wave = { mode: 'a', iv: null, panel: false };
   function waveMedian(a) { var s = a.slice().sort(function(x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
   function waveData() {
-    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && r.timestamp && (r.energyState === 'provided' || r.energyState === 'received'); })
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r) && r.timestamp && (r.energyState === 'provided' || r.energyState === 'received'); })
       .map(function(r) { return { t: new Date(r.timestamp).getTime(), v: r.energyState === 'provided' ? +r.value : -r.value }; })
       .filter(function(q) { return !isNaN(q.t); })
       .sort(function(a, b) { return a.t - b.t; });
@@ -14299,7 +14303,7 @@ function init() {
     var el = document.getElementById('tab-home-content');
     if (!el) return;
 
-    var ex = state.chain.filter(HCP.isAct);
+    var ex = state.chain.filter(function(r) { return HCP.isAct(r) && HCP.isFinal(r); }); // Waiting counts for nothing (Oct 16)
     var totalP = 0, totalR = 0, actsP = 0, actsR = 0;
     ex.forEach(function(r) {
       if (r.energyState === 'provided') { totalP += r.value; actsP++; }
