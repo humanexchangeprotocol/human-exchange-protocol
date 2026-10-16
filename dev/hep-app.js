@@ -5706,7 +5706,7 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
-      var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 10000 : 0; // v2.152.0 test aid
+      var delay3 = (state.settings.testDelayReceipt && /\/dev\//.test(location.pathname)) ? 30000 : 0; // v2.152.0 test aid; 30 s from v2.152.1
       if (delay3) console.log('[close] test: holding hop 3 for ' + (delay3 / 1000) + ' s');
       new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function() {
         closeWait(ctx, 4, function() { ctx.record.closeHop = 4; ctx.record.closeConfirmed = true; save(); console.log('[close] hop 4 received: close confirmed on both'); closeRefresh(); });
@@ -16258,7 +16258,7 @@ function init() {
     // sending its receipt (hop 3), so the person can cut the confirmer off and walk the Waiting state and
     // the resume for real. Delays one send; changes nothing about what is sent.
     if (/\/dev\//.test(location.pathname)) {
-      h += stSwitchRow('Test: delay the receipt', 'Dev only. When this phone proposes, wait 10 seconds before sending the receipt, so the other phone can be cut off.', state.settings.testDelayReceipt, 'switch-test-delay-receipt', 'App.toggleTestDelayReceipt()');
+      h += stSwitchRow('Test: delay the receipt', 'Dev only. When this phone proposes, wait 30 seconds before sending the receipt, so the other phone can be cut off.', state.settings.testDelayReceipt, 'switch-test-delay-receipt', 'App.toggleTestDelayReceipt()');
     }
     // Delete, last and alone (rule 8a: red tonally, no filled block)
     h += '<div class="exs-cap mc-group">Delete</div>';
