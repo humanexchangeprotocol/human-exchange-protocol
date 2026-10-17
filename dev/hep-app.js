@@ -5821,7 +5821,7 @@ const PAIR_CODE_LENGTH = 4;
             closeStop(); ctx.stalled = hop;
             console.log('[close] STALL: hop ' + hop + ' reached no server (' + (1 + ctx.servers.length) + ' tried) in ' + Math.round((now - started) / 1000) + ' s');
             closeTrace('STALL: hop ' + hop + ' never arrived, ' + (1 + ctx.servers.length) + ' servers tried; record stays as it is');
-            ldrStall();
+            ldrStall(ctx);
             closeRefresh(); return;
           }
         }
@@ -6045,7 +6045,7 @@ const PAIR_CODE_LENGTH = 4;
     var rv = document.getElementById('ex-step-rv');
     var onRV = rv && rv.classList.contains('active');
     var st = _exRV.state;
-    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || st === 'ladder' || st === 'notconfirmed' || (st === 'wait' && _exPresenceLive));
+    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || st === 'ladder' || st === 'notconfirmed' || st === 'saycode' || (st === 'wait' && _exPresenceLive));
     xb.style.visibility = hide ? 'hidden' : '';
   }
 
@@ -10757,6 +10757,7 @@ function init() {
     try { p = await HCP.verifyAnswer(payload, o1, state.fingerprint); } catch (e) { console.log('[offline] answer refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
     if (HCP.sameOwner({ fp: state.fingerprint }, { fp: p.fp })) { toast('That code is from this same chain.'); return; }
     var record = await exOffWriteRecord(held.ex, held.ex.energyState, p.fp, p.name, p.actHash, p.actSig, p.pub);
+    try { HCP.setClose(record, HCP.CLOSE_WAITING, 2); record.closeRole = 'proposer'; record.closeNonce = held.nonce; save(); } catch (e) { console.log('[offline] close state failed:', e.message); } // v2.158.0: the same ladder as online; final on the spoken code (hop 4)
     var o3 = await HCP.offlineSeal(state.publicKeyJwk, p, state.privateKey);
     exOffSave({ role: 'proposer', stage: 'sealed', nonce: held.nonce, o3: o3, ex: held.ex, other: p.name, recordTs: record.timestamp, at: Date.now() });
     exOffShowSeal();
@@ -10770,9 +10771,42 @@ function init() {
     h += '<div style="height:12px"></div>';
     h += exOffTerms(held.ex, held.ex.energyState === 'provided', held.other || '');
     h += '<div class="exs-grow"></div>';
-    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffFinish()">Done</button>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffShowCode()">They have scanned it</button>';
     exOffHost(h);
     exOffQR('off3-qr', exOffUrl('o3', held.o3));
+  }
+  // Proposer, hop 4 by voice (Michael, Oct 17): after scan 3 the other phone shows a two-digit code drawn
+  // from the record; this phone shows the same; the proposer asks, and Yes makes this record final.
+  function exOffRecordFor(held) {
+    var fp = held.o3 ? null : null;
+    for (var i = state.chain.length - 1; i >= 0; i--) { var r = state.chain[i]; if (r && HCP.isAct(r) && r.closeNonce === held.nonce && r.closeRole === 'proposer') return r; }
+    return null;
+  }
+  async function exOffShowCode() {
+    var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'sealed') return;
+    var rec = exOffRecordFor(held); if (!rec) { exOffFinish(); return; }
+    var code = ''; try { code = await HCP.closeCode(rec.actHash, held.nonce); } catch (_) {}
+    if (!code) { exOffFinish(); return; }
+    var o = String(held.other || 'them').trim().split(/\s+/)[0] || 'them';
+    exOffOpenModal(); sessionRole = 'proposer'; renderIndicator(4, 'proposer');
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h">Check with ' + esc(o) + '</div>';
+    h += '<div class="exs-body" style="color:var(--text-dim); margin-top:22px">Their phone shows a code once the record is saved. Both phones should show the same one.</div>';
+    h += '<div class="exs-code" style="margin-top:18px; font-size:44px; letter-spacing:0.12em">' + esc(code) + '</div>';
+    h += '<div class="exs-body" style="margin-top:14px">Does ' + esc(o) + '\u2019s phone show ' + esc(code) + '?</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-btns" style="animation:none; flex-direction:column; gap:10px"><button class="btn btn-primary" style="width:100%;" onclick="App.exOffCodeYes()">Yes, it matches</button>'
+       + '<button class="btn" style="width:100%;" onclick="App.exOffFinish()">Not now</button></div>';
+    h += '</div>';
+    exOffHost(h);
+  }
+  function exOffCodeYes() {
+    var held = exOffLoad(); var rec = held && exOffRecordFor(held);
+    if (rec) { try { HCP.setClose(rec, HCP.CLOSE_FINAL, 4); rec.closeVoice = true; save(); console.log('[offline] proposer final by voice'); } catch (e) { toast('Could not finish: ' + e.message); return; } }
+    exOffSave(null); exOffActive = false; _sessionWritten = true;
+    exOffHost(exOffDoneHTML(null));
+    try { refreshHome(); } catch (_) {}
   }
   // Confirmer: scan 3 arrived. Check it, write the record.
   async function exOffReceive3(payload) {
@@ -10781,19 +10815,23 @@ function init() {
     var p;
     try { p = await HCP.verifySeal(payload, { nonce: held.nonce, proposerFp: held.proposerFp, proposerPub: held.proposerPub, myFp: state.fingerprint, actHash: held.actHash }); } catch (e) { console.log('[offline] seal refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
     var myDir = held.ex.energyState === 'provided' ? 'received' : 'provided';
-    await exOffWriteRecord(held.ex, myDir, held.proposerFp, held.proposerName, p.actHash, p.actSig, held.proposerPub);
+    var rec = await exOffWriteRecord(held.ex, myDir, held.proposerFp, held.proposerName, p.actHash, p.actSig, held.proposerPub);
+    var code = '';
+    try { HCP.setClose(rec, HCP.CLOSE_FINAL, 3); rec.closeRole = 'confirmer'; rec.closeNonce = held.nonce; save(); code = await HCP.closeCode(rec.actHash, held.nonce); } catch (e) { console.log('[offline] close state failed:', e.message); } // v2.158.0: final on the seal (hop 3), then the code for them
     exOffSave(null);
     exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(4, 'confirmer');
     _sessionWritten = true;
-    exOffHost(exOffDoneHTML());
+    exOffHost(exOffDoneHTML(code, held.proposerName));
   }
-  function exOffDoneHTML() {
+  function exOffDoneHTML(code, other) {
+    var o = String(other || 'them').trim().split(/\s+/)[0] || 'them';
     var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
     h += '<div class="exs-grow"></div>';
     h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="56" height="56"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
     h += '<div class="exs-settle-t1">Transaction</div>';
     h += '<div class="exs-settle-t2">Recorded</div>';
     h += '<div class="exs-settle-t3">Signed by both of you, on both phones. A server will stamp it when a phone is next online.</div>';
+    if (code) h += '<div class="exs-body" style="margin-top:18px">Read this code to ' + esc(o) + '</div><div class="exs-code" style="margin-top:6px; font-size:44px; letter-spacing:0.12em">' + esc(code) + '</div>';
     h += '<div class="exs-grow" style="flex:1.2"></div>';
     h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exOffFinish()">Done</button></div>';
     h += '</div>';
@@ -12882,6 +12920,7 @@ function init() {
     exFrameXRefresh();
     if (st === 'ladder') { host.innerHTML = exLadderHTML(p); ldrPaint(); return; }
     if (st === 'notconfirmed') { host.innerHTML = exNotConfirmedHTML(p); return; }
+    if (st === 'saycode') { host.innerHTML = exSayCodeHTML(p); return; }
     if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
     if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
     // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
@@ -13153,11 +13192,39 @@ function init() {
   }
   function ldrDone(n) { if (!_ldr) return; for (var i = 0; i < n && i < 4; i++) _ldr.real[i] = true; }
   function ldrSub(t) { if (!_ldr || _ldr.stalled || _ldr.completing) return; _ldr.sub = t; ldrPaint(); }
-  function ldrStall() {
+  // v2.158.0 (Michael, Oct 17): when the servers run out, the last hop goes by voice. Both phones hold the
+  // record, so both compute the same two-digit code; the screen asks whether the other phone shows it.
+  // Yes finalises this phone's record (knowledge, not a signature; inside the person's own conduct).
+  async function ldrStall(ctx) {
     if (!_ldr || _ldr.completing) return;
     _ldr.stalled = true; if (_ldr.timer) { clearInterval(_ldr.timer); _ldr.timer = null; }
-    if (exRVIsShowing()) exRenderRV('notconfirmed');
+    _ldr.ctx = ctx || null; _ldr.code = null;
+    if (ctx && ctx.record && ctx.nonce && ctx.actHash) { try { _ldr.code = await HCP.closeCode(ctx.actHash, ctx.nonce); } catch (_) {} }
+    if (exRVIsShowing()) exRenderRV(_ldr.code ? 'saycode' : 'notconfirmed');
   }
+  function exSayCodeHTML(p) {
+    var o = String(_exRV.other || exPartnerName()).trim().split(/\s+/)[0] || 'them';
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h">Check with ' + esc(o) + '</div>';
+    h += ldrFacesSVG(p, true);
+    h += '<div class="exs-body" style="color:var(--text-dim); margin-top:22px">The connection dropped on the last step. Both phones should show the same code.</div>';
+    h += '<div class="exs-code" style="margin-top:18px; font-size:44px; letter-spacing:0.12em">' + esc(_ldr.code) + '</div>';
+    h += '<div class="exs-body" style="margin-top:14px">Does ' + esc(o) + '\u2019s phone show ' + esc(_ldr.code) + '?</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-btns" style="animation:none; flex-direction:column; gap:10px"><button class="btn btn-primary" style="width:100%;" onclick="App.exSayCodeYes()">Yes, it matches</button>'
+       + '<button class="btn" style="width:100%;" onclick="App.exSayCodeNo()">No, or I can\u2019t ask</button></div>';
+    h += '</div>';
+    return h;
+  }
+  function exSayCodeYes() {
+    var ctx = _ldr && _ldr.ctx; if (!ctx || !ctx.record) return;
+    try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, ctx.role === 'proposer' ? 4 : 3); ctx.record.closeVoice = true; } catch (e) { toast('Could not finish: ' + e.message); return; }
+    save(); console.log('[close] final by voice (code ' + _ldr.code + ')'); closeRefresh();
+    _ldr.stalled = false; _ldr.real = [true, true, true, true]; _ldr.shown = 3; _ldr.last = Date.now() - LDR_MIN_MS; _ldr.sub = '';
+    exRenderRV('ladder'); _ldr.timer = setInterval(ldrStep, 100);
+  }
+  function exSayCodeNo() { if (exRVIsShowing()) exRenderRV('notconfirmed'); }
   function ldrLines() {
     var o = String(_exRV.other || exPartnerName()).trim().split(/\s+/)[0] || 'them'; // first name keeps each line on one row
     return ['Both of you signed', 'Saved on your phone', 'Sent to ' + o, 'Saved on ' + o + '\u2019s phone'];
@@ -16672,7 +16739,7 @@ function init() {
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exSayCodeYes, exSayCodeNo, exOffShowCode, exOffCodeYes, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
