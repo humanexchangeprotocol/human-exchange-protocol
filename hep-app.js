@@ -2906,10 +2906,10 @@ const PAIR_CODE_LENGTH = 4;
     var h;
     if (W.length === 1) {
       var name = state.settings.hideNames ? '' : (W[0].r.counterpartyName || '');
-      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Finish it with them when you' + BS + 'u2019re together.</div>' +
+      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Finish it with them when you\u2019re together.</div>' +
           '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exDetailOpen(' + W[0].i + ');return false">See the record</a></p>';
     } else {
-      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Finish them with the other person when you' + BS + 'u2019re together.</div>' +
+      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Finish them with the other person when you\u2019re together.</div>' +
           '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exListOpen();return false">See the records</a></p>';
     }
     b.innerHTML = h;

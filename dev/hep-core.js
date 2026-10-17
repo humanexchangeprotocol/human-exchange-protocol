@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.156.1';
+const APP_VERSION='2.157.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -605,7 +605,7 @@ function crep(o,origHash,origFp){
   // v2.113.1: the witness attestation sits outside ser (unsigned, attests the original's mint hash); carried so a copy does not read as unwitnessed.
   if(o.witnessAttestation)r.witnessAttestation=JSON.parse(JSON.stringify(o.witnessAttestation));
   // Hop close (Oct 16): the close state rides with a copy the same way (outside ser).
-  if(o.closeState)r.closeState=o.closeState;if(o.closeHop)r.closeHop=o.closeHop;
+  if(o.closeState)r.closeState=o.closeState;if(o.closeHop)r.closeHop=o.closeHop;if(o.closeRole)r.closeRole=o.closeRole;if(o.closeNonce)r.closeNonce=o.closeNonce;
   return r;
 }
 // The sync step, one direction: given my chain and the other device's chain

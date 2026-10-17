@@ -2906,10 +2906,10 @@ const PAIR_CODE_LENGTH = 4;
     var h;
     if (W.length === 1) {
       var name = state.settings.hideNames ? '' : (W[0].r.counterpartyName || '');
-      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Finish it with them when you' + BS + 'u2019re together.</div>' +
+      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Start an exchange with them when you\u2019re together and it will finish on its own.</div>' +
           '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exDetailOpen(' + W[0].i + ');return false">See the record</a></p>';
     } else {
-      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Finish them with the other person when you' + BS + 'u2019re together.</div>' +
+      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Start an exchange with the other person when you\u2019re together and it will finish on its own.</div>' +
           '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exListOpen();return false">See the records</a></p>';
     }
     b.innerHTML = h;
@@ -4341,6 +4341,7 @@ const PAIR_CODE_LENGTH = 4;
             }
             // v2.137.0: a key that is not the fingerprint must prove itself before anything
             // about this person goes out. The proof rides in a sealed hello or in the snapshot.
+            if (decrypted && decrypted.t === 'close') { closeIncoming(decrypted); return; } // v2.157.0: a receipt from a reconnect, not the snapshot; keep polling
             if (decrypted && decrypted.t === 'proof-hello') {
               if (!sessionPartner._verified) {
                 if (!await sessVerifyProof(sessionPartner, decrypted.device_proof)) { stopSnapshotPoll(); sessionViolation('partner key unproven', sessFailMsg(null)); return; }
@@ -5599,6 +5600,7 @@ const PAIR_CODE_LENGTH = 4;
       var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
       if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
         HCP.setClose(record, HCP.CLOSE_WAITING, 2);
+        record.closeRole = role; record.closeNonce = closeNonce; // v2.157.0: so a Waiting record can be finished on a later pipe (reconnect)
         var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
         var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
         closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is WAITING' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
@@ -5701,7 +5703,7 @@ const PAIR_CODE_LENGTH = 4;
   // for hop 3 (record goes final), sends hop 4. A hop that does not arrive within
   // CLOSE_TIMEOUT_MS is a stall: the record stays as it is (the rendezvous to another
   // server is the next build step) and the stall is logged.
-  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000, CLOSE_MOVE_MS = 15000, CLOSE_MAX_SERVERS = 5;
+  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000, CLOSE_MOVE_MS = 15000, CLOSE_MAX_SERVERS = 5, CLOSE_WRAP_MS = 120000;
   var _closeTimer = null;
   // The backup witnesses this phone names: trusted, unquarantined, not the session witness, three at most.
   function closeBackupList(exclude) {
@@ -5805,8 +5807,8 @@ const PAIR_CODE_LENGTH = 4;
       if (busy || done) return; busy = true;
       try {
         var now = Date.now();
-        var waited = now - lastMove, limit = ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS;
-        if (!ctx.alts.length && now - started > LDR_SLOW_MS && !ctx.slowShown) { ctx.slowShown = true; ldrSub('Weak connection. Still trying.'); }
+        var waited = now - lastMove, limit = ctx.wrap ? CLOSE_WRAP_MS : (ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS);
+        if (!ctx.alts.length && now - started > LDR_SLOW_MS && !ctx.slowShown) { ctx.slowShown = true; ldrSub(ctx.wrap ? 'Waiting for ' + (closeFirstName(ctx.record && ctx.record.counterpartyName)) : 'Weak connection. Still trying.'); }
         if (waited > limit) {
           if (ctx.alts.length < ctx.servers.length) {
             var alt = ctx.servers[ctx.alts.length]; ctx.alts.push(alt); lastMove = now;
@@ -5859,6 +5861,88 @@ const PAIR_CODE_LENGTH = 4;
   function closeTraceHTML() { return ''; }
   function closeHost(u) { try { return new URL(u).host.replace(/\.humanexchangeprotocol\.org$|\.thesitefit\.com$/, ''); } catch (_) { return String(u); } }
   function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
+  function closeFirstName(n) { return String(n || 'them').trim().split(/\s+/)[0] || 'them'; }
+
+  // ===== Reconnect (dev v2.157.0, Oct 17 2026; registry Component 1, one ladder, two carriers) =====
+  // A Waiting record is finished the next time the two people open an exchange with each other.
+  // The receipts are signed by the chain key, not the session key, so they hold over any pipe:
+  // once the new pipe is up and the mark compared, the proposer sends its receipt (hop 3) again,
+  // signed to the new session, and waits for hop 4; the confirmer answers a receipt for any
+  // record it holds with that act hash, finalising it if it was still waiting. The person
+  // chooses nothing: the app finds the record by the other chain's fingerprint. Nothing new
+  // reaches the witness: the same sealed thread message as the live close.
+  var _closeListen = null, _closeSas = false, _closeHeld = null, _closeWrapping = false;
+  function closeRecordsWith(fp) {
+    return (state.chain || []).filter(function(r) { return r && HCP.isAct(r) && r.type !== HCP.RECORD_TYPE_REPAIR && r.counterparty === fp && r.closeNonce && r.actHash; });
+  }
+  function closeWrapCtx(record, role) {
+    return { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key },
+      nonce: record.closeNonce, actHash: record.actHash, record: record, seen: 2, servers: [], alts: [], pendingHop: 0, wrap: true };
+  }
+  // The ladder for a record finished later: the same screen, built from the record instead of the live proposal.
+  function closeWrapShow(record, role) {
+    _closeWrapping = true;
+    try { stopSessionPoll(); } catch (_) {}
+    _exRV.p = { breakdown: null, value: Number(record.value) || 0, task: record.description || '', category: record.category || '', duration: record.duration || 0, myDirection: record.energyState };
+    _exRV.other = record.counterpartyName || exPartnerName(); _exRV.ts = exRVTs(); _exRV.before = HCP.walletBalance(state.chain); _exRV.finish = true;
+    _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
+    showExStep('rv'); exRenderRV('ladder'); ldrStart(role);
+  }
+  // Proposer, after the mark: a Waiting record with this person is finished now, instead of a new proposal.
+  function closeResumeProposer() {
+    if (!sessionPartner || !sessionSharedKey || !sessionSid || !sessionCode) return false;
+    var W = closeRecordsWith(sessionPartner.fingerprint).filter(function(r) { return r.closeRole === 'proposer' && !HCP.isFinal(r); });
+    if (!W.length) return false;
+    var rec = W[W.length - 1]; // the most recent; one at a time
+    console.log('[close] reconnect: finishing a waiting record with ' + String(sessionPartner.fingerprint).slice(0, 12) + ' (hop 3 again, wait for 4)');
+    closeStop(); closeListenStop();
+    closeWrapShow(rec, 'proposer');
+    closeRun(closeWrapCtx(rec, 'proposer'));
+    return true;
+  }
+  // Confirmer: a receipt arrived on this pipe. Held until the mark is confirmed; then answered.
+  async function closeIncoming(o) {
+    if (!o || o.t !== 'close' || !o.h || o.h.hop !== 3) return;
+    if (!_closeSas) { _closeHeld = o; return; }
+    if (_closeWrapping) return;
+    try {
+      var vs = await HCP.verifySealed(o, sessionPartner.fingerprint, state.fingerprint, sessionSid, sessionPartner.public_key);
+      if (!vs.ok) { console.log('[close] reconnect receipt refused: ' + vs.error); return; }
+      var rec = closeRecordsWith(sessionPartner.fingerprint).filter(function(r) { return r.closeRole === 'confirmer' && r.actHash === o.h.actHash; })[0];
+      if (!rec) { console.log('[close] reconnect receipt names no record of mine'); return; }
+      var vh = await HCP.verifyHop(o.h, { hop: 3, nonce: rec.closeNonce, actHash: rec.actHash, seen: 2 }, sessionPartner.public_key);
+      if (!vh.ok) { console.log('[close] reconnect receipt refused: ' + vh.error); return; }
+      var was = HCP.isFinal(rec) ? 'already final (their hop 4 was lost)' : 'waiting';
+      closeListenStop();
+      var ctx = closeWrapCtx(rec, 'confirmer'); ctx.seen = 3;
+      closeWrapShow(rec, 'confirmer');
+      try { HCP.setClose(rec, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
+      save(); console.log('[close] reconnect: hop 3 received, record was ' + was + ', now final; sending hop 4'); closeRefresh();
+      ldrDone(4);
+      await closeSendHop(ctx, 4);
+    } catch (e) { console.log('[close] reconnect failed:', e.message); }
+  }
+  function closeFlushHeld() { var o = _closeHeld; _closeHeld = null; if (o) closeIncoming(o); }
+  // Listens on the session thread from connect until a proposal or an end: a receipt may come
+  // before or after the snapshot, and the snapshot poll stops once the snapshot is in.
+  function closeListenStart() {
+    closeListenStop();
+    var seen = null, ticks = 0, busy = false;
+    _closeListen = setInterval(async function() {
+      if (busy) return; busy = true;
+      try {
+        if (!sessionSharedKey || !sessionCode || ++ticks > 240) { closeListenStop(); return; }
+        var r = await serverFetch(getSessionWitnessUrl() + '/session/' + sessionCode);
+        if (!r.ok) return;
+        var d = await r.json(); var blob = d && d.partner && d.partner.encrypted_snapshot;
+        if (!blob || blob === seen) return; seen = blob;
+        var o = null; try { o = await HCP.decryptRelayPayload(blob, sessionSharedKey); } catch (_) { return; }
+        if (o && o.t === 'close') closeIncoming(o);
+      } catch (_) {} finally { busy = false; }
+    }, CLOSE_POLL_MS);
+  }
+  function closeListenStop() { if (_closeListen) { clearInterval(_closeListen); _closeListen = null; } }
+  function closeReconnectReset() { closeListenStop(); _closeSas = false; _closeHeld = null; _closeWrapping = false; }
 
   // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
   // A light heartbeat runs from connection to the end of the session,
@@ -5976,6 +6060,7 @@ const PAIR_CODE_LENGTH = 4;
     sessionWitnessUrl = null;
     try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false, photoOpen: false }; } catch(_) {}
     stopSnapshotPoll();
+    try { closeReconnectReset(); } catch(_) {} // v2.157.0
     sessionCode = null;
     sessionTheirCode = null;
     sessionPartner = null;
@@ -11388,6 +11473,7 @@ function init() {
       } catch(ek) { console.log('[ex-flow] session key failed:', ek.message); sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
     }
     try { carrierMarkWorked(sessionWitnessUrl); } catch (_) {} // v2.143.0: a carrier that carried a verified handshake is kept
+    _closeSas = false; _closeHeld = null; _closeWrapping = false; closeListenStart(); // v2.157.0: a receipt from a reconnect may arrive on this pipe
 
     // Build our snapshot extras once; it is sent only once the partner's key is verified.
     if (!sessionPartner._extras && sessionSharedKey) {
@@ -11594,6 +11680,8 @@ function init() {
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     _textureTs = ts;
+    _closeSas = true; closeFlushHeld(); // v2.157.0: a held receipt is answered once the mark is confirmed
+    if (closeResumeProposer()) return; // v2.157.0: a waiting record with this person is finished instead of a new proposal
     if (sessionRole === 'proposer') exBeatsReset();
     showExStep('texture');
     exRenderChainRead();
