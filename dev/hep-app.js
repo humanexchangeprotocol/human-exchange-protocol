@@ -5733,8 +5733,10 @@ const OFFLINE_SCAN_PARKED = true; // declared here, above the URL parser that re
   }
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
-      var delay3 = 0; // v2.156.0: the test switch that held hop 3 for 5 s is removed (Michael, Oct 16, after the airplane walk)
-      new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
+      // v2.161.0 (Michael, Oct 18): the test switch is back, dev only: hold hop 3 here and hop 4 on the
+      // confirmer for 5 s each, time to flip airplane mode on purpose. Removed in 2.156.0, wanted again
+      // for the spoken-code and reconnect walks. Hops 1 and 2 are not delayed (the polling path).
+      new Promise(function(res) { setTimeout(res, closeTestDelay(3)); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
         if (sentOk) ldrDone(3);
         closeWait(ctx, 4, function() {
           try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 4); } catch (e) { console.log('[close] final failed:', e.message); return; }
@@ -5747,9 +5749,14 @@ const OFFLINE_SCAN_PARKED = true; // declared here, above the URL parser that re
         try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
         save(); console.log('[close] hop 3 received: record final'); closeTrace('my record is FINAL'); closeRefresh();
         ldrDone(4);
-        closeSendHop(ctx, 4);
+        setTimeout(function() { closeSendHop(ctx, 4); }, closeTestDelay(4));
       });
     }
+  }
+  function closeTestDelay(hop) {
+    var on = state.settings.testDelayReceipt && /\/dev\//.test(location.pathname);
+    if (on) console.log('[close] test switch: holding hop ' + hop + ' for 5 s');
+    return on ? 5000 : 0;
   }
   async function closeSealHop(ctx, hop) {
     var h = await HCP.signHop(hop, ctx.nonce, ctx.actHash, state.privateKey);
@@ -16686,6 +16693,10 @@ function init() {
       h += stRow(uw.length ? 'Add another server' : 'Add a server', '', 'App.openAddWitnessModal()');
     }
     // This app
+    if (/\/dev\//.test(location.pathname)) {
+      h += '<div class="exs-cap mc-group">Testing (dev only)</div>';
+      h += stSwitchRow('Slow the close', 'Holds each receipt (hop 3 when this phone proposes, hop 4 when it confirms) for 5 seconds, so a connection can be cut on purpose.', state.settings.testDelayReceipt, 'switch-test-delay-receipt', 'App.toggleTestDelayReceipt()');
+    }
     h += '<div class="exs-cap mc-group">This app</div>';
     h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
     h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
