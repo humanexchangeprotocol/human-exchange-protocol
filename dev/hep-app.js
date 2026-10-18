@@ -5,6 +5,12 @@ const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
 const PROTOCOL_SHORT = 'HEP';
 const PAIR_CODE_LENGTH = 4;
+// v2.160.0 (Michael, Oct 18, after the two-phone walk): the scan path is PARKED. The scanner reads
+// the codes where the camera is good (the Pixel took scan 1 at once) and not where it is not (the
+// Galaxy could not read the 105-module code at any distance). Until a code can be read on an
+// ordinary phone, HEP needs a connection to exchange. The code stays; this flag takes every way in
+// off the screens and makes an incoming scan link a no-op. Flip it to bring the path back.
+const OFFLINE_SCAN_PARKED = true; // declared here, above the URL parser that reads it
   'use strict';
 
   // --- Labels (single source for all user-facing text) ---
@@ -9838,6 +9844,7 @@ const PAIR_CODE_LENGTH = 4;
     // v2.146.0: the rebuilt path. Three scans: o1 offer, o2 answer, o3 seal. Handled after unlock.
     ['o1', 'o2', 'o3'].forEach(function(k) {
       var v = params.get(k);
+      if (v && OFFLINE_SCAN_PARKED) { console.log('[offline] scan ' + k + ' link ignored (the scan path is parked, v2.160.0)'); return; }
       if (v) { try { state.pendingIncoming = { type: k, payload: b64Decode(v) }; console.log('[offline] scan ' + k + ' link received'); } catch (e) { console.log('[offline] bad ' + k + ' link'); } }
     });
     // Check for incoming chain view
@@ -10647,6 +10654,7 @@ function init() {
   var SCAN_LABEL = { o1: 'Scan the code on their screen', o2: 'Scan their answer', o3: 'Scan their last code' };
   var SCAN_NUM = { o1: 1, o2: 2, o3: 3 };
   function exScanOpen(expect) {
+    if (OFFLINE_SCAN_PARKED) { toast('Exchanging with no connection is not ready yet.'); return; }
     if (_scan) exScanClose();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('This phone cannot open the camera from here.'); return; }
     var wrap = document.createElement('div');
@@ -10742,6 +10750,14 @@ function init() {
   function exOffDoorHTML() {
     var h = '<div class="exs-grow"></div>';
     h += '<div class="exs-h" style="text-align:center">No server reached</div>';
+    if (OFFLINE_SCAN_PARKED) {
+      h += '<div class="exs-m" style="text-align:center">An exchange needs a connection for now: wifi or mobile data on at least one of the two phones. A way to exchange with no connection at all is coming.</div>';
+      h += '<div style="height:24px"></div>';
+      h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffRetry()">Try again</button>';
+      h += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+      h += '<div class="exs-grow"></div>';
+      return h;
+    }
     h += '<div class="exs-m" style="text-align:center">You can still exchange. The two of you scan each other\u2019s screens from inside HEP. The record is kept on both phones and a server stamps it the next time either phone is online.</div>';
     h += '<div style="height:24px"></div>';
     h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffStart()">Exchange by scanning</button>';
@@ -10753,6 +10769,7 @@ function init() {
   function exOffRetry() { closeExchange(); setTimeout(function() { exBeginStart(); }, 120); }
   // Proposer: compose the terms with the ordinary beats, then show scan 1.
   function exOffStart() {
+    if (OFFLINE_SCAN_PARKED) { toast('Exchanging with no connection is not ready yet.'); return; }
     if (exOffRefuseDevice()) return;
     var held = exOffLoad();
     if (held) { exOffResume(); return; }
@@ -10965,6 +10982,7 @@ function init() {
     else exOffSave(null);
   }
   function exOffWaitingHTML() {
+    if (OFFLINE_SCAN_PARKED) return '';
     var held = exOffLoad(); if (!held) return '';
     var what = held.role === 'proposer' ? (held.stage === 'sealed' ? 'Scan 3 is waiting for them' : 'Scan 1 is waiting for them') : (held.stage === 'answered' ? 'Scan 2 is waiting for them' : 'An offer is waiting for you');
     return '<p class="exs-cap" style="text-align:center;margin:18px 0 0">' + esc(what) + ': <button class="exs-quiet" style="display:inline;padding:0;margin:0" onclick="App.rsClose();App.exOffResume()">show it</button></p>';
@@ -11347,7 +11365,7 @@ function init() {
     html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
     html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
     html += '<div class="exs-grow"></div>';
-    html += '<button class="exs-quiet" onclick="App.exScanOpen(\'o1\')">Their screen shows a square code? Scan it instead</button>';
+    if (!OFFLINE_SCAN_PARKED) html += '<button class="exs-quiet" onclick="App.exScanOpen(\'o1\')">Their screen shows a square code? Scan it instead</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
     setTimeout(function() {
       var inp = document.getElementById('ex-join-code');
