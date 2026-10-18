@@ -920,7 +920,7 @@ const PAIR_CODE_LENGTH = 4;
     }
     setupStep('done');
   }
-  function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); }
+  function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); handleIncomingPayload(); } // v2.159.0: a scan link that arrived before the chain existed is handled now, not swallowed
 
   // --- Lock ---
   // --- PIN attempt tracking ---
@@ -10636,6 +10636,93 @@ function init() {
   function exOffQRHTML(id) {
     return '<div class="hs-qr" style="text-align:center"><canvas id="' + id + '-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR(\'' + id + '\')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>';
   }
+  // v2.159.0: the scanner lives inside the app. Found Oct 18 on devices: the phone camera hands a
+  // scan link to a browser the OS picks (iOS always; Android 12+ unless the app is a verified link
+  // handler, which a Chrome-built PWA cannot be), and that browser does not share the installed
+  // app's storage, so it sees no chain. The camera opens here, the code is read here, and the
+  // payload takes the same path a link would (state.pendingIncoming, handleIncomingPayload).
+  // Decoding: BarcodeDetector where Chrome has it, jsQR (vendor/jsqr.js, bundled, offline)
+  // elsewhere; Safari has no BarcodeDetector. Nothing here leaves the phone.
+  var _scan = null;
+  var SCAN_LABEL = { o1: 'Scan the code on their screen', o2: 'Scan their answer', o3: 'Scan their last code' };
+  var SCAN_NUM = { o1: 1, o2: 2, o3: 3 };
+  function exScanOpen(expect) {
+    if (_scan) exScanClose();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('This phone cannot open the camera from here.'); return; }
+    var wrap = document.createElement('div');
+    wrap.id = 'ex-scan';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:5000;background:#000;display:flex;flex-direction:column;';
+    wrap.innerHTML = '<video id="ex-scan-v" playsinline muted autoplay style="flex:1;width:100%;min-height:0;object-fit:cover;background:#000"></video>'
+      + '<div style="position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 14px;color:#fff;font-size:17px;text-align:center;background:linear-gradient(rgba(0,0,0,.7),rgba(0,0,0,0))">' + esc(SCAN_LABEL[expect] || 'Scan their code') + '</div>'
+      + '<div id="ex-scan-msg" style="position:absolute;left:18px;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);color:#fff;font-size:15px;text-align:center;opacity:0;transition:opacity .2s"></div>'
+      + '<button class="btn" style="position:absolute;left:18px;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);width:auto" onclick="App.exScanClose()">Cancel</button>';
+    document.body.appendChild(wrap);
+    _scan = { expect: expect, wrap: wrap, stream: null, raf: 0, detector: null, canvas: document.createElement('canvas'), busy: false, done: false, lastMsg: 0, last: 0 };
+    try { if (window.BarcodeDetector) _scan.detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (_) { _scan.detector = null; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function(stream) {
+      if (!_scan) { stream.getTracks().forEach(function(t) { t.stop(); }); return; }
+      _scan.stream = stream;
+      var v = document.getElementById('ex-scan-v');
+      v.setAttribute('playsinline', ''); v.muted = true; v.srcObject = stream;
+      var pl = v.play(); if (pl && pl.catch) pl.catch(function() {});
+      _scan.raf = requestAnimationFrame(exScanTick);
+      console.log('[scan] camera open, ' + (_scan.detector ? 'BarcodeDetector' : 'jsQR'));
+    }).catch(function(e) {
+      console.log('[scan] camera failed: ' + e.name + ' ' + e.message);
+      exScanClose();
+      toast(e.name === 'NotAllowedError' ? 'The camera was not allowed. Allow it for HEP in your phone settings and try again.' : 'Could not open the camera: ' + e.message);
+    });
+  }
+  function exScanClose() {
+    var sc = _scan; _scan = null; if (!sc) return;
+    try { if (sc.raf) cancelAnimationFrame(sc.raf); } catch (_) {}
+    try { if (sc.stream) sc.stream.getTracks().forEach(function(t) { t.stop(); }); } catch (_) {}
+    try { var v = document.getElementById('ex-scan-v'); if (v) v.srcObject = null; } catch (_) {}
+    try { sc.wrap.remove(); } catch (_) {}
+  }
+  function exScanMsg(text) {
+    var sc = _scan; if (!sc) return;
+    var now = Date.now(); if (now - sc.lastMsg < 2500) return; sc.lastMsg = now;
+    var m = document.getElementById('ex-scan-msg'); if (!m) return;
+    m.textContent = text; m.style.opacity = '1';
+    setTimeout(function() { if (m) m.style.opacity = '0'; }, 2200);
+  }
+  function exScanTick() {
+    var sc = _scan; if (!sc || sc.done) return;
+    sc.raf = requestAnimationFrame(exScanTick);
+    var now = Date.now(); if (sc.busy || now - sc.last < 150) return; sc.last = now;
+    var v = document.getElementById('ex-scan-v'); if (!v || v.readyState < 2 || !v.videoWidth) return;
+    if (sc.detector) {
+      sc.busy = true;
+      sc.detector.detect(v).then(function(codes) { sc.busy = false; if (codes && codes.length) exScanFound(codes[0].rawValue); })
+        .catch(function(e) { sc.busy = false; console.log('[scan] detector failed, falling back to jsQR: ' + e.message); sc.detector = null; });
+      return;
+    }
+    if (typeof jsQR !== 'function') { exScanMsg('The code reader did not load. Open the app once with internet, then try again.'); return; }
+    var scale = Math.min(1, 1280 / v.videoWidth) // scan 1 is a dense code (about 105 modules a side); jsQR needs about six pixels per module, so sample the full 1280 frame
+   , w = Math.round(v.videoWidth * scale), h = Math.round(v.videoHeight * scale);
+    var c = sc.canvas; if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    var ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(v, 0, 0, w, h);
+    var img = ctx.getImageData(0, 0, w, h);
+    var r = null; try { r = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' }); } catch (_) {}
+    if (r && r.data) exScanFound(r.data);
+  }
+  // A code was read. It must be a HEP scan link; the type must be the one this screen waits for.
+  function exScanFound(text) {
+    var sc = _scan; if (!sc || sc.done) return;
+    var type = null, raw = null;
+    try {
+      var u = new URL(String(text));
+      ['o1', 'o2', 'o3'].forEach(function(k) { var v = u.searchParams.get(k); if (v && !type) { type = k; raw = v; } });
+    } catch (_) {}
+    if (!type) { exScanMsg('That is not a HEP code.'); return; }
+    if (type !== sc.expect) { exScanMsg('That is scan ' + SCAN_NUM[type] + ' of 3. This phone needs scan ' + SCAN_NUM[sc.expect] + '.'); return; }
+    var payload; try { payload = b64Decode(raw); } catch (_) { exScanMsg('That code could not be read.'); return; }
+    sc.done = true; exScanClose();
+    state.pendingIncoming = { type: type, payload: payload };
+    console.log('[scan] read scan ' + type + ' in the app');
+    handleIncomingPayload();
+  }
   function exOffTerms(ex, iProvide, other) {
     var kd = exKindDur(ex.category, ex.duration ? formatDuration(ex.duration) : '');
     var h = '<div class="exs-cap">' + (iProvide ? 'You are providing to ' + esc(other || 'them') : esc(other || 'They') + (other ? ' is' : ' are') + ' providing to you') + '</div>';
@@ -10655,9 +10742,10 @@ function init() {
   function exOffDoorHTML() {
     var h = '<div class="exs-grow"></div>';
     h += '<div class="exs-h" style="text-align:center">No server reached</div>';
-    h += '<div class="exs-m" style="text-align:center">You can still exchange. The two of you scan each other\u2019s screens with the phone camera. The record is kept on both phones and a server stamps it the next time either phone is online.</div>';
+    h += '<div class="exs-m" style="text-align:center">You can still exchange. The two of you scan each other\u2019s screens from inside HEP. The record is kept on both phones and a server stamps it the next time either phone is online.</div>';
     h += '<div style="height:24px"></div>';
     h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffStart()">Exchange by scanning</button>';
+    h += '<button class="btn btn-secondary" style="width:100%; margin-top:10px" onclick="App.exScanOpen(\'o1\')">Scan the code on their screen</button>';
     h += '<button class="exs-quiet" onclick="App.exOffRetry()">Try the servers again</button>';
     h += '<div class="exs-grow"></div>';
     return h;
@@ -10688,14 +10776,15 @@ function init() {
     var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'offered') return;
     exOffOpenModal();
     var h = '<div class="exs-cap">Scan 1 of 3</div>';
-    h += '<div class="exs-t">They scan this with their phone camera</div>';
+    h += '<div class="exs-t">They scan this from inside HEP: Exchange, then Scan the code on their screen</div>';
     h += '<div style="height:12px"></div>' + exOffQRHTML('off1');
     h += '<div style="height:12px"></div>';
     h += exOffTerms(held.ex, held.ex.energyState === 'provided', '');
     h += '<div style="height:16px"></div>';
-    h += '<div class="exs-f">When they confirm, their phone shows a code. Scan it with your camera and this app opens again.</div>';
+    h += '<div class="exs-f">When they confirm, their phone shows a code. Scan it here and this phone records the exchange.</div>';
     h += '<div class="exs-grow"></div>';
-    h += '<button class="btn btn-secondary" style="width:100%" onclick="App.exOffClose()">Done for now</button>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exScanOpen(\'o2\')">Scan their answer</button>';
+    h += '<button class="btn btn-secondary" style="width:100%; margin-top:10px" onclick="App.exOffClose()">Done for now</button>';
     h += '<button class="exs-quiet" onclick="App.exOffCancel()">Cancel this exchange</button>';
     exOffHost(h);
     exOffQR('off1-qr', exOffUrl('o1', held.o1));
@@ -10737,12 +10826,13 @@ function init() {
     var held = exOffLoad(); if (!held || held.role !== 'confirmer' || held.stage !== 'answered') return;
     exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(3, 'confirmer');
     var h = '<div class="exs-cap">Scan 2 of 3</div>';
-    h += '<div class="exs-t">They scan this with their phone camera</div>';
+    h += '<div class="exs-t">They scan this from their screen: Scan their answer</div>';
     h += '<div style="height:12px"></div>' + exOffQRHTML('off2');
     h += '<div style="height:12px"></div>';
-    h += '<div class="exs-f">Their phone records the exchange and shows one last code. Scan it with your camera and this app records it on your phone.</div>';
+    h += '<div class="exs-f">Their phone records the exchange and shows one last code. Scan it here and this phone records it too.</div>';
     h += '<div class="exs-grow"></div>';
-    h += '<button class="btn btn-secondary" style="width:100%" onclick="App.exOffClose()">Done for now</button>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exScanOpen(\'o3\')">Scan their last code</button>';
+    h += '<button class="btn btn-secondary" style="width:100%; margin-top:10px" onclick="App.exOffClose()">Done for now</button>';
     h += '<button class="exs-quiet" onclick="App.exOffCancel()">Cancel this exchange</button>';
     exOffHost(h);
     exOffQR('off2-qr', exOffUrl('o2', held.o2));
@@ -10766,7 +10856,7 @@ function init() {
     var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'sealed') return;
     exOffOpenModal(); sessionRole = 'proposer'; renderIndicator(4, 'proposer');
     var h = '<div class="exs-cap">Scan 3 of 3</div>';
-    h += '<div class="exs-t">Recorded on your phone. They scan this to record it on theirs</div>';
+    h += '<div class="exs-t">Recorded on your phone. They scan this from their screen: Scan their last code</div>';
     h += '<div style="height:12px"></div>' + exOffQRHTML('off3');
     h += '<div style="height:12px"></div>';
     h += exOffTerms(held.ex, held.ex.energyState === 'provided', held.other || '');
@@ -11246,8 +11336,7 @@ function init() {
     // Screen 2, joiner side (ruled Oct 1): four cells. The real input
     // sits invisibly over the cells so the keyboard opens on tap; the
     // fourth character connects by itself, no Connect button. "Scan
-    // their code instead" is ruled but needs a camera scanner the app
-    // does not have yet; it lands in its own build cycle.
+    // their code instead" (ruled Oct 1) is the in-app scanner, v2.159.0.
     var html = '<div class="exs-h" style="text-align:center;">Join</div>';
     html += '<div class="exs-m" style="text-align:center;">The six characters on their screen.</div>';
     html += '<div style="height:30px"></div>';
@@ -11258,6 +11347,7 @@ function init() {
     html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
     html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
     html += '<div class="exs-grow"></div>';
+    html += '<button class="exs-quiet" onclick="App.exScanOpen(\'o1\')">Their screen shows a square code? Scan it instead</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
     setTimeout(function() {
       var inp = document.getElementById('ex-join-code');
@@ -16739,7 +16829,7 @@ function init() {
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exSayCodeYes, exSayCodeNo, exOffShowCode, exOffCodeYes, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exSayCodeYes, exSayCodeNo, exOffShowCode, exOffCodeYes, exScanOpen, exScanClose, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,
