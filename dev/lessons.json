@@ -287,7 +287,7 @@
    "steps": [
     {
      "title": "Written twice, then confirmed",
-     "body": "Once you have both signed, each phone saves the record and sends the other a receipt. When the receipt comes back, your copy is settled. The provider’s currency grows by the agreed number, and so does the receiver’s cosmic share. Until both phones have confirmed, the exchange counts for nothing and the app says it is not final yet; finish it together next time.",
+     "body": "Once you have both signed, each phone saves the record and sends the other a receipt. When the receipt comes back, your copy is settled. The provider’s currency grows by the agreed number, and so does the receiver’s cosmic share. Until both phones have confirmed, the exchange counts for nothing and the app says it is not final yet. If the connection drops on the last step, both phones show the same two-digit code; if theirs matches yours, tap yes and it is done. Otherwise the next time the two of you open an exchange together, the app finishes it first.",
      "fig": {
       "t": "pair",
       "s": 2
