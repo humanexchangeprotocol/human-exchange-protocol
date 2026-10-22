@@ -41,7 +41,7 @@ return{hash256}
 // HEP PROTOCOL CORE ENGINE v2.0.0
 // Backward compatible: verifies SV=1 records, creates SV=2
 // ============================================================
-const APP_VERSION='2.156.2';
+const APP_VERSION='2.161.0';
 const VERSION_CHECK_URL='version.json';
 const DEFAULT_WITNESS_URL='https://witness.thesitefit.com';
 
@@ -605,7 +605,7 @@ function crep(o,origHash,origFp){
   // v2.113.1: the witness attestation sits outside ser (unsigned, attests the original's mint hash); carried so a copy does not read as unwitnessed.
   if(o.witnessAttestation)r.witnessAttestation=JSON.parse(JSON.stringify(o.witnessAttestation));
   // Hop close (Oct 16): the close state rides with a copy the same way (outside ser).
-  if(o.closeState)r.closeState=o.closeState;if(o.closeHop)r.closeHop=o.closeHop;
+  if(o.closeState)r.closeState=o.closeState;if(o.closeHop)r.closeHop=o.closeHop;if(o.closeRole)r.closeRole=o.closeRole;if(o.closeNonce)r.closeNonce=o.closeNonce;
   return r;
 }
 // The sync step, one direction: given my chain and the other device's chain
@@ -924,6 +924,10 @@ async function skver(partner,myCode,theirCode){
 async function skcommit(myCode,theirCode,fp,skPub){return bth(await crypto.subtle.digest(HALG,u8.encode('hep-commit1|'+skmsg(myCode,theirCode,fp,skPub))))}
 async function skcver(partner,myCode,theirCode){try{if(!partner||!partner.session_commit)return{ok:false,error:'no commitment'};if(!partner.session_key)return{ok:false,error:'not revealed'};const h=await skcommit(theirCode,myCode,partner.fingerprint,partner.session_key);return h===partner.session_commit?{ok:true}:{ok:false,error:'revealed key does not match the commitment'}}catch(e){return{ok:false,error:e.message}}}
 const MARK_CHARS='ABCDEFGHJKMNPQRTUVWXYZ23456789';
+// Close code (Oct 17 2026): two digits both phones compute from the record they hold. Spoken or shown
+// across a table, it carries knowledge (the other phone has this exact record), never security; the
+// signatures crossed earlier. Used as hop 4 on the scan path and as the last hop when the servers run out.
+async function closecode(actHash,nonce){const h=new Uint8Array(await crypto.subtle.digest(HALG,u8.encode('hep-close1|'+nonce+'|'+actHash)));return String((h[0]*256+h[1])%100).padStart(2,'0')}
 async function smark(sid){const h=new Uint8Array(await crypto.subtle.digest(HALG,u8.encode('hep-mark1|'+sid)));let m='';for(let i=0;i<4;i++)m+=MARK_CHARS[h[i]%MARK_CHARS.length];return m}
 function kstr(j){return j?(j.x||'')+'.'+(j.y||''):''}
 function stinfo(t){return[SESS_TAG,[t.myCode,t.theirCode].sort().join(','),[t.myFp,t.theirFp].sort().join(','),[kstr(t.mySignPub),kstr(t.theirSignPub)].sort().join(','),[kstr(t.mySkPub),kstr(t.theirSkPub)].sort().join(',')].join('|')}
@@ -1042,7 +1046,7 @@ async function vpa(r,chainFp){
   const ok=await vws('ping2:'+chainFp+':'+h+':'+a.server_timestamp,a.server_signature,a.server_pubkey);
   return ok?{status:'ok',detail:''}:{status:'bad-signature',detail:''};
 }
-return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,countedActs:counted,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah,CLOSE_WAITING:CLOSE_WAITING,CLOSE_FINAL:CLOSE_FINAL,signHop:hopsign,verifyHop:hopverify,isFinal:isfinal,setClose:setclose}
+return{PROTOCOL_VERSION:PV,SER_VERSION:SV,SER_VERSION_V2:SV_V2,SER_VERSION_V3:SV_V3,SER_VERSION_V4:SV_V4,SER_VERSION_V5:SV_V5,SER_VERSION_V6:SV_V6,SER_VERSION_LEGACY:SV_LEGACY,SCALE_MAX:SCALE_MAX,MAX_PHOTO_BYTES:MAX_PHOTO_BYTES,EXCHANGE_TYPES:ET,ENERGY_STATES:ES,EXCHANGE_PATHS:XP,RECORD_TYPE_PING:RT_PING,RECORD_TYPE_GENESIS:RT_GENESIS,RECORD_TYPE_PARENT:RT_PARENT,RECORD_TYPE_DEVICE:RT_DEVICE,RECORD_TYPE_REPAIR:RT_REPAIR,isAct:isAct,acts:acts,countedActs:counted,createRepair:crep,mergeFrom:mergeFrom,makeParent:mkpar,unlockParent:unpar,verifyParentRecord:vpar,makeDeviceCert:mkdev,verifyDeviceCert:vdev,verifyDeviceLabel:vlbl,verifyChainMulti:vcm,verifyKeyBinding:vbind,sameOwner:sown,COMMITMENT_TEXT:COMMITMENT_TEXT,generateKeyPair:gkp,exportKey:ek,importPublicKey:ipk,importPrivateKey:isk,importKeyPair:ikp,keyFingerprint:kfp,createRecord:cr,createGenesis:cg,createPingRecord:cpr,serialize:ser,hashRecord:hr,hashRecord3:hr3,signRecord:sr,verifyRecord:vr,createChain:cc,appendToChain:atc,verifyChain:vc,chainDensity:cd,walletBalance:wb,encryptWithPIN:ewp,decryptWithPIN:dwp,exportBackup:xb,importBackup:ib,generateHandshakePayload:ghp,parseHandshakePayload:php,recordFromHandshake:rfh,generateConfirmationPayload:gcp,parseConfirmationPayload:pcp,generateSettlementPayload:gsp,parseSettlementPayload:psp,signPayload:spld,verifyPayload:vpld,computeMintHash:cmh,computeActHash:cah,signActHash:sah,verifyActSig:vah,computeHandshakeId:chi,generateAttestation:ga,attestationSummary:as,chainSnapshot:cs,chainMerkleRoot:cmr,chainEntropyPrev:cep,bufToHex:bth,bufToB64:btb,b64ToBuf:btf,deriveSharedKey:dsk,makeSessionKey:mksk,signSessionKey:sksig,verifySessionKey:skver,deriveSessionKey:dssk,sessionId:sthash,commitSessionKey:skcommit,verifySessionCommit:skcver,sessionMark:smark,closeCode:closecode,signSealed:ssnap,verifySealed:vsnap,encryptRelayPayload:erp,decryptRelayPayload:drp,canonicalizeJSON:cjs,verifyWitnessPayload:vwp,verifyWitnessAttestation:vws,verifyPingAnchor:vpa,offlineOffer:of1,verifyOffer:ofv1,offlineAnswer:of2,verifyAnswer:ofv2,offlineSeal:of3,verifySeal:ofv3,offlineActHash:ofah,CLOSE_WAITING:CLOSE_WAITING,CLOSE_FINAL:CLOSE_FINAL,signHop:hopsign,verifyHop:hopverify,isFinal:isfinal,setClose:setclose}
 })();
 
 // ============================================================

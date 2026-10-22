@@ -5,6 +5,12 @@ const App=(()=>{
 const PROTOCOL_NAME = 'Human Exchange Protocol';
 const PROTOCOL_SHORT = 'HEP';
 const PAIR_CODE_LENGTH = 4;
+// v2.160.0 (Michael, Oct 18, after the two-phone walk): the scan path is PARKED. The scanner reads
+// the codes where the camera is good (the Pixel took scan 1 at once) and not where it is not (the
+// Galaxy could not read the 105-module code at any distance). Until a code can be read on an
+// ordinary phone, HEP needs a connection to exchange. The code stays; this flag takes every way in
+// off the screens and makes an incoming scan link a no-op. Flip it to bring the path back.
+const OFFLINE_SCAN_PARKED = true; // declared here, above the URL parser that reads it
   'use strict';
 
   // --- Labels (single source for all user-facing text) ---
@@ -920,7 +926,7 @@ const PAIR_CODE_LENGTH = 4;
     }
     setupStep('done');
   }
-  function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); }
+  function completeSetup() { showScreen('home'); refreshHome(); showPendingUpdateBanner(); checkPingOnOpen(); handleIncomingPayload(); } // v2.159.0: a scan link that arrived before the chain existed is handled now, not swallowed
 
   // --- Lock ---
   // --- PIN attempt tracking ---
@@ -2906,10 +2912,10 @@ const PAIR_CODE_LENGTH = 4;
     var h;
     if (W.length === 1) {
       var name = state.settings.hideNames ? '' : (W[0].r.counterpartyName || '');
-      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Finish it with them when you\u2019re together.</div>' +
+      h = '<div class="exs-cap" style="text-align:center">Your exchange' + (name ? ' with ' + esc(name) : '') + ' is not final yet.<br>Start an exchange with them when you\u2019re together and it will finish on its own.</div>' +
           '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exDetailOpen(' + W[0].i + ');return false">See the record</a></p>';
     } else {
-      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Finish them with the other person when you\u2019re together.</div>' +
+      h = '<div class="exs-cap" style="text-align:center">' + W.length + ' exchanges are not final yet.<br>Start an exchange with the other person when you\u2019re together and it will finish on its own.</div>' +
           '<p class="mc-link" style="margin:0"><a href="#" onclick="App.exListOpen();return false">See the records</a></p>';
     }
     b.innerHTML = h;
@@ -4341,6 +4347,7 @@ const PAIR_CODE_LENGTH = 4;
             }
             // v2.137.0: a key that is not the fingerprint must prove itself before anything
             // about this person goes out. The proof rides in a sealed hello or in the snapshot.
+            if (decrypted && decrypted.t === 'close') { closeIncoming(decrypted); return; } // v2.157.0: a receipt from a reconnect, not the snapshot; keep polling
             if (decrypted && decrypted.t === 'proof-hello') {
               if (!sessionPartner._verified) {
                 if (!await sessVerifyProof(sessionPartner, decrypted.device_proof)) { stopSnapshotPoll(); sessionViolation('partner key unproven', sessFailMsg(null)); return; }
@@ -5599,6 +5606,7 @@ const PAIR_CODE_LENGTH = 4;
       var closeNonce = role === 'confirmer' ? (sessionProposal && sessionProposal._nonce) : sessionProposalNonce;
       if (sessionActHash && closeNonce && sessionSharedKey && sessionSid && sessionPartner && sessionPartner.public_key && sessionCode) {
         HCP.setClose(record, HCP.CLOSE_WAITING, 2);
+        record.closeRole = role; record.closeNonce = closeNonce; // v2.157.0: so a Waiting record can be finished on a later pipe (reconnect)
         var pList = role === 'proposer' ? (sessionMyBackups || []) : ((sessionProposal && sessionProposal._backups) || []);
         var cList = role === 'proposer' ? (data._cpBackups || []) : (sessionMyBackups || []);
         closeTrace(role === 'proposer' ? 'hop 1 sent (proposal), hop 2 received (their signature): my record is WAITING' : 'hop 1 received (proposal), hop 2 sent (my signature): my record is WAITING');
@@ -5701,7 +5709,7 @@ const PAIR_CODE_LENGTH = 4;
   // for hop 3 (record goes final), sends hop 4. A hop that does not arrive within
   // CLOSE_TIMEOUT_MS is a stall: the record stays as it is (the rendezvous to another
   // server is the next build step) and the stall is logged.
-  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000, CLOSE_MOVE_MS = 15000, CLOSE_MAX_SERVERS = 5;
+  var CLOSE_POLL_MS = 2000, CLOSE_TIMEOUT_MS = 25000, CLOSE_MOVE_MS = 15000, CLOSE_MAX_SERVERS = 5, CLOSE_WRAP_MS = 120000;
   var _closeTimer = null;
   // The backup witnesses this phone names: trusted, unquarantined, not the session witness, three at most.
   function closeBackupList(exclude) {
@@ -5725,8 +5733,10 @@ const PAIR_CODE_LENGTH = 4;
   }
   function closeRun(ctx) {
     if (ctx.role === 'proposer') {
-      var delay3 = 0; // v2.156.0: the test switch that held hop 3 for 5 s is removed (Michael, Oct 16, after the airplane walk)
-      new Promise(function(res) { setTimeout(res, delay3); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
+      // v2.161.0 (Michael, Oct 18): the test switch is back, dev only: hold hop 3 here and hop 4 on the
+      // confirmer for 5 s each, time to flip airplane mode on purpose. Removed in 2.156.0, wanted again
+      // for the spoken-code and reconnect walks. Hops 1 and 2 are not delayed (the polling path).
+      new Promise(function(res) { setTimeout(res, closeTestDelay(3)); }).then(function() { return closeSendHop(ctx, 3); }).then(function(sentOk) {
         if (sentOk) ldrDone(3);
         closeWait(ctx, 4, function() {
           try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 4); } catch (e) { console.log('[close] final failed:', e.message); return; }
@@ -5739,9 +5749,14 @@ const PAIR_CODE_LENGTH = 4;
         try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
         save(); console.log('[close] hop 3 received: record final'); closeTrace('my record is FINAL'); closeRefresh();
         ldrDone(4);
-        closeSendHop(ctx, 4);
+        setTimeout(function() { closeSendHop(ctx, 4); }, closeTestDelay(4));
       });
     }
+  }
+  function closeTestDelay(hop) {
+    var on = state.settings.testDelayReceipt && /\/dev\//.test(location.pathname);
+    if (on) console.log('[close] test switch: holding hop ' + hop + ' for 5 s');
+    return on ? 5000 : 0;
   }
   async function closeSealHop(ctx, hop) {
     var h = await HCP.signHop(hop, ctx.nonce, ctx.actHash, state.privateKey);
@@ -5805,8 +5820,8 @@ const PAIR_CODE_LENGTH = 4;
       if (busy || done) return; busy = true;
       try {
         var now = Date.now();
-        var waited = now - lastMove, limit = ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS;
-        if (!ctx.alts.length && now - started > LDR_SLOW_MS && !ctx.slowShown) { ctx.slowShown = true; ldrSub('Weak connection. Still trying.'); }
+        var waited = now - lastMove, limit = ctx.wrap ? CLOSE_WRAP_MS : (ctx.alts.length ? CLOSE_MOVE_MS : CLOSE_TIMEOUT_MS);
+        if (!ctx.alts.length && now - started > LDR_SLOW_MS && !ctx.slowShown) { ctx.slowShown = true; ldrSub(ctx.wrap ? 'Waiting for ' + (closeFirstName(ctx.record && ctx.record.counterpartyName)) : 'Weak connection. Still trying.'); }
         if (waited > limit) {
           if (ctx.alts.length < ctx.servers.length) {
             var alt = ctx.servers[ctx.alts.length]; ctx.alts.push(alt); lastMove = now;
@@ -5819,7 +5834,7 @@ const PAIR_CODE_LENGTH = 4;
             closeStop(); ctx.stalled = hop;
             console.log('[close] STALL: hop ' + hop + ' reached no server (' + (1 + ctx.servers.length) + ' tried) in ' + Math.round((now - started) / 1000) + ' s');
             closeTrace('STALL: hop ' + hop + ' never arrived, ' + (1 + ctx.servers.length) + ' servers tried; record stays as it is');
-            ldrStall();
+            ldrStall(ctx);
             closeRefresh(); return;
           }
         }
@@ -5859,6 +5874,88 @@ const PAIR_CODE_LENGTH = 4;
   function closeTraceHTML() { return ''; }
   function closeHost(u) { try { return new URL(u).host.replace(/\.humanexchangeprotocol\.org$|\.thesitefit\.com$/, ''); } catch (_) { return String(u); } }
   function closeRefresh() { try { if (typeof refreshHome === 'function') refreshHome(); } catch (_) {} }
+  function closeFirstName(n) { return String(n || 'them').trim().split(/\s+/)[0] || 'them'; }
+
+  // ===== Reconnect (dev v2.157.0, Oct 17 2026; registry Component 1, one ladder, two carriers) =====
+  // A Waiting record is finished the next time the two people open an exchange with each other.
+  // The receipts are signed by the chain key, not the session key, so they hold over any pipe:
+  // once the new pipe is up and the mark compared, the proposer sends its receipt (hop 3) again,
+  // signed to the new session, and waits for hop 4; the confirmer answers a receipt for any
+  // record it holds with that act hash, finalising it if it was still waiting. The person
+  // chooses nothing: the app finds the record by the other chain's fingerprint. Nothing new
+  // reaches the witness: the same sealed thread message as the live close.
+  var _closeListen = null, _closeSas = false, _closeHeld = null, _closeWrapping = false;
+  function closeRecordsWith(fp) {
+    return (state.chain || []).filter(function(r) { return r && HCP.isAct(r) && r.type !== HCP.RECORD_TYPE_REPAIR && r.counterparty === fp && r.closeNonce && r.actHash; });
+  }
+  function closeWrapCtx(record, role) {
+    return { role: role, code: sessionCode, url: getSessionWitnessUrl(), key: sessionSharedKey, sid: sessionSid, partner: { fingerprint: sessionPartner.fingerprint, public_key: sessionPartner.public_key },
+      nonce: record.closeNonce, actHash: record.actHash, record: record, seen: 2, servers: [], alts: [], pendingHop: 0, wrap: true };
+  }
+  // The ladder for a record finished later: the same screen, built from the record instead of the live proposal.
+  function closeWrapShow(record, role) {
+    _closeWrapping = true;
+    try { stopSessionPoll(); } catch (_) {}
+    _exRV.p = { breakdown: null, value: Number(record.value) || 0, task: record.description || '', category: record.category || '', duration: record.duration || 0, myDirection: record.energyState };
+    _exRV.other = record.counterpartyName || exPartnerName(); _exRV.ts = exRVTs(); _exRV.before = HCP.walletBalance(state.chain); _exRV.finish = true;
+    _exRV.shieldOpen = false; _exRV.threadOpen = false; _exRV.similarOpen = false;
+    showExStep('rv'); exRenderRV('ladder'); ldrStart(role);
+  }
+  // Proposer, after the mark: a Waiting record with this person is finished now, instead of a new proposal.
+  function closeResumeProposer() {
+    if (!sessionPartner || !sessionSharedKey || !sessionSid || !sessionCode) return false;
+    var W = closeRecordsWith(sessionPartner.fingerprint).filter(function(r) { return r.closeRole === 'proposer' && !HCP.isFinal(r); });
+    if (!W.length) return false;
+    var rec = W[W.length - 1]; // the most recent; one at a time
+    console.log('[close] reconnect: finishing a waiting record with ' + String(sessionPartner.fingerprint).slice(0, 12) + ' (hop 3 again, wait for 4)');
+    closeStop(); closeListenStop();
+    closeWrapShow(rec, 'proposer');
+    closeRun(closeWrapCtx(rec, 'proposer'));
+    return true;
+  }
+  // Confirmer: a receipt arrived on this pipe. Held until the mark is confirmed; then answered.
+  async function closeIncoming(o) {
+    if (!o || o.t !== 'close' || !o.h || o.h.hop !== 3) return;
+    if (!_closeSas) { _closeHeld = o; return; }
+    if (_closeWrapping) return;
+    try {
+      var vs = await HCP.verifySealed(o, sessionPartner.fingerprint, state.fingerprint, sessionSid, sessionPartner.public_key);
+      if (!vs.ok) { console.log('[close] reconnect receipt refused: ' + vs.error); return; }
+      var rec = closeRecordsWith(sessionPartner.fingerprint).filter(function(r) { return r.closeRole === 'confirmer' && r.actHash === o.h.actHash; })[0];
+      if (!rec) { console.log('[close] reconnect receipt names no record of mine'); return; }
+      var vh = await HCP.verifyHop(o.h, { hop: 3, nonce: rec.closeNonce, actHash: rec.actHash, seen: 2 }, sessionPartner.public_key);
+      if (!vh.ok) { console.log('[close] reconnect receipt refused: ' + vh.error); return; }
+      var was = HCP.isFinal(rec) ? 'already final (their hop 4 was lost)' : 'waiting';
+      closeListenStop();
+      var ctx = closeWrapCtx(rec, 'confirmer'); ctx.seen = 3;
+      closeWrapShow(rec, 'confirmer');
+      try { HCP.setClose(rec, HCP.CLOSE_FINAL, 3); } catch (e) { console.log('[close] final failed:', e.message); return; }
+      save(); console.log('[close] reconnect: hop 3 received, record was ' + was + ', now final; sending hop 4'); closeRefresh();
+      ldrDone(4);
+      await closeSendHop(ctx, 4);
+    } catch (e) { console.log('[close] reconnect failed:', e.message); }
+  }
+  function closeFlushHeld() { var o = _closeHeld; _closeHeld = null; if (o) closeIncoming(o); }
+  // Listens on the session thread from connect until a proposal or an end: a receipt may come
+  // before or after the snapshot, and the snapshot poll stops once the snapshot is in.
+  function closeListenStart() {
+    closeListenStop();
+    var seen = null, ticks = 0, busy = false;
+    _closeListen = setInterval(async function() {
+      if (busy) return; busy = true;
+      try {
+        if (!sessionSharedKey || !sessionCode || ++ticks > 240) { closeListenStop(); return; }
+        var r = await serverFetch(getSessionWitnessUrl() + '/session/' + sessionCode);
+        if (!r.ok) return;
+        var d = await r.json(); var blob = d && d.partner && d.partner.encrypted_snapshot;
+        if (!blob || blob === seen) return; seen = blob;
+        var o = null; try { o = await HCP.decryptRelayPayload(blob, sessionSharedKey); } catch (_) { return; }
+        if (o && o.t === 'close') closeIncoming(o);
+      } catch (_) {} finally { busy = false; }
+    }, CLOSE_POLL_MS);
+  }
+  function closeListenStop() { if (_closeListen) { clearInterval(_closeListen); _closeListen = null; } }
+  function closeReconnectReset() { closeListenStop(); _closeSas = false; _closeHeld = null; _closeWrapping = false; }
 
   // ===== Session presence and cancel (dev v2.70.0, Batch 2) =====
   // A light heartbeat runs from connection to the end of the session,
@@ -5961,7 +6058,7 @@ const PAIR_CODE_LENGTH = 4;
     var rv = document.getElementById('ex-step-rv');
     var onRV = rv && rv.classList.contains('active');
     var st = _exRV.state;
-    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || st === 'ladder' || st === 'notconfirmed' || (st === 'wait' && _exPresenceLive));
+    var hide = onRV && (st === 'flow' || st === 'done' || st === 'ended' || st === 'ladder' || st === 'notconfirmed' || st === 'saycode' || (st === 'wait' && _exPresenceLive));
     xb.style.visibility = hide ? 'hidden' : '';
   }
 
@@ -5976,6 +6073,7 @@ const PAIR_CODE_LENGTH = 4;
     sessionWitnessUrl = null;
     try { _exOverlapCache = { salt: null, shared: null }; _exChainReadState = { mine: 0, theirs: 0, shared: 0, shieldOpen: false, threadOpen: false, photoOpen: false }; } catch(_) {}
     stopSnapshotPoll();
+    try { closeReconnectReset(); } catch(_) {} // v2.157.0
     sessionCode = null;
     sessionTheirCode = null;
     sessionPartner = null;
@@ -9753,6 +9851,7 @@ const PAIR_CODE_LENGTH = 4;
     // v2.146.0: the rebuilt path. Three scans: o1 offer, o2 answer, o3 seal. Handled after unlock.
     ['o1', 'o2', 'o3'].forEach(function(k) {
       var v = params.get(k);
+      if (v && OFFLINE_SCAN_PARKED) { console.log('[offline] scan ' + k + ' link ignored (the scan path is parked, v2.160.0)'); return; }
       if (v) { try { state.pendingIncoming = { type: k, payload: b64Decode(v) }; console.log('[offline] scan ' + k + ' link received'); } catch (e) { console.log('[offline] bad ' + k + ' link'); } }
     });
     // Check for incoming chain view
@@ -10551,6 +10650,94 @@ function init() {
   function exOffQRHTML(id) {
     return '<div class="hs-qr" style="text-align:center"><canvas id="' + id + '-qr"></canvas><br><button class="hs-qr-expand" onclick="event.stopPropagation(); App.showFullQR(\'' + id + '\')"><svg class="icon icon-md"><use href="#icon-expand"/></svg> Make bigger for scanning</button></div>';
   }
+  // v2.159.0: the scanner lives inside the app. Found Oct 18 on devices: the phone camera hands a
+  // scan link to a browser the OS picks (iOS always; Android 12+ unless the app is a verified link
+  // handler, which a Chrome-built PWA cannot be), and that browser does not share the installed
+  // app's storage, so it sees no chain. The camera opens here, the code is read here, and the
+  // payload takes the same path a link would (state.pendingIncoming, handleIncomingPayload).
+  // Decoding: BarcodeDetector where Chrome has it, jsQR (vendor/jsqr.js, bundled, offline)
+  // elsewhere; Safari has no BarcodeDetector. Nothing here leaves the phone.
+  var _scan = null;
+  var SCAN_LABEL = { o1: 'Scan the code on their screen', o2: 'Scan their answer', o3: 'Scan their last code' };
+  var SCAN_NUM = { o1: 1, o2: 2, o3: 3 };
+  function exScanOpen(expect) {
+    if (OFFLINE_SCAN_PARKED) { toast('Exchanging with no connection is not ready yet.'); return; }
+    if (_scan) exScanClose();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('This phone cannot open the camera from here.'); return; }
+    var wrap = document.createElement('div');
+    wrap.id = 'ex-scan';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:5000;background:#000;display:flex;flex-direction:column;';
+    wrap.innerHTML = '<video id="ex-scan-v" playsinline muted autoplay style="flex:1;width:100%;min-height:0;object-fit:cover;background:#000"></video>'
+      + '<div style="position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 14px;color:#fff;font-size:17px;text-align:center;background:linear-gradient(rgba(0,0,0,.7),rgba(0,0,0,0))">' + esc(SCAN_LABEL[expect] || 'Scan their code') + '</div>'
+      + '<div id="ex-scan-msg" style="position:absolute;left:18px;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);color:#fff;font-size:15px;text-align:center;opacity:0;transition:opacity .2s"></div>'
+      + '<button class="btn" style="position:absolute;left:18px;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);width:auto" onclick="App.exScanClose()">Cancel</button>';
+    document.body.appendChild(wrap);
+    _scan = { expect: expect, wrap: wrap, stream: null, raf: 0, detector: null, canvas: document.createElement('canvas'), busy: false, done: false, lastMsg: 0, last: 0 };
+    try { if (window.BarcodeDetector) _scan.detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (_) { _scan.detector = null; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function(stream) {
+      if (!_scan) { stream.getTracks().forEach(function(t) { t.stop(); }); return; }
+      _scan.stream = stream;
+      var v = document.getElementById('ex-scan-v');
+      v.setAttribute('playsinline', ''); v.muted = true; v.srcObject = stream;
+      var pl = v.play(); if (pl && pl.catch) pl.catch(function() {});
+      _scan.raf = requestAnimationFrame(exScanTick);
+      console.log('[scan] camera open, ' + (_scan.detector ? 'BarcodeDetector' : 'jsQR'));
+    }).catch(function(e) {
+      console.log('[scan] camera failed: ' + e.name + ' ' + e.message);
+      exScanClose();
+      toast(e.name === 'NotAllowedError' ? 'The camera was not allowed. Allow it for HEP in your phone settings and try again.' : 'Could not open the camera: ' + e.message);
+    });
+  }
+  function exScanClose() {
+    var sc = _scan; _scan = null; if (!sc) return;
+    try { if (sc.raf) cancelAnimationFrame(sc.raf); } catch (_) {}
+    try { if (sc.stream) sc.stream.getTracks().forEach(function(t) { t.stop(); }); } catch (_) {}
+    try { var v = document.getElementById('ex-scan-v'); if (v) v.srcObject = null; } catch (_) {}
+    try { sc.wrap.remove(); } catch (_) {}
+  }
+  function exScanMsg(text) {
+    var sc = _scan; if (!sc) return;
+    var now = Date.now(); if (now - sc.lastMsg < 2500) return; sc.lastMsg = now;
+    var m = document.getElementById('ex-scan-msg'); if (!m) return;
+    m.textContent = text; m.style.opacity = '1';
+    setTimeout(function() { if (m) m.style.opacity = '0'; }, 2200);
+  }
+  function exScanTick() {
+    var sc = _scan; if (!sc || sc.done) return;
+    sc.raf = requestAnimationFrame(exScanTick);
+    var now = Date.now(); if (sc.busy || now - sc.last < 150) return; sc.last = now;
+    var v = document.getElementById('ex-scan-v'); if (!v || v.readyState < 2 || !v.videoWidth) return;
+    if (sc.detector) {
+      sc.busy = true;
+      sc.detector.detect(v).then(function(codes) { sc.busy = false; if (codes && codes.length) exScanFound(codes[0].rawValue); })
+        .catch(function(e) { sc.busy = false; console.log('[scan] detector failed, falling back to jsQR: ' + e.message); sc.detector = null; });
+      return;
+    }
+    if (typeof jsQR !== 'function') { exScanMsg('The code reader did not load. Open the app once with internet, then try again.'); return; }
+    var scale = Math.min(1, 1280 / v.videoWidth) // scan 1 is a dense code (about 105 modules a side); jsQR needs about six pixels per module, so sample the full 1280 frame
+   , w = Math.round(v.videoWidth * scale), h = Math.round(v.videoHeight * scale);
+    var c = sc.canvas; if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    var ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(v, 0, 0, w, h);
+    var img = ctx.getImageData(0, 0, w, h);
+    var r = null; try { r = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' }); } catch (_) {}
+    if (r && r.data) exScanFound(r.data);
+  }
+  // A code was read. It must be a HEP scan link; the type must be the one this screen waits for.
+  function exScanFound(text) {
+    var sc = _scan; if (!sc || sc.done) return;
+    var type = null, raw = null;
+    try {
+      var u = new URL(String(text));
+      ['o1', 'o2', 'o3'].forEach(function(k) { var v = u.searchParams.get(k); if (v && !type) { type = k; raw = v; } });
+    } catch (_) {}
+    if (!type) { exScanMsg('That is not a HEP code.'); return; }
+    if (type !== sc.expect) { exScanMsg('That is scan ' + SCAN_NUM[type] + ' of 3. This phone needs scan ' + SCAN_NUM[sc.expect] + '.'); return; }
+    var payload; try { payload = b64Decode(raw); } catch (_) { exScanMsg('That code could not be read.'); return; }
+    sc.done = true; exScanClose();
+    state.pendingIncoming = { type: type, payload: payload };
+    console.log('[scan] read scan ' + type + ' in the app');
+    handleIncomingPayload();
+  }
   function exOffTerms(ex, iProvide, other) {
     var kd = exKindDur(ex.category, ex.duration ? formatDuration(ex.duration) : '');
     var h = '<div class="exs-cap">' + (iProvide ? 'You are providing to ' + esc(other || 'them') : esc(other || 'They') + (other ? ' is' : ' are') + ' providing to you') + '</div>';
@@ -10570,9 +10757,18 @@ function init() {
   function exOffDoorHTML() {
     var h = '<div class="exs-grow"></div>';
     h += '<div class="exs-h" style="text-align:center">No server reached</div>';
-    h += '<div class="exs-m" style="text-align:center">You can still exchange. The two of you scan each other\u2019s screens with the phone camera. The record is kept on both phones and a server stamps it the next time either phone is online.</div>';
+    if (OFFLINE_SCAN_PARKED) {
+      h += '<div class="exs-m" style="text-align:center">An exchange needs a connection for now: wifi or mobile data on at least one of the two phones. A way to exchange with no connection at all is coming.</div>';
+      h += '<div style="height:24px"></div>';
+      h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffRetry()">Try again</button>';
+      h += '<button class="exs-quiet" onclick="App.closeExchange()">Not now</button>';
+      h += '<div class="exs-grow"></div>';
+      return h;
+    }
+    h += '<div class="exs-m" style="text-align:center">You can still exchange. The two of you scan each other\u2019s screens from inside HEP. The record is kept on both phones and a server stamps it the next time either phone is online.</div>';
     h += '<div style="height:24px"></div>';
     h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffStart()">Exchange by scanning</button>';
+    h += '<button class="btn btn-secondary" style="width:100%; margin-top:10px" onclick="App.exScanOpen(\'o1\')">Scan the code on their screen</button>';
     h += '<button class="exs-quiet" onclick="App.exOffRetry()">Try the servers again</button>';
     h += '<div class="exs-grow"></div>';
     return h;
@@ -10580,6 +10776,7 @@ function init() {
   function exOffRetry() { closeExchange(); setTimeout(function() { exBeginStart(); }, 120); }
   // Proposer: compose the terms with the ordinary beats, then show scan 1.
   function exOffStart() {
+    if (OFFLINE_SCAN_PARKED) { toast('Exchanging with no connection is not ready yet.'); return; }
     if (exOffRefuseDevice()) return;
     var held = exOffLoad();
     if (held) { exOffResume(); return; }
@@ -10603,14 +10800,15 @@ function init() {
     var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'offered') return;
     exOffOpenModal();
     var h = '<div class="exs-cap">Scan 1 of 3</div>';
-    h += '<div class="exs-t">They scan this with their phone camera</div>';
+    h += '<div class="exs-t">They scan this from inside HEP: Exchange, then Scan the code on their screen</div>';
     h += '<div style="height:12px"></div>' + exOffQRHTML('off1');
     h += '<div style="height:12px"></div>';
     h += exOffTerms(held.ex, held.ex.energyState === 'provided', '');
     h += '<div style="height:16px"></div>';
-    h += '<div class="exs-f">When they confirm, their phone shows a code. Scan it with your camera and this app opens again.</div>';
+    h += '<div class="exs-f">When they confirm, their phone shows a code. Scan it here and this phone records the exchange.</div>';
     h += '<div class="exs-grow"></div>';
-    h += '<button class="btn btn-secondary" style="width:100%" onclick="App.exOffClose()">Done for now</button>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exScanOpen(\'o2\')">Scan their answer</button>';
+    h += '<button class="btn btn-secondary" style="width:100%; margin-top:10px" onclick="App.exOffClose()">Done for now</button>';
     h += '<button class="exs-quiet" onclick="App.exOffCancel()">Cancel this exchange</button>';
     exOffHost(h);
     exOffQR('off1-qr', exOffUrl('o1', held.o1));
@@ -10652,12 +10850,13 @@ function init() {
     var held = exOffLoad(); if (!held || held.role !== 'confirmer' || held.stage !== 'answered') return;
     exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(3, 'confirmer');
     var h = '<div class="exs-cap">Scan 2 of 3</div>';
-    h += '<div class="exs-t">They scan this with their phone camera</div>';
+    h += '<div class="exs-t">They scan this from their screen: Scan their answer</div>';
     h += '<div style="height:12px"></div>' + exOffQRHTML('off2');
     h += '<div style="height:12px"></div>';
-    h += '<div class="exs-f">Their phone records the exchange and shows one last code. Scan it with your camera and this app records it on your phone.</div>';
+    h += '<div class="exs-f">Their phone records the exchange and shows one last code. Scan it here and this phone records it too.</div>';
     h += '<div class="exs-grow"></div>';
-    h += '<button class="btn btn-secondary" style="width:100%" onclick="App.exOffClose()">Done for now</button>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exScanOpen(\'o3\')">Scan their last code</button>';
+    h += '<button class="btn btn-secondary" style="width:100%; margin-top:10px" onclick="App.exOffClose()">Done for now</button>';
     h += '<button class="exs-quiet" onclick="App.exOffCancel()">Cancel this exchange</button>';
     exOffHost(h);
     exOffQR('off2-qr', exOffUrl('o2', held.o2));
@@ -10672,6 +10871,7 @@ function init() {
     try { p = await HCP.verifyAnswer(payload, o1, state.fingerprint); } catch (e) { console.log('[offline] answer refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
     if (HCP.sameOwner({ fp: state.fingerprint }, { fp: p.fp })) { toast('That code is from this same chain.'); return; }
     var record = await exOffWriteRecord(held.ex, held.ex.energyState, p.fp, p.name, p.actHash, p.actSig, p.pub);
+    try { HCP.setClose(record, HCP.CLOSE_WAITING, 2); record.closeRole = 'proposer'; record.closeNonce = held.nonce; save(); } catch (e) { console.log('[offline] close state failed:', e.message); } // v2.158.0: the same ladder as online; final on the spoken code (hop 4)
     var o3 = await HCP.offlineSeal(state.publicKeyJwk, p, state.privateKey);
     exOffSave({ role: 'proposer', stage: 'sealed', nonce: held.nonce, o3: o3, ex: held.ex, other: p.name, recordTs: record.timestamp, at: Date.now() });
     exOffShowSeal();
@@ -10680,14 +10880,47 @@ function init() {
     var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'sealed') return;
     exOffOpenModal(); sessionRole = 'proposer'; renderIndicator(4, 'proposer');
     var h = '<div class="exs-cap">Scan 3 of 3</div>';
-    h += '<div class="exs-t">Recorded on your phone. They scan this to record it on theirs</div>';
+    h += '<div class="exs-t">Recorded on your phone. They scan this from their screen: Scan their last code</div>';
     h += '<div style="height:12px"></div>' + exOffQRHTML('off3');
     h += '<div style="height:12px"></div>';
     h += exOffTerms(held.ex, held.ex.energyState === 'provided', held.other || '');
     h += '<div class="exs-grow"></div>';
-    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffFinish()">Done</button>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="App.exOffShowCode()">They have scanned it</button>';
     exOffHost(h);
     exOffQR('off3-qr', exOffUrl('o3', held.o3));
+  }
+  // Proposer, hop 4 by voice (Michael, Oct 17): after scan 3 the other phone shows a two-digit code drawn
+  // from the record; this phone shows the same; the proposer asks, and Yes makes this record final.
+  function exOffRecordFor(held) {
+    var fp = held.o3 ? null : null;
+    for (var i = state.chain.length - 1; i >= 0; i--) { var r = state.chain[i]; if (r && HCP.isAct(r) && r.closeNonce === held.nonce && r.closeRole === 'proposer') return r; }
+    return null;
+  }
+  async function exOffShowCode() {
+    var held = exOffLoad(); if (!held || held.role !== 'proposer' || held.stage !== 'sealed') return;
+    var rec = exOffRecordFor(held); if (!rec) { exOffFinish(); return; }
+    var code = ''; try { code = await HCP.closeCode(rec.actHash, held.nonce); } catch (_) {}
+    if (!code) { exOffFinish(); return; }
+    var o = String(held.other || 'them').trim().split(/\s+/)[0] || 'them';
+    exOffOpenModal(); sessionRole = 'proposer'; renderIndicator(4, 'proposer');
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h">Check with ' + esc(o) + '</div>';
+    h += '<div class="exs-body" style="color:var(--text-dim); margin-top:22px">Their phone shows a code once the record is saved. Both phones should show the same one.</div>';
+    h += '<div class="exs-code" style="margin-top:18px; font-size:44px; letter-spacing:0.12em">' + esc(code) + '</div>';
+    h += '<div class="exs-body" style="margin-top:14px">Does ' + esc(o) + '\u2019s phone show ' + esc(code) + '?</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-btns" style="animation:none; flex-direction:column; gap:10px"><button class="btn btn-primary" style="width:100%;" onclick="App.exOffCodeYes()">Yes, it matches</button>'
+       + '<button class="btn" style="width:100%;" onclick="App.exOffFinish()">Not now</button></div>';
+    h += '</div>';
+    exOffHost(h);
+  }
+  function exOffCodeYes() {
+    var held = exOffLoad(); var rec = held && exOffRecordFor(held);
+    if (rec) { try { HCP.setClose(rec, HCP.CLOSE_FINAL, 4); rec.closeVoice = true; save(); console.log('[offline] proposer final by voice'); } catch (e) { toast('Could not finish: ' + e.message); return; } }
+    exOffSave(null); exOffActive = false; _sessionWritten = true;
+    exOffHost(exOffDoneHTML(null));
+    try { refreshHome(); } catch (_) {}
   }
   // Confirmer: scan 3 arrived. Check it, write the record.
   async function exOffReceive3(payload) {
@@ -10696,19 +10929,23 @@ function init() {
     var p;
     try { p = await HCP.verifySeal(payload, { nonce: held.nonce, proposerFp: held.proposerFp, proposerPub: held.proposerPub, myFp: state.fingerprint, actHash: held.actHash }); } catch (e) { console.log('[offline] seal refused: ' + e.message); toast('That code could not be checked: ' + e.message); return; }
     var myDir = held.ex.energyState === 'provided' ? 'received' : 'provided';
-    await exOffWriteRecord(held.ex, myDir, held.proposerFp, held.proposerName, p.actHash, p.actSig, held.proposerPub);
+    var rec = await exOffWriteRecord(held.ex, myDir, held.proposerFp, held.proposerName, p.actHash, p.actSig, held.proposerPub);
+    var code = '';
+    try { HCP.setClose(rec, HCP.CLOSE_FINAL, 3); rec.closeRole = 'confirmer'; rec.closeNonce = held.nonce; save(); code = await HCP.closeCode(rec.actHash, held.nonce); } catch (e) { console.log('[offline] close state failed:', e.message); } // v2.158.0: final on the seal (hop 3), then the code for them
     exOffSave(null);
     exOffOpenModal(); sessionRole = 'confirmer'; renderIndicator(4, 'confirmer');
     _sessionWritten = true;
-    exOffHost(exOffDoneHTML());
+    exOffHost(exOffDoneHTML(code, held.proposerName));
   }
-  function exOffDoneHTML() {
+  function exOffDoneHTML(code, other) {
+    var o = String(other || 'them').trim().split(/\s+/)[0] || 'them';
     var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
     h += '<div class="exs-grow"></div>';
     h += '<div class="exs-settle-check"><span class="ring"></span><svg viewBox="0 0 24 24" width="56" height="56"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
     h += '<div class="exs-settle-t1">Transaction</div>';
     h += '<div class="exs-settle-t2">Recorded</div>';
     h += '<div class="exs-settle-t3">Signed by both of you, on both phones. A server will stamp it when a phone is next online.</div>';
+    if (code) h += '<div class="exs-body" style="margin-top:18px">Read this code to ' + esc(o) + '</div><div class="exs-code" style="margin-top:6px; font-size:44px; letter-spacing:0.12em">' + esc(code) + '</div>';
     h += '<div class="exs-grow" style="flex:1.2"></div>';
     h += '<div class="exs-settle-btns"><button class="btn btn-primary" style="width:100%;" onclick="App.exOffFinish()">Done</button></div>';
     h += '</div>';
@@ -10752,6 +10989,7 @@ function init() {
     else exOffSave(null);
   }
   function exOffWaitingHTML() {
+    if (OFFLINE_SCAN_PARKED) return '';
     var held = exOffLoad(); if (!held) return '';
     var what = held.role === 'proposer' ? (held.stage === 'sealed' ? 'Scan 3 is waiting for them' : 'Scan 1 is waiting for them') : (held.stage === 'answered' ? 'Scan 2 is waiting for them' : 'An offer is waiting for you');
     return '<p class="exs-cap" style="text-align:center;margin:18px 0 0">' + esc(what) + ': <button class="exs-quiet" style="display:inline;padding:0;margin:0" onclick="App.rsClose();App.exOffResume()">show it</button></p>';
@@ -11123,8 +11361,7 @@ function init() {
     // Screen 2, joiner side (ruled Oct 1): four cells. The real input
     // sits invisibly over the cells so the keyboard opens on tap; the
     // fourth character connects by itself, no Connect button. "Scan
-    // their code instead" is ruled but needs a camera scanner the app
-    // does not have yet; it lands in its own build cycle.
+    // their code instead" (ruled Oct 1) is the in-app scanner, v2.159.0.
     var html = '<div class="exs-h" style="text-align:center;">Join</div>';
     html += '<div class="exs-m" style="text-align:center;">The six characters on their screen.</div>';
     html += '<div style="height:30px"></div>';
@@ -11135,6 +11372,7 @@ function init() {
     html += '<div id="ex-join-status" style="display:none; margin-top:22px;"></div>';
     html += '<button class="btn btn-primary" id="ex-join-btn" style="display:none;" onclick="App.exConnect()">Connect</button>';
     html += '<div class="exs-grow"></div>';
+    if (!OFFLINE_SCAN_PARKED) html += '<button class="exs-quiet" onclick="App.exScanOpen(\'o1\')">Their screen shows a square code? Scan it instead</button>';
     document.getElementById('ex-connect-content').innerHTML = html;
     setTimeout(function() {
       var inp = document.getElementById('ex-join-code');
@@ -11388,6 +11626,7 @@ function init() {
       } catch(ek) { console.log('[ex-flow] session key failed:', ek.message); sessionViolation('session: ' + ek.message, sessFailMsg(null)); return; }
     }
     try { carrierMarkWorked(sessionWitnessUrl); } catch (_) {} // v2.143.0: a carrier that carried a verified handshake is kept
+    _closeSas = false; _closeHeld = null; _closeWrapping = false; closeListenStart(); // v2.157.0: a receipt from a reconnect may arrive on this pipe
 
     // Build our snapshot extras once; it is sent only once the partner's key is verified.
     if (!sessionPartner._extras && sessionSharedKey) {
@@ -11594,6 +11833,8 @@ function init() {
     var ts = sessionPartner ? sessionPartner.thread_snapshot : null;
     if (typeof ts === 'string') { try { ts = JSON.parse(ts); } catch(e) {} }
     _textureTs = ts;
+    _closeSas = true; closeFlushHeld(); // v2.157.0: a held receipt is answered once the mark is confirmed
+    if (closeResumeProposer()) return; // v2.157.0: a waiting record with this person is finished instead of a new proposal
     if (sessionRole === 'proposer') exBeatsReset();
     showExStep('texture');
     exRenderChainRead();
@@ -12794,6 +13035,7 @@ function init() {
     exFrameXRefresh();
     if (st === 'ladder') { host.innerHTML = exLadderHTML(p); ldrPaint(); return; }
     if (st === 'notconfirmed') { host.innerHTML = exNotConfirmedHTML(p); return; }
+    if (st === 'saycode') { host.innerHTML = exSayCodeHTML(p); return; }
     if (st === 'flow') { host.innerHTML = exSettleFlowHTML(p); return; }
     if (st === 'done') { host.innerHTML = exSettleDoneHTML(); return; }
     // Review and Wait (Oct 2 rulings 5 and 7, built v2.69.0): the picked
@@ -13065,11 +13307,39 @@ function init() {
   }
   function ldrDone(n) { if (!_ldr) return; for (var i = 0; i < n && i < 4; i++) _ldr.real[i] = true; }
   function ldrSub(t) { if (!_ldr || _ldr.stalled || _ldr.completing) return; _ldr.sub = t; ldrPaint(); }
-  function ldrStall() {
+  // v2.158.0 (Michael, Oct 17): when the servers run out, the last hop goes by voice. Both phones hold the
+  // record, so both compute the same two-digit code; the screen asks whether the other phone shows it.
+  // Yes finalises this phone's record (knowledge, not a signature; inside the person's own conduct).
+  async function ldrStall(ctx) {
     if (!_ldr || _ldr.completing) return;
     _ldr.stalled = true; if (_ldr.timer) { clearInterval(_ldr.timer); _ldr.timer = null; }
-    if (exRVIsShowing()) exRenderRV('notconfirmed');
+    _ldr.ctx = ctx || null; _ldr.code = null;
+    if (ctx && ctx.record && ctx.nonce && ctx.actHash) { try { _ldr.code = await HCP.closeCode(ctx.actHash, ctx.nonce); } catch (_) {} }
+    if (exRVIsShowing()) exRenderRV(_ldr.code ? 'saycode' : 'notconfirmed');
   }
+  function exSayCodeHTML(p) {
+    var o = String(_exRV.other || exPartnerName()).trim().split(/\s+/)[0] || 'them';
+    var h = '<div class="exs-settle" style="align-items:center; text-align:center">';
+    h += '<div style="height:28px"></div>';
+    h += '<div class="exs-h">Check with ' + esc(o) + '</div>';
+    h += ldrFacesSVG(p, true);
+    h += '<div class="exs-body" style="color:var(--text-dim); margin-top:22px">The connection dropped on the last step. Both phones should show the same code.</div>';
+    h += '<div class="exs-code" style="margin-top:18px; font-size:44px; letter-spacing:0.12em">' + esc(_ldr.code) + '</div>';
+    h += '<div class="exs-body" style="margin-top:14px">Does ' + esc(o) + '\u2019s phone show ' + esc(_ldr.code) + '?</div>';
+    h += '<div class="exs-grow"></div>';
+    h += '<div class="exs-settle-btns" style="animation:none; flex-direction:column; gap:10px"><button class="btn btn-primary" style="width:100%;" onclick="App.exSayCodeYes()">Yes, it matches</button>'
+       + '<button class="btn" style="width:100%;" onclick="App.exSayCodeNo()">No, or I can\u2019t ask</button></div>';
+    h += '</div>';
+    return h;
+  }
+  function exSayCodeYes() {
+    var ctx = _ldr && _ldr.ctx; if (!ctx || !ctx.record) return;
+    try { HCP.setClose(ctx.record, HCP.CLOSE_FINAL, ctx.role === 'proposer' ? 4 : 3); ctx.record.closeVoice = true; } catch (e) { toast('Could not finish: ' + e.message); return; }
+    save(); console.log('[close] final by voice (code ' + _ldr.code + ')'); closeRefresh();
+    _ldr.stalled = false; _ldr.real = [true, true, true, true]; _ldr.shown = 3; _ldr.last = Date.now() - LDR_MIN_MS; _ldr.sub = '';
+    exRenderRV('ladder'); _ldr.timer = setInterval(ldrStep, 100);
+  }
+  function exSayCodeNo() { if (exRVIsShowing()) exRenderRV('notconfirmed'); }
   function ldrLines() {
     var o = String(_exRV.other || exPartnerName()).trim().split(/\s+/)[0] || 'them'; // first name keeps each line on one row
     return ['Both of you signed', 'Saved on your phone', 'Sent to ' + o, 'Saved on ' + o + '\u2019s phone'];
@@ -16423,6 +16693,10 @@ function init() {
       h += stRow(uw.length ? 'Add another server' : 'Add a server', '', 'App.openAddWitnessModal()');
     }
     // This app
+    if (/\/dev\//.test(location.pathname)) {
+      h += '<div class="exs-cap mc-group">Testing (dev only)</div>';
+      h += stSwitchRow('Slow the close', 'Holds each receipt (hop 3 when this phone proposes, hop 4 when it confirms) for 5 seconds, so a connection can be cut on purpose.', state.settings.testDelayReceipt, 'switch-test-delay-receipt', 'App.toggleTestDelayReceipt()');
+    }
     h += '<div class="exs-cap mc-group">This app</div>';
     h += stRow('Install to home screen', 'Open HEP like any other app', 'App.installFromSettings()');
     h += stRow('Check for updates', 'You are on version ' + APP_VERSION, 'App.forceUpdate()');
@@ -16584,7 +16858,7 @@ function init() {
     addSkill, removeSkill, addEdu, removeEdu, dcDrag, toggleSkillPicker,
     showFullQR, closeFullQR,
     openCooperate, coopNewAct, coopReuseAct,
-    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
+    startCooperateFlow, toggleCoopStart, exStartProviding, exStartReceiving, exJoinExchange, exSwitchToJoin, exCodeInput, exConnect, exConfirmSAS, exRejectSAS, exReviewConfirm, exContinueFromTexture, exBackToTexture, exToggleShieldPop, exToggleThreadPanel, exTogglePhotoSheet, exRenderBeat, exBeatPick, exBeatDoor, exBeatNew, exBeatPickItem, exBeatField, exBeatSend, exBeatSaveService, exBeatEdit, exBeatSwitch, exListFilter, exCRPick, exCRSwitch, exCRDoor, exCRNew, exX, exCancelExchange, exInviteQR, exSendInvite, exRVToggle, exRVLeaveWait, exRVDecline, exRVRetry, exRVDone, exSayCodeYes, exSayCodeNo, exOffShowCode, exOffCodeYes, exScanOpen, exScanClose, exRVWallet, togglePairPanel, waveMode, waveInterval, toggleWavePanel, exSelectRole, exViewProposal,
     openExchange, closeExchange, setDirection, generateProposal, copyProposal, shareProposal,
     selectTransport, switchTransport, initiatorConfirmScan, initiatorConfirmSent, initiatorReadyScan, initiatorGoBack,
     pairCodeInput, submitPairCode,

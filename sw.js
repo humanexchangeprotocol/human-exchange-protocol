@@ -1,6 +1,6 @@
 // HEP Service Worker
 // Version-stamped cache. Bump CACHE_VERSION on each release.
-const CACHE_VERSION = '2.156.2';
+const CACHE_VERSION = '2.161.0';
 const CACHE_NAME = 'hep-v' + CACHE_VERSION;
 
 // Files to cache on install
@@ -11,6 +11,7 @@ const CORE_ASSETS = [
   './hep-app.js',
   './lessons.json',
   './vendor/qrcode.js',
+  './vendor/jsqr.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
